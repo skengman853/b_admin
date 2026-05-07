@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, date
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, Float, Text, Date, DateTime, ForeignKey, Index
+from sqlalchemy import String, Boolean, Float, Text, Date, DateTime, ForeignKey, Index, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -20,6 +20,7 @@ class User(Base):
 
     gmail_connection: Mapped["GmailConnection | None"] = relationship(back_populates="user", uselist=False)
     invoices: Mapped[list["Invoice"]] = relationship(back_populates="user")
+    documents: Mapped[list["Document"]] = relationship(back_populates="user")
 
 
 class GmailConnection(Base):
@@ -62,6 +63,41 @@ class Invoice(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="invoices")
+
+
+class Document(Base):
+    __tablename__ = "documents"
+    __table_args__ = (
+        Index("idx_documents_lookup", "user_id", "gmail_message_id", "attachment_index", unique=True),
+        Index("idx_documents_user_created", "user_id", "created_at"),
+        Index("idx_documents_user_synced", "user_id", "synced_at"),
+        Index("idx_documents_user_review", "user_id", "needs_review"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    gmail_message_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    attachment_index: Mapped[int] = mapped_column(default=0)
+    attachment_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    supplier: Mapped[str] = mapped_column(String(255), nullable=False, default="Other")
+    document_type: Mapped[str] = mapped_column(String(50), nullable=False, default="unknown")
+    document_date: Mapped[date | None] = mapped_column(Date)
+    reference: Mapped[str | None] = mapped_column(String(255))
+    amount: Mapped[Decimal | None] = mapped_column()
+    local_path: Mapped[str] = mapped_column(Text, nullable=False)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    review_reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
+    source_email_sender: Mapped[str | None] = mapped_column(Text)
+    source_email_subject: Mapped[str | None] = mapped_column(Text)
+    source_received_at: Mapped[datetime | None] = mapped_column(DateTime)
+    drive_file_id: Mapped[str | None] = mapped_column(String(255))
+    drive_web_link: Mapped[str | None] = mapped_column(Text)
+    drive_folder_path: Mapped[str | None] = mapped_column(Text)
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="documents")
 
 
 class ProcessedEmail(Base):

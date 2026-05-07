@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db import get_db
 from app.deps import get_current_user
 from app.models import GmailConnection, User
@@ -54,5 +55,6 @@ async def scan_recent_pipeline(
         days=body.days,
         max_messages=body.max_messages,
         force=body.force,
+        sync_drive=settings.pipeline_auto_sync_to_drive if body.sync_drive is None else body.sync_drive,
     )
     return PipelineScanResponse.model_validate(summary)

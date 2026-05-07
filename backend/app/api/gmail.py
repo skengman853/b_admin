@@ -11,10 +11,11 @@ from app.db import get_db
 from app.deps import get_current_user
 from app.models import User, GmailConnection
 from app.services.encryption import encrypt_token
+from app.services.google_oauth import GOOGLE_API_SCOPES
 
 router = APIRouter(prefix="/api/gmail", tags=["gmail"])
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = GOOGLE_API_SCOPES
 
 
 def _create_flow() -> Flow:

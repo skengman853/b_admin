@@ -4,16 +4,11 @@ import base64
 from dataclasses import dataclass
 from datetime import datetime, UTC
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.models import GmailConnection
-from app.services.encryption import decrypt_token, encrypt_token
-
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+from app.services.google_oauth import get_google_credentials
 
 
 @dataclass
@@ -38,29 +33,8 @@ def _decode_base64(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + padding)
 
 
-def _gmail_credentials(connection: GmailConnection) -> Credentials:
-    return Credentials(
-        token=decrypt_token(connection.access_token_encrypted),
-        refresh_token=decrypt_token(connection.refresh_token_encrypted),
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=settings.google_client_id,
-        client_secret=settings.google_client_secret,
-        scopes=SCOPES,
-    )
-
-
 async def get_gmail_service(connection: GmailConnection, db: AsyncSession):
-    credentials = _gmail_credentials(connection)
-
-    if not credentials.valid and credentials.refresh_token:
-        credentials.refresh(Request())
-        connection.access_token_encrypted = encrypt_token(credentials.token)
-        if credentials.refresh_token:
-            connection.refresh_token_encrypted = encrypt_token(credentials.refresh_token)
-        connection.token_expiry = credentials.expiry
-        await db.commit()
-        await db.refresh(connection)
-
+    credentials = await get_google_credentials(connection, db)
     return build("gmail", "v1", credentials=credentials, cache_discovery=False)
 
 

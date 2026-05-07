@@ -67,6 +67,7 @@ class PipelineScanRequest(BaseModel):
     days: int = Field(default=30, ge=1, le=365)
     max_messages: int = Field(default=50, ge=1, le=500)
     force: bool = False
+    sync_drive: bool | None = None
 
 
 class PipelineStoredFile(BaseModel):
@@ -99,6 +100,10 @@ class PipelineScanResponse(BaseModel):
     needs_review_files: int = 0
     files_by_supplier: dict[str, int] = Field(default_factory=dict)
     files_by_type: dict[str, int] = Field(default_factory=dict)
+    drive_sync_requested: int = 0
+    drive_sync_synced: int = 0
+    drive_sync_skipped: int = 0
+    deduped_documents: int = 0
     tracking_file: str
     results: list[PipelineMessageResult] = Field(default_factory=list)
 
@@ -134,3 +139,56 @@ class PipelineReviewQueueItem(BaseModel):
 class PipelineReviewQueueResponse(BaseModel):
     total: int
     files: list[PipelineReviewQueueItem] = Field(default_factory=list)
+
+
+# Documents
+class DocumentResponse(BaseModel):
+    id: uuid.UUID
+    gmail_message_id: str
+    attachment_name: str
+    supplier: str
+    document_type: str
+    document_date: date | None
+    reference: str | None
+    amount: Decimal | None
+    local_path: str
+    needs_review: bool
+    review_reasons: list[str] = Field(default_factory=list)
+    source_email_sender: str | None
+    source_email_subject: str | None
+    source_received_at: datetime | None
+    drive_file_id: str | None
+    drive_web_link: str | None
+    drive_folder_path: str | None
+    synced_at: datetime | None
+    created_at: datetime
+
+
+class DocumentListResponse(BaseModel):
+    documents: list[DocumentResponse]
+    total: int
+    page: int
+    pages: int
+
+
+class DocumentDriveSyncRequest(BaseModel):
+    limit: int = Field(default=50, ge=1, le=500)
+    document_ids: list[uuid.UUID] = Field(default_factory=list)
+    force: bool = False
+
+
+class DocumentDriveSyncItem(BaseModel):
+    document_id: uuid.UUID
+    local_path: str
+    drive_file_id: str | None = None
+    drive_web_link: str | None = None
+    status: str
+    reason: str | None = None
+
+
+class DocumentDriveSyncResponse(BaseModel):
+    requested: int
+    synced: int
+    skipped: int
+    deduped: int = 0
+    results: list[DocumentDriveSyncItem] = Field(default_factory=list)

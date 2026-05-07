@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import GmailConnection, User
 from app.services.document_classifier import classify_document_type
 from app.services.document_metadata import extract_amount, extract_document_date, extract_reference
+from app.services.document_registry import upsert_document_record
+from app.services.document_sync import sync_documents_to_drive
 from app.services.email_filter import should_process_email
 from app.services.file_namer import build_document_filename
 from app.services.gmail_client import fetch_message_with_pdfs, get_gmail_service, list_recent_message_ids
@@ -34,6 +36,7 @@ async def scan_recent_documents(
     days: int,
     max_messages: int,
     force: bool = False,
+    sync_drive: bool = False,
 ) -> dict:
     service = await get_gmail_service(connection, db)
     message_ids = list_recent_message_ids(service, days=days, max_results=max_messages)
@@ -46,6 +49,7 @@ async def scan_recent_documents(
     needs_review_files = 0
     files_by_supplier: Counter[str] = Counter()
     files_by_type: Counter[str] = Counter()
+    document_ids_touched: list = []
 
     for message_id in message_ids:
         if not force and has_processed_message(str(user.id), message_id):
@@ -99,7 +103,7 @@ async def scan_recent_documents(
 
         stored_files: list[dict] = []
         message_needs_review = False
-        for attachment in message.pdf_attachments:
+        for attachment_index, attachment in enumerate(message.pdf_attachments):
             temp_path = save_temp_pdf(message.message_id, attachment.filename, attachment.data)
             pdf_text = extract_pdf_text(attachment.data)
             supplier = detect_supplier(
@@ -150,6 +154,18 @@ async def scan_recent_documents(
                     "saved_path": str(final_path),
                 }
             )
+            document = await upsert_document_record(
+                db,
+                user_id=user.id,
+                gmail_message_id=message.message_id,
+                attachment_index=attachment_index,
+                source_email_sender=message.sender,
+                source_email_subject=message.subject,
+                source_received_at=message.received_at,
+                stored_file=stored_files[-1],
+            )
+            if document.id is not None:
+                document_ids_touched.append(document.id)
 
         processed_messages += 1
         saved_files += len(stored_files)
@@ -181,7 +197,20 @@ async def scan_recent_documents(
         )
 
     connection.last_synced_at = datetime.utcnow()
-    await db.commit()
+    drive_sync_summary = {"requested": 0, "synced": 0, "skipped": 0, "deduped": 0}
+    if sync_drive and document_ids_touched:
+        await db.flush()
+        unique_document_ids = list(dict.fromkeys(document_ids_touched))
+        drive_sync_summary = await sync_documents_to_drive(
+            user=user,
+            connection=connection,
+            db=db,
+            limit=len(unique_document_ids),
+            document_ids=unique_document_ids,
+            force=False,
+        )
+    else:
+        await db.commit()
 
     return {
         "scanned_messages": len(message_ids),
@@ -192,6 +221,10 @@ async def scan_recent_documents(
         "needs_review_files": needs_review_files,
         "files_by_supplier": dict(files_by_supplier),
         "files_by_type": dict(files_by_type),
+        "drive_sync_requested": drive_sync_summary["requested"],
+        "drive_sync_synced": drive_sync_summary["synced"],
+        "drive_sync_skipped": drive_sync_summary["skipped"],
+        "deduped_documents": drive_sync_summary["deduped"],
         "tracking_file": str(tracking_file_path()),
         "results": results,
     }
