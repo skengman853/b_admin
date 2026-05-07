@@ -1,223 +1,149 @@
 # 07 — API Endpoints
 
-## Authentication
+## Important Context
 
-### POST /api/auth/signup
-Create a new user account.
+The current backend API still reflects some earlier invoice-dashboard-first work.
 
-**Request:**
+That is fine, but the docs should be explicit about what exists now versus what the next document-centric phases likely need.
+
+## Currently Implemented Endpoints
+
+### Auth
+
+#### `POST /api/auth/signup`
+
+Create a user and return a JWT.
+
+#### `POST /api/auth/login`
+
+Log in and return a JWT.
+
+#### `GET /api/auth/me`
+
+Return the current user and Gmail connection status.
+
+This is currently the easiest way to verify Gmail OAuth worked:
+
 ```json
 {
-    "email": "user@example.com",
-    "password": "securepassword123"
+  "id": "uuid",
+  "email": "test@example.com",
+  "gmail_connected": true,
+  "created_at": "..."
 }
 ```
 
-**Response (201):**
-```json
-{
-    "id": "uuid",
-    "email": "user@example.com",
-    "token": "jwt-token"
-}
-```
+### Gmail
 
-### POST /api/auth/login
-**Request:**
-```json
-{
-    "email": "user@example.com",
-    "password": "securepassword123"
-}
-```
+#### `GET /api/gmail/auth-url`
 
-**Response (200):**
-```json
-{
-    "token": "jwt-token"
-}
-```
+Return a Google OAuth URL for the logged-in user.
 
-### GET /api/auth/me
-Get current user info. Requires auth header.
+#### `GET /api/gmail/callback`
 
-**Response (200):**
-```json
-{
-    "id": "uuid",
-    "email": "user@example.com",
-    "gmail_connected": true,
-    "created_at": "2026-01-15T10:00:00Z"
-}
-```
+Handle the Google OAuth callback, store encrypted tokens, then redirect.
 
----
+Note:
 
-## Gmail Connection
+- this endpoint is not meant to be opened directly
+- it expects `code` and `state` query params from Google
+- the current implementation redirects to `FRONTEND_URL/dashboard`
 
-### GET /api/gmail/auth-url
-Get the Google OAuth URL to redirect the user to.
+#### `DELETE /api/gmail/disconnect`
 
-**Response (200):**
-```json
-{
-    "url": "https://accounts.google.com/o/oauth2/v2/auth?..."
-}
-```
+Remove the stored Gmail connection for the current user.
 
-### GET /api/gmail/callback?code=XXX&state=YYY
-OAuth callback. Exchanges code for tokens, stores them, triggers initial sync.
+### Pipeline
 
-**Response:** Redirects to frontend dashboard.
+#### `POST /api/pipeline/scan-recent`
 
-### DELETE /api/gmail/disconnect
-Revoke Gmail access and delete stored tokens.
+Scan recent Gmail messages for the current user, process matching PDFs, and return a debug-friendly result set.
 
-**Response (200):**
-```json
-{
-    "message": "Gmail disconnected"
-}
-```
+The current response includes:
 
----
+- scanned, processed, skipped, and saved counts
+- per-supplier and per-type counts
+- per-file extracted metadata
+- `needs_review` flags and `review_reasons`
 
-## Invoices
+#### `GET /api/pipeline/summary`
 
-### GET /api/invoices
-List invoices for the current user.
+Return the accumulated tracking summary for the current user from `processed_emails.json`.
 
-**Query params:**
-- `status` — filter by status: `pending`, `confirmed`, `rejected` (optional)
-- `month` — filter by month: `2026-04` (optional)
-- `page` — page number, default 1
-- `limit` — items per page, default 50
+This is the quickest way to see:
 
-**Response (200):**
-```json
-{
-    "invoices": [
-        {
-            "id": "uuid",
-            "supplier_name": "J Smith Plumbing",
-            "amount": 450.00,
-            "currency": "GBP",
-            "invoice_date": "2026-04-28",
-            "confidence_score": 0.87,
-            "status": "pending",
-            "source_email_subject": "Invoice #1234",
-            "created_at": "2026-04-28T14:30:00Z"
-        }
-    ],
-    "total": 42,
-    "page": 1,
-    "pages": 1
-}
-```
+- how many messages have been tracked
+- how many were processed vs skipped
+- how many files need review
+- counts by supplier
+- counts by document type
 
-### GET /api/invoices/:id
-Get single invoice with full details.
+#### `GET /api/pipeline/review-queue`
 
-**Response (200):**
-```json
-{
-    "id": "uuid",
-    "supplier_name": "J Smith Plumbing",
-    "amount": 450.00,
-    "currency": "GBP",
-    "invoice_date": "2026-04-28",
-    "confidence_score": 0.87,
-    "status": "pending",
-    "source_email_subject": "Invoice #1234",
-    "attachment_url": "https://s3.../invoice.pdf",
-    "extracted_text": "...",
-    "created_at": "2026-04-28T14:30:00Z"
-}
-```
+Return files currently flagged for manual review.
 
-### PATCH /api/invoices/:id
-User confirms or edits invoice data.
+This is useful when supplier detection or document type classification falls back to `Other` or `unknown`.
 
-**Request:**
-```json
-{
-    "supplier_name": "J Smith Plumbing Ltd",
-    "amount": 450.00,
-    "invoice_date": "2026-04-28",
-    "status": "confirmed"
-}
-```
+### Current Scaffolding Endpoints from Earlier Direction
 
-**Response (200):** Updated invoice object.
+These still exist in the repo:
 
-### POST /api/invoices/:id/reject
-Mark as not an invoice.
+#### `GET /api/invoices`
+#### `GET /api/invoices/{id}`
+#### `PATCH /api/invoices/{id}`
+#### `POST /api/invoices/{id}/reject`
+#### `GET /api/dashboard/summary`
+#### `POST /api/webhooks/gmail`
 
-**Response (200):**
-```json
-{
-    "message": "Invoice rejected"
-}
-```
+These endpoints are part of the earlier invoice-review direction. They are not the primary proof of the revised roadmap, but they can still be useful while the document pipeline is being built.
 
----
+## Recommended Next Endpoints
 
-## Dashboard
+The immediate reporting and scan endpoints now exist. The next likely additions are:
 
-### GET /api/dashboard/summary
-Get summary stats for the current user.
+### Documents
 
-**Query params:**
-- `month` — optional, defaults to current month (e.g. `2026-04`)
+#### `GET /api/documents`
 
-**Response (200):**
-```json
-{
-    "month": "2026-04",
-    "total_spend": 3420.50,
-    "invoice_count": 18,
-    "pending_review": 3,
-    "currency": "GBP"
-}
-```
+List stored documents with filters like:
 
----
+- supplier
+- type
+- date range
+- source (`local` or `drive`)
 
-## Webhooks
+#### `GET /api/documents/{id}`
 
-### POST /api/webhooks/gmail
-Receives Gmail Pub/Sub push notifications. Not authenticated by JWT — validated by Google Pub/Sub signature.
+Return metadata for a single document.
 
-**Request:** Google Pub/Sub message format.
+#### `POST /api/documents/reclassify`
 
-**Response (200):**
-```json
-{"status": "ok"}
-```
+Allow manual correction of supplier or document type.
 
----
+### Suppliers
 
-## Error Responses
+#### `GET /api/suppliers`
 
-All errors follow this format:
-```json
-{
-    "detail": "Human-readable error message"
-}
-```
+List known suppliers and document counts.
 
-| Status | Meaning |
-|--------|---------|
-| 400 | Bad request (validation error) |
-| 401 | Not authenticated |
-| 403 | Not authorised (accessing another user's data) |
-| 404 | Resource not found |
-| 429 | Rate limited |
-| 500 | Server error |
+### Matching
 
-## Auth Header Format
-```
-Authorization: Bearer <jwt-token>
-```
+#### `POST /api/transactions/import`
 
-JWT contains: `user_id`, `exp` (expiry). Tokens expire after 7 days.
+Import an Excel or CSV bookkeeping file.
+
+#### `GET /api/matches`
+
+Return suggested document-to-transaction matches.
+
+## Recommendation
+
+Do not redesign the entire API before the pipeline works.
+
+The immediate priority is:
+
+- use the current auth, Gmail, scan, summary, and review endpoints
+- keep the interface debug-friendly
+- add document-management endpoints only once the local pipeline feels stable
+
+The API should evolve from "invoice dashboard endpoints" to "document pipeline endpoints" only as the workflow becomes real.

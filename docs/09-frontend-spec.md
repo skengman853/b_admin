@@ -1,116 +1,98 @@
 # 09 — Frontend Spec
 
-## Overview
+## Important Context
 
-Simple React dashboard. Two pages: Login and Dashboard. That's it.
+Frontend is not Phase 1.
 
-## Pages
+The local document pipeline must work before time is spent on a serious UI.
 
-### 1. Login / Signup Page (`/`)
-- Email + password form
-- Toggle between login and signup
-- After login → redirect to `/dashboard`
+## Current Situation
 
-### 2. Dashboard (`/dashboard`)
-- Header: app name, user email, logout button
-- Gmail connection status (connected / not connected)
-- "Connect Gmail" button (if not connected)
-- Monthly summary card (total spend, invoice count, pending review)
-- Invoice table (main content)
-- Month selector (previous/next month)
+The backend currently redirects Gmail OAuth callbacks to:
 
-## Dashboard Layout
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  📧 Invoice Organizer          user@email.com  [Logout] │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  ┌──────────────┐ ┌──────────────┐ ┌────────────────┐  │
-│  │ Total Spend  │ │   Invoices   │ │ Pending Review │  │
-│  │   £3,420.50  │ │      18      │ │       3        │  │
-│  └──────────────┘ └──────────────┘ └────────────────┘  │
-│                                                         │
-│  ◄ March 2026          April 2026         May 2026 ►   │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │ Supplier          │ Amount  │ Date     │ Status │   │
-│  ├───────────────────┼─────────┼──────────┼────────┤   │
-│  │ J Smith Plumbing  │ £450.00 │ 28 Apr   │ ⚠️ 87% │   │
-│  │ Booker Wholesale  │ £234.50 │ 25 Apr   │ ✅     │   │
-│  │ Travis Perkins    │ £1,200  │ 22 Apr   │ ✅     │   │
-│  │ Unknown Supplier  │ £89.99  │ 20 Apr   │ ⚠️ 62% │   │
-│  └─────────────────────────────────────────────────┘   │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+```text
+http://localhost:3000/dashboard
 ```
 
-## Invoice Row Interaction
+If no frontend is running there, the redirect fails visually, but Gmail token storage can still succeed.
 
-Clicking a pending invoice opens an inline edit/confirm panel:
+That means:
 
-```
-┌─────────────────────────────────────────┐
-│ 🧾 Review Invoice                       │
-│                                         │
-│ Supplier: [J Smith Plumbing     ] ✏️     │
-│ Amount:   [£450.00              ] ✏️     │
-│ Date:     [2026-04-28           ] ✏️     │
-│ Confidence: 87%                         │
-│                                         │
-│ [✅ Confirm]  [✏️ Save Edit]  [❌ Not an invoice] │
-│                                         │
-│ 📎 View original PDF                    │
-└─────────────────────────────────────────┘
-```
+- frontend is optional right now
+- browser redirect failures after OAuth are not the core blocker
 
-## States
+## Phase 5 Goal
 
-### Gmail Not Connected
-Show a prominent "Connect Gmail" button with brief explanation:
-> "Connect your Gmail to automatically find and organise your invoices."
+Build the minimum UI needed to make the document workflow usable by a non-technical person.
 
-### No Invoices Yet
-After connecting, while initial scan runs:
-> "Scanning your inbox... This may take a few minutes."
+## Core Pages
 
-### Empty Month
-> "No invoices found for this month."
+### 1. Documents
 
-## Component Structure
+Purpose:
 
-```
-src/
-├── App.tsx                 # Router setup
-├── api.ts                  # API client (axios instance with auth header)
-├── pages/
-│   ├── Login.tsx           # Login/signup form
-│   └── Dashboard.tsx       # Main dashboard page
-├── components/
-│   ├── SummaryCards.tsx     # Total spend, count, pending
-│   ├── InvoiceTable.tsx    # Invoice list table
-│   ├── InvoiceRow.tsx      # Single row (expandable for edit)
-│   ├── MonthSelector.tsx   # Previous/next month nav
-│   └── GmailConnect.tsx    # Connect Gmail button + status
-└── hooks/
-    ├── useAuth.ts          # Auth state management
-    └── useInvoices.ts      # Fetch invoices + summary
-```
+- browse all stored documents
+- filter by supplier, type, and date
+- open local or Drive-backed files quickly
 
-## Key Behaviours
+Suggested fields:
 
-- Auto-refresh invoice list every 60 seconds (or after confirm/edit)
-- Pending invoices (low confidence) shown at top with warning icon
-- Confirmed invoices show green tick
-- Amounts formatted as GBP (£) with 2 decimal places
-- Dates formatted as "28 Apr 2026" (human readable)
-- Responsive — works on tablet (business owners check on iPad)
+- supplier
+- type
+- date
+- amount if extracted
+- source file name
+- storage location
 
-## No Complex Features
+### 2. Suppliers
 
-- No drag and drop
-- No complex filtering/sorting (just month + status)
-- No export to CSV (v2)
-- No charts or graphs (v2)
-- No dark mode
-- No notifications/toasts (just inline status)
+Purpose:
+
+- group documents by supplier
+- see which suppliers are noisy or inconsistent
+
+### 3. Unlinked Transactions
+
+Purpose:
+
+- show imported bookkeeping rows that do not yet have a matched document
+- surface suggested matches
+
+### 4. Monthly Summary
+
+Purpose:
+
+- show counts and spend totals
+- highlight unmatched or uncertain items
+
+## Key Actions
+
+- view PDF
+- open Drive link
+- copy link
+- mark document as linked
+- correct supplier
+- correct document type
+
+## UX Principles
+
+- fast retrieval matters more than visual polish
+- document clarity matters more than charts
+- filters and grouping matter more than animation
+- matching review should be simple to understand
+
+## What the First UI Does Not Need
+
+- advanced charts
+- dark mode
+- complicated notifications
+- full admin settings
+- broad SaaS account management
+
+## Recommendation
+
+Until Phase 5 begins, keep the UI requirement minimal:
+
+- Swagger for API checks
+- terminal commands for debugging
+- local folder inspection for proof of correctness

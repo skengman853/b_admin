@@ -1,87 +1,164 @@
-# 04 — Database Schema
+# 04 — Data Model & Persistence
 
-## Tables
+## Key Shift
 
-### users
-```sql
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
+Phase 1 does not require a database to prove value.
+
+The first proof is:
+
+- Gmail messages can be scanned
+- PDFs can be downloaded
+- documents can be classified
+- files can be stored in the correct local folders
+
+The initial system of record can be the filesystem plus a lightweight tracking file.
+
+## Phase 1 Persistence
+
+### Local Folders
+
+```text
+Documents/
+  Supplier/
+    Invoices/
+    Statements/
+    Credit Notes/
+    Other/
 ```
 
+### Tracking File
+
+```text
+data/processed_emails.json
+```
+
+Suggested fields:
+
+```json
+{
+  "gmail_message_id": "18c9...",
+  "sender": "billing@example.com",
+  "subject": "Invoice INV-1002",
+  "attachments_saved": 2,
+  "status": "processed",
+  "processed_at": "2026-05-05T17:30:00Z"
+}
+```
+
+## Current Repo Schema
+
+The current repo already contains earlier scaffolding for:
+
+- `users`
+- `gmail_connections`
+- `invoices`
+- `processed_emails`
+
+That schema is still useful for experimentation, but it is biased toward the earlier invoice-dashboard-first plan.
+
+## Recommended Phase 2 Target Schema
+
+Once Google Drive and metadata storage matter, move toward a document-centric schema.
+
 ### gmail_connections
+
+Keep this concept:
+
 ```sql
 CREATE TABLE gmail_connections (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY,
+    user_id UUID,
     gmail_email VARCHAR(255) NOT NULL,
     access_token_encrypted TEXT NOT NULL,
     refresh_token_encrypted TEXT NOT NULL,
     token_expiry TIMESTAMP,
-    history_id VARCHAR(50),          -- Gmail history ID for incremental sync
-    last_synced_at TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(user_id, gmail_email)
+    created_at TIMESTAMP DEFAULT NOW()
 );
 ```
 
-### invoices
+### documents
+
+Prefer a generic document table over an invoice-only table:
+
 ```sql
-CREATE TABLE invoices (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE documents (
+    id UUID PRIMARY KEY,
+    user_id UUID,
     supplier_name VARCHAR(255),
-    amount DECIMAL(10, 2),
+    document_type VARCHAR(50),         -- invoice | statement | credit_note | other
+    source_email_id VARCHAR(255),
+    source_attachment_name TEXT,
+    file_name TEXT NOT NULL,
+    local_path TEXT,
+    drive_file_id TEXT,
+    drive_link TEXT,
+    document_date DATE,
+    reference TEXT,
+    amount DECIMAL(12, 2),
+    vat_amount DECIMAL(12, 2),
     currency VARCHAR(3) DEFAULT 'GBP',
-    invoice_date DATE,
-    source_email_id VARCHAR(255),    -- Gmail message ID
-    source_email_subject TEXT,
-    attachment_path TEXT,             -- S3 path to raw PDF
-    extracted_text TEXT,              -- Raw text used for extraction
-    confidence_score FLOAT,          -- AI confidence (0-1)
-    status VARCHAR(20) DEFAULT 'pending',  -- pending | confirmed | rejected
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    extracted_text TEXT,
+    confidence_score FLOAT,
+    status VARCHAR(50) DEFAULT 'stored',
+    processed_at TIMESTAMP DEFAULT NOW()
 );
-
-CREATE INDEX idx_invoices_user_id ON invoices(user_id);
-CREATE INDEX idx_invoices_user_status ON invoices(user_id, status);
-CREATE INDEX idx_invoices_user_date ON invoices(user_id, invoice_date);
-CREATE INDEX idx_invoices_source_email ON invoices(source_email_id);
 ```
 
-### processed_emails
+### processed_messages
+
 ```sql
-CREATE TABLE processed_emails (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE processed_messages (
+    id UUID PRIMARY KEY,
+    user_id UUID,
     gmail_message_id VARCHAR(255) NOT NULL,
-    is_invoice BOOLEAN DEFAULT FALSE,
+    sender_email VARCHAR(255),
+    subject TEXT,
+    status VARCHAR(50),                -- skipped | processed | failed
+    notes TEXT,
     processed_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(user_id, gmail_message_id)
 );
-
-CREATE INDEX idx_processed_emails_lookup ON processed_emails(user_id, gmail_message_id);
 ```
 
-## Status Values for Invoices
+## Phase 4 Additions
 
-| Status | Meaning |
-|--------|---------|
-| `pending` | AI extracted data, awaiting user confirmation |
-| `confirmed` | User confirmed the data is correct |
-| `rejected` | User said this is not an invoice |
+When Excel matching arrives, add:
 
-## Notes
+### transactions
 
-- Tokens are encrypted at rest using Fernet symmetric encryption (key from env var)
-- `history_id` enables incremental Gmail sync (only fetch new emails since last check)
-- `extracted_text` stored for re-processing if prompts improve later
-- `source_email_id` used for deduplication (never process same email twice)
-- `confidence_score` drives the UI — low confidence items shown first for review
+```sql
+CREATE TABLE transactions (
+    id UUID PRIMARY KEY,
+    user_id UUID,
+    source_file TEXT,
+    transaction_date DATE,
+    description TEXT,
+    amount DECIMAL(12, 2),
+    imported_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### document_matches
+
+```sql
+CREATE TABLE document_matches (
+    id UUID PRIMARY KEY,
+    user_id UUID,
+    transaction_id UUID,
+    document_id UUID,
+    confidence VARCHAR(20),            -- high | medium | low
+    score FLOAT,
+    match_reason TEXT,
+    status VARCHAR(20) DEFAULT 'suggested',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+## Design Notes
+
+- The long-term storage model should be `document`-centric, not `invoice`-centric
+- Statements and credit notes are first-class entities in the new workflow
+- Filesystem paths and Drive links should both be storable
+- Processed Gmail message IDs must remain unique to avoid duplicates
+- If the system remains single-user for a while, `user_id` can be simplified operationally, even if auth scaffolding remains in the repo

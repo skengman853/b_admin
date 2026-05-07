@@ -24,3 +24,11 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+
+# Local pipeline outputs
+Documents/
+temp_pdfs/
+data/
+backend/Documents/
+backend/temp_pdfs/
+backend/data/

@@ -1,182 +1,158 @@
-# 05 — PDF & Invoice Extraction
+# 05 — Document Classification & Extraction
 
-## Overview
+## Key Shift
 
-Invoices from small business suppliers come in many formats:
-- Clean digital PDFs (SaaS tools, accounting software)
-- Scanned paper invoices (builders, tradespeople)
-- Photos of handwritten invoices (forwarded via email)
-- Thermal receipt scans (cash & carry)
-- .docx attachments (rare but happens)
+Do not start with AI extraction.
 
-The extraction pipeline must handle all of these.
+Start with the simplest question:
 
-## Extraction Pipeline
+"What is this file, who is it from, and where should it go?"
 
-```
-Email received
-    │
-    ▼
-┌─────────────────────────────┐
-│ 1. Check email body/subject │
-│    for invoice keywords     │
-└─────────────────────────────┘
-    │
-    ├── No match → Skip, mark as processed
-    │
-    ▼
-┌─────────────────────────────┐
-│ 2. Has attachments?         │
-│    PDF / image / docx       │
-└─────────────────────────────┘
-    │
-    ├── No attachment → Extract from email body only
-    │
-    ▼
-┌─────────────────────────────┐
-│ 3. Extract text (pdfplumber)│
-└─────────────────────────────┘
-    │
-    ├── Got good text (>100 chars) → Send to OpenAI (text mode, cheap)
-    │
-    ▼
-┌─────────────────────────────┐
-│ 4. Convert to image         │
-│    Send to OpenAI Vision    │
-└─────────────────────────────┘
-    │
-    ├── Got structured data → Store
-    │
-    ▼
-┌─────────────────────────────┐
-│ 5. Failed → Flag for manual │
-│    review (status: pending) │
-└─────────────────────────────┘
-```
+## Phase 1 Objective
 
-## Invoice Detection Keywords
+Use a lightweight read of the document to support:
 
-Check email subject AND body (case-insensitive):
-```
-invoice, receipt, bill, statement, payment due,
-amount due, total due, remittance, pro forma,
-purchase order, PO number, tax invoice, VAT invoice
-```
+- supplier detection
+- document type classification
+- naming
+- folder routing
 
-Also trigger on:
-- PDF attachments with "invoice" in filename
-- Emails from known supplier addresses (learned over time)
+This phase does not need full financial field extraction.
 
-## Text Extraction (Layer 1 — Free, Fast)
+## Phase 1 Inputs
 
-```python
-import pdfplumber
-import io
+Use these signals first:
 
-def extract_text_from_pdf(pdf_bytes: bytes) -> str | None:
-    """Try direct text extraction. Works for digital PDFs."""
-    try:
-        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            pages = pdf.pages[:3]  # First 3 pages max
-            text = "\n".join(page.extract_text() or "" for page in pages)
-        
-        if text.strip() and len(text.strip()) > 100:
-            return text.strip()
-        return None
-    except Exception:
-        return None
+- sender email domain
+- email subject
+- attachment filename
+- a basic PDF text scan
+
+## Document Types
+
+Start with:
+
+- `invoice`
+- `statement`
+- `credit_note`
+- `unknown`
+
+## Suggested Phase 1 Rules
+
+### Invoice Signals
+
+- subject contains `invoice`, `inv`, `tax invoice`, `vat invoice`
+- filename contains `invoice`
+- PDF text contains `invoice number`, `invoice no`, `total due`
+
+### Statement Signals
+
+- subject contains `statement`
+- filename contains `statement`
+- PDF text contains `account statement`, `balance brought forward`
+
+### Credit Note Signals
+
+- subject contains `credit note`, `credit memo`
+- filename contains `credit`
+- PDF text contains `credit note`
+
+### Ignore Signals
+
+- `transaction`
+- `marketing`
+- receipts or irrelevant notifications if they do not fit the workflow
+
+## Supplier Detection
+
+Use a layered approach:
+
+1. sender domain mapping
+2. known keywords in subject
+3. known keywords inside PDF text
+4. fallback to `Other`
+
+Example:
+
+```text
+candcgroup -> Bulmers
+ebilling -> BOC
+booker -> Booker
 ```
 
-## Vision Extraction (Layer 2 — For Scans/Photos)
+## Phase 1 Naming
 
-```python
-import base64
-from pdf2image import convert_from_bytes
+Target format:
 
-def extract_with_vision(pdf_bytes: bytes) -> dict:
-    """Convert PDF to image, send to OpenAI Vision."""
-    images = convert_from_bytes(pdf_bytes, first_page=1, last_page=1, dpi=200)
-    
-    # Convert to PNG bytes
-    buffer = io.BytesIO()
-    images[0].save(buffer, format="PNG")
-    image_b64 = base64.b64encode(buffer.getvalue()).decode()
-    
-    response = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": EXTRACTION_PROMPT},
-                {"type": "image_url", "image_url": {
-                    "url": f"data:image/png;base64,{image_b64}"
-                }}
-            ]
-        }],
-        temperature=0
-    )
-    return parse_ai_response(response.choices[0].message.content)
+```text
+YYYY-MM-DD_Supplier_Type_Reference_Amount.pdf
 ```
 
-## AI Extraction Prompt
+If data is missing, use placeholders:
 
-```
-Extract invoice details from the following content.
-
-Return ONLY valid JSON with these fields:
-{
-    "supplier_name": "Company or person name on the invoice",
-    "amount": 0.00,
-    "date": "YYYY-MM-DD",
-    "confidence": 0.85
-}
-
-Rules:
-- "amount" must be the TOTAL / GRAND TOTAL (including VAT if shown)
-- "date" is the invoice date, not due date
-- "confidence" is how sure you are (0.0 to 1.0)
-- If a field cannot be determined, use null
-- Do NOT guess — if unclear, set confidence low and field to null
+```text
+unknown_date_Bulmers_invoice_unknown_ref_unknown_amount.pdf
 ```
 
-## Handling Different File Types
+## Phase 1 Storage Decision
 
-| Type | How to handle |
-|------|--------------|
-| `.pdf` (text-based) | pdfplumber → OpenAI text extraction |
-| `.pdf` (scanned) | pdf2image → OpenAI Vision |
-| `.png` / `.jpg` | Direct to OpenAI Vision |
-| `.docx` | python-docx → extract text → OpenAI text extraction |
-| `.xlsx` / `.csv` | Skip for MVP (rare for invoices) |
-| Password-protected PDF | Skip, flag for manual review |
+The file should end up in:
 
-## File Size & Safety Limits
+```text
+Documents/<Supplier>/<Type Folder>/
+```
 
-- Max attachment size: **10MB**
-- Max pages processed: **3** (invoice data is on page 1)
-- Max image resolution for Vision: **2048px** (resize if larger)
-- Timeout per extraction: **30 seconds**
+For example:
 
-## Deduplication
+```text
+Documents/Bulmers/Invoices/
+Documents/BOC/Statements/
+Documents/Other/Credit Notes/
+```
 
-Before processing, check:
-1. Has this `gmail_message_id` been processed before? → Skip
-2. After extraction, check for duplicate: same supplier + same amount + same date (±1 day) → Flag as potential duplicate
+## Phase 3 Objective
 
-## Cost Estimates
+Only after the local pipeline works should extraction become deeper:
 
-| Volume | Text extraction cost | Vision cost | Total/month |
-|--------|---------------------|-------------|-------------|
-| 50 invoices/month | ~£0.01 | ~£0.50 | ~£0.51 |
-| 200 invoices/month | ~£0.04 | ~£2.00 | ~£2.04 |
-| 500 invoices/month | ~£0.10 | ~£5.00 | ~£5.10 |
+- supplier
+- document date
+- invoice number
+- total
+- VAT
+- confidence
 
-Assuming 60% need Vision (scanned), 40% are digital PDFs.
+## Phase 3 Extraction Strategy
 
-## Error Handling
+1. Extract raw text with `pdfplumber`
+2. Use rules and regex first
+3. Add supplier-specific parsing where patterns are stable
+4. Add OCR fallback only for poor PDFs
+5. Add AI only where rules clearly fail
 
-- PDF parsing fails → Try Vision fallback
-- Vision fails → Store with status "pending", no extracted data, flag for manual entry
-- OpenAI returns invalid JSON → Retry once with stricter prompt, then flag
-- OpenAI rate limited → Exponential backoff, retry via Celery
-- Timeout → Re-queue task with lower priority
+## Why Rules First
+
+Rules are:
+
+- cheaper
+- easier to debug
+- easier to trust
+- easier to improve supplier by supplier
+
+AI can help later, but it should not hide basic pipeline failures.
+
+## Suggested Validation Rules
+
+- totals should be greater than zero
+- date should parse cleanly
+- VAT should not exceed total
+- reference should be optional, not guessed
+
+## Done When
+
+### Phase 1
+
+- a document can be classified and routed correctly
+
+### Phase 3
+
+- a document can be turned into a mostly-correct structured record

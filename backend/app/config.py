@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     s3_bucket: str = ""
     sentry_dsn: str = ""
     frontend_url: str = "http://localhost:3000"
+    documents_root: str = "Documents"
+    temp_pdfs_root: str = "temp_pdfs"
+    data_root: str = "data"
+    pipeline_default_days: int = 30
+    pipeline_default_max_messages: int = 50
 
     class Config:
         env_file = ".env"

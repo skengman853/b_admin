@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.api import auth, gmail, invoices, dashboard, webhooks
+from app.api import auth, dashboard, gmail, invoices, pipeline, webhooks
 
 app = FastAPI(title="Invoice Organizer")
 
@@ -16,6 +16,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(gmail.router)
+app.include_router(pipeline.router)
 app.include_router(invoices.router)
 app.include_router(dashboard.router)
 app.include_router(webhooks.router)

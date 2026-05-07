@@ -1,86 +1,170 @@
 # 03 — Architecture
 
-## High-Level Architecture
+## Architecture Principle
 
+The architecture should follow the problem sequence:
+
+`collect -> classify -> store -> extract -> match -> present`
+
+Not:
+
+`auth -> dashboard -> polish`
+
+## Phase 1 Architecture
+
+```text
+Google Account
+     |
+     v
+Gmail API
+     |
+     v
+Fetch recent messages
+     |
+     v
+Filter likely document emails
+     |
+     v
+Download PDF attachments
+     |
+     v
+Classify by supplier and type
+     |
+     v
+Rename and save locally
+     |
+     v
+Record processed message IDs
 ```
-┌──────────────┐       ┌──────────────────┐       ┌─────────────┐
-│   React UI   │◄─────►│   FastAPI (API)   │◄─────►│  PostgreSQL │
-└──────────────┘       └──────────────────┘       └─────────────┘
-                              │      ▲
-                              │      │
-                              ▼      │
-                       ┌──────────────────┐
-                       │  Celery Workers   │
-                       └──────────────────┘
-                              │      │
-                    ┌─────────┼──────┼─────────┐
-                    ▼         ▼      ▼         ▼
-              ┌─────────┐ ┌──────┐ ┌──────┐ ┌─────┐
-              │Gmail API│ │OpenAI│ │ S3   │ │Redis│
-              └─────────┘ └──────┘ └──────┘ └─────┘
-```
+
+## What Matters in Phase 1
+
+- Gmail connectivity
+- message filtering
+- attachment download
+- simple classification
+- local filesystem storage
+- duplicate protection
+
+## What Does Not Matter Yet
+
+- polished frontend flows
+- advanced async orchestration
+- full SaaS tenancy
+- rich dashboards
+- AI-first extraction
+
+## Current Repo Reality
+
+The current codebase already has:
+
+- JWT auth
+- Gmail OAuth endpoints
+- database models
+- invoice and dashboard endpoints
+- Celery scaffolding
+
+Those pieces are useful, but they are supporting infrastructure, not the primary product proof.
 
 ## Component Responsibilities
 
-### FastAPI (API Server)
-- User authentication (signup/login via JWT)
-- Gmail OAuth flow
-- REST endpoints for dashboard data
-- Receives Gmail push notification webhooks
-- Triggers Celery tasks
+### Gmail Connector
 
-### Celery Workers
-- Scan user inboxes for new emails
-- Detect invoice emails
-- Extract text from PDFs
-- Call OpenAI for structured extraction
-- Store results in PostgreSQL
-- Upload raw PDFs to S3
+- authenticate with Gmail
+- list recent messages
+- retrieve message metadata
+- download attachment payloads
 
-### PostgreSQL
-- User accounts
-- Gmail tokens (encrypted)
-- Invoice records
-- Processing status/logs
+### Filter / Classifier
 
-### Redis
-- Celery message broker
-- Task result backend
-- Rate limiting (optional)
+- decide whether an email is relevant
+- detect supplier
+- detect document type
+- assign output folder
 
-### S3 / Object Storage
-- Raw PDF/attachment storage
-- Referenced by invoice record for audit trail
+### Local Storage Layer
 
-## Request Flow: New Invoice Detected
+- create local folders if missing
+- save renamed files
+- avoid filename collisions
+- maintain a local processed-message record
 
+### Later Drive Storage Layer
+
+- mirror the local document structure in Drive
+- upload files
+- return shareable links
+
+### Later Extraction Layer
+
+- read text from PDFs
+- extract fields like date, amount, VAT, and reference
+- store structured metadata
+
+### Later Matching Layer
+
+- import bookkeeping records
+- suggest document-to-transaction matches
+- score confidence
+
+### Later UI Layer
+
+- browse documents
+- inspect supplier groupings
+- review unmatched transactions
+- open files and links quickly
+
+## Recommended Request / Job Flow
+
+### Phase 1 Local Run
+
+```text
+1. User connects Gmail
+2. System fetches recent messages
+3. Non-matching emails are skipped
+4. PDFs are downloaded from matching emails
+5. Supplier and type are inferred
+6. Files are renamed and stored locally
+7. Processed message IDs are recorded
 ```
-1. Gmail sends push notification → /api/webhooks/gmail
-2. API validates notification, enqueues Celery task
-3. Celery worker fetches new emails via Gmail API
-4. Worker checks subject/body for invoice keywords
-5. If match: download attachments
-6. Extract text (pdfplumber → Vision API fallback)
-7. Send to OpenAI for structured extraction
-8. Store invoice record in DB + raw PDF in S3
-9. Invoice appears on user's dashboard (next page load)
+
+### Phase 2 Cloud Storage
+
+```text
+1. Local file exists
+2. Drive folder path is resolved
+3. File uploads to Drive
+4. Link is stored alongside metadata
 ```
 
-## API Structure
+### Phase 3 Extraction
 
+```text
+1. Stored PDF is read
+2. Raw text is extracted
+3. Rules parse fields
+4. Uncertain cases are flagged
 ```
-POST   /api/auth/signup
-POST   /api/auth/login
-GET    /api/auth/me
 
-GET    /api/gmail/auth-url
-GET    /api/gmail/callback
-POST   /api/webhooks/gmail
+### Phase 4 Matching
 
-GET    /api/invoices
-GET    /api/invoices/:id
-PATCH  /api/invoices/:id          (user confirms/edits)
-POST   /api/invoices/:id/reject   (not an invoice)
-
-GET    /api/dashboard/summary     (monthly total, count)
+```text
+1. Excel or VAT sheet is imported
+2. Transactions are normalized
+3. Documents are compared on amount, date, and supplier
+4. Suggested matches are scored
 ```
+
+## Proposed Evolution
+
+### First
+
+Keep the system understandable and manual enough to debug quickly.
+
+### Then
+
+Add more persistence, more extraction accuracy, and more automation.
+
+### Last
+
+Turn the proven workflow into a proper product.

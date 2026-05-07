@@ -1,35 +1,94 @@
 # 02 — Tech Stack
 
-## Backend
-- **Framework:** FastAPI (Python 3.11+)
-- **Task Queue:** Celery + Redis
+## Guiding Rule
+
+The stack should follow the workflow, not the other way around.
+
+This means:
+
+- local pipeline first
+- cloud storage second
+- structured extraction third
+- matching fourth
+- UI later
+- SaaS concerns last
+
+## Current Repository Stack
+
+The current repo already contains:
+
+- **Backend framework:** FastAPI
 - **Database:** PostgreSQL
-- **ORM:** SQLAlchemy (async)
+- **ORM:** SQLAlchemy async
 - **Migrations:** Alembic
-- **PDF Parsing:** pdfplumber + pdf2image
-- **AI:** OpenAI API (gpt-4o-mini)
-- **Email:** Gmail API + Google Pub/Sub (push notifications)
+- **Queue scaffolding:** Celery + Redis
+- **Gmail auth:** Google OAuth + Gmail API
+- **PDF tooling:** pdfplumber, pdf2image
+- **Containerisation:** Docker Compose
 
-## Frontend
-- **Framework:** React (Vite + TypeScript)
-- **Styling:** Tailwind CSS (or similar — keep it simple)
-- **HTTP Client:** Axios or fetch
+That scaffolding is fine to keep, but it is not the proof of product value.
 
-## Infrastructure
-- **Containerisation:** Docker + Docker Compose
-- **Deployment:** AWS ECS / Railway / Render (decide at deploy time)
-- **Object Storage:** AWS S3 or GCS (for raw PDF storage)
-- **Secrets:** Environment variables → secrets manager in production
-- **Monitoring:** Sentry (error tracking) + structured logging
-- **SSL:** Let's Encrypt / managed via cloud provider
+## Phase 1 Stack — Local Document Pipeline
 
-## Development Tools
-- **Linting:** Ruff (Python), ESLint (TypeScript)
-- **Formatting:** Black (Python), Prettier (TypeScript)
-- **Testing:** pytest (backend), Vitest (frontend)
+The first phase should rely on the simplest useful pieces:
 
-## Key Dependencies (Python)
-```
+- **Gmail access:** Google Gmail API
+- **Execution model:** manual script, API-triggered run, or simple service call
+- **Local storage:** filesystem folders
+- **Tracking:** JSON file or other lightweight local record
+- **PDF text scan:** pdfplumber
+- **Rules engine:** simple subject, filename, sender, and text matching
+
+### Phase 1 Output
+
+The main outputs are:
+
+- saved local PDFs
+- clean folder structure
+- predictable filenames
+- a record of processed message IDs
+
+## Phase 2 Additions — Cloud Storage
+
+When the local pipeline works, add:
+
+- **Google Drive API** for document storage and shared links
+- **Basic DB** such as SQLite or Postgres for stored metadata
+
+## Phase 3 Additions — Structured Extraction
+
+When the storage pipeline is reliable, add:
+
+- **Regex / rules-based parsing** for dates, totals, VAT, and references
+- **Supplier-specific parsing logic** where formats are stable
+- **OCR fallback** only where necessary
+- **OpenAI** only when rules stop being good enough
+
+## Phase 4 Additions — Matching
+
+For matching documents to bookkeeping records:
+
+- **Spreadsheet parsing:** openpyxl, pandas, or direct CSV parsing
+- **Matching rules:** amount, date window, supplier similarity
+
+## Phase 5 Additions — UI
+
+Only after the document workflow is solid:
+
+- **Frontend:** React or another lightweight UI
+- **Views:** documents, suppliers, unlinked transactions, summary
+
+## Phase 6 Additions — SaaS / Production
+
+Only after the workflow works for real users:
+
+- multi-user auth and permissions
+- background jobs and push notifications
+- production-grade storage, monitoring, and backups
+
+## Python Dependencies in This Repo Today
+
+```text
 fastapi
 uvicorn
 sqlalchemy[asyncio]
@@ -39,20 +98,18 @@ celery[redis]
 pdfplumber
 pdf2image
 python-docx
-openai
 google-auth
 google-api-python-client
 python-jose[cryptography]
 passlib[bcrypt]
-httpx
-sentry-sdk
 pydantic-settings
 ```
 
-## Key Dependencies (Frontend)
-```
-react
-react-dom
-react-router-dom
-axios
+## Likely Future Dependencies
+
+```text
+google-api-python-client      # Drive usage beyond Gmail
+openpyxl or pandas            # Excel matching
+rapidfuzz                     # supplier / transaction matching
+openai                        # only if extraction needs it
 ```
