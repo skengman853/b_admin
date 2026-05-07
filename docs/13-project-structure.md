@@ -27,6 +27,7 @@ b_admin/
 │       ├── schemas.py
 │       ├── api/
 │       │   ├── auth.py
+│       │   ├── documents.py
 │       │   ├── gmail.py
 │       │   ├── pipeline.py
 │       │   ├── invoices.py
@@ -34,12 +35,19 @@ b_admin/
 │       │   └── webhooks.py
 │       ├── services/
 │       │   ├── document_classifier.py
+│       │   ├── document_dedupe.py
 │       │   ├── document_metadata.py
 │       │   ├── document_pipeline.py
+│       │   ├── document_registry.py
+│       │   ├── document_serialization.py
+│       │   ├── document_sync.py
+│       │   ├── drive_client.py
+│       │   ├── drive_paths.py
 │       │   ├── email_filter.py
 │       │   ├── encryption.py
 │       │   ├── file_namer.py
 │       │   ├── gmail_client.py
+│       │   ├── google_oauth.py
 │       │   ├── local_storage.py
 │       │   ├── pdf_text.py
 │       │   ├── supplier_rules.py
@@ -59,7 +67,10 @@ The repo currently reflects an earlier backend-first direction:
 - invoice and dashboard endpoints exist
 - database scaffolding exists
 
-That is fine, and the repo now also contains the first real document-pipeline slice.
+That is fine, and the repo now also contains both:
+
+- the Phase 1 local document pipeline
+- the Phase 2 document registry and Drive sync layer
 
 ## Phase 1 Runtime Shape
 
@@ -86,6 +97,28 @@ backend/
     processed_emails.json
 ```
 
+## Phase 2 Runtime Shape
+
+Phase 2 adds a database-backed document registry and Drive sync on top of the Phase 1 filesystem flow:
+
+```text
+backend/app/
+  api/
+    documents.py
+  services/
+    document_registry.py
+    document_serialization.py
+    document_sync.py
+    document_dedupe.py
+    drive_client.py
+    drive_paths.py
+    google_oauth.py
+```
+
+The important runtime relationship is now:
+
+`Gmail -> local file -> document row -> Drive file -> stored link`
+
 ## Recommended Next Additions
 
 ### Local Document Pipeline
@@ -101,6 +134,22 @@ backend/app/services/
   file_namer.py
   local_storage.py
   tracking.py
+```
+
+### Document Registry and Drive Sync
+
+```text
+backend/app/api/
+  documents.py
+
+backend/app/services/
+  document_registry.py
+  document_serialization.py
+  document_sync.py
+  document_dedupe.py
+  drive_client.py
+  drive_paths.py
+  google_oauth.py
 ```
 
 ### Parsing / Extraction

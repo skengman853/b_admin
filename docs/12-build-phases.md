@@ -126,6 +126,10 @@ YYYY-MM-DD_Supplier_Type_Reference_Amount.pdf
 
 ## Phase 2 — Cloud Storage Integration
 
+Status:
+- Phase 2 MVP complete
+- completion note: [docs/15-phase-2-completion.md](15-phase-2-completion.md)
+
 ### Goal
 
 Replace the manual Google Drive workflow.
@@ -138,7 +142,8 @@ Replace the manual Google Drive workflow.
 
 2. Folder sync logic
 - Mirror the local structure in Drive
-- Organize by `Supplier -> Type -> Year -> Month`
+- Current implementation mirrors `Supplier -> Type`
+- A richer `Supplier -> Type -> Year -> Month` layout can be added later if needed
 - Auto-create missing folders
 
 3. Upload pipeline
@@ -151,17 +156,23 @@ Replace the manual Google Drive workflow.
 
 5. Basic data storage
 - Add a simple database such as SQLite or Postgres
-- Store supplier, document type, file name, file link, and processed timestamp
+- Store supplier, document type, file name, local path, file link, review state, and processed timestamp
 
 6. Deduplication
 - Avoid reprocessing the same email
 - Track processed Gmail message IDs in the system of record
+- Deduplicate document rows by canonical local path
+
+7. Automatic sync
+- Auto-sync newly scanned documents to Drive
+- Keep manual sync available for backlog or retry runs
 
 ### Done When
 
-- A new email arrives
-- Its PDF is uploaded to the right Drive folder
-- A link is stored for later use
+- scanned files are persisted as document records
+- Drive uploads succeed on real inbox data
+- Drive links are stored on document records
+- local-to-Drive sync works for both current scans and backlog documents
 
 ---
 

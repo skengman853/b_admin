@@ -65,6 +65,17 @@ The current response includes:
 - per-supplier and per-type counts
 - per-file extracted metadata
 - `needs_review` flags and `review_reasons`
+- Drive auto-sync counts:
+  - `drive_sync_requested`
+  - `drive_sync_synced`
+  - `drive_sync_skipped`
+- dedupe count:
+  - `deduped_documents`
+
+The request also supports:
+
+- `force`
+- `sync_drive`
 
 #### `GET /api/pipeline/summary`
 
@@ -84,6 +95,37 @@ Return files currently flagged for manual review.
 
 This is useful when supplier detection or document type classification falls back to `Other` or `unknown`.
 
+### Documents
+
+#### `GET /api/documents`
+
+List document records stored in the database.
+
+The current filters include:
+
+- `needs_review`
+- `synced`
+- `document_type`
+
+Each record can include:
+
+- local path
+- Drive file ID
+- Drive web link
+- synced timestamp
+
+#### `POST /api/documents/sync-drive`
+
+Manually sync unsynced or selected document rows to Google Drive.
+
+The current response includes:
+
+- requested count
+- synced count
+- skipped count
+- deduped count
+- per-document sync result
+
 ### Current Scaffolding Endpoints from Earlier Direction
 
 These still exist in the repo:
@@ -100,25 +142,6 @@ These endpoints are part of the earlier invoice-review direction. They are not t
 ## Recommended Next Endpoints
 
 The immediate reporting and scan endpoints now exist. The next likely additions are:
-
-### Documents
-
-#### `GET /api/documents`
-
-List stored documents with filters like:
-
-- supplier
-- type
-- date range
-- source (`local` or `drive`)
-
-#### `GET /api/documents/{id}`
-
-Return metadata for a single document.
-
-#### `POST /api/documents/reclassify`
-
-Allow manual correction of supplier or document type.
 
 ### Suppliers
 
@@ -142,7 +165,7 @@ Do not redesign the entire API before the pipeline works.
 
 The immediate priority is:
 
-- use the current auth, Gmail, scan, summary, and review endpoints
+- use the current auth, Gmail, scan, summary, review, and documents endpoints
 - keep the interface debug-friendly
 - add document-management endpoints only once the local pipeline feels stable
 

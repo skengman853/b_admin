@@ -17,6 +17,8 @@ The build now follows a local-pipeline-first approach:
 Current status:
 - Phase 1 is complete
 - completion note: [docs/14-phase-1-completion.md](docs/14-phase-1-completion.md)
+- Phase 2 MVP is complete
+- completion note: [docs/15-phase-2-completion.md](docs/15-phase-2-completion.md)
 
 The current repo still contains backend auth, database, and Gmail OAuth scaffolding from an earlier direction. That scaffolding is useful, but it is no longer the primary definition of success.
 
@@ -84,6 +86,9 @@ The immediate goal is not a polished dashboard. The immediate goal is a reliable
 - classifies them as invoice, statement, credit note, receipt, or review-needed
 - routes them into a clean local folder structure
 - records what has already been processed
+- persists document rows in the database
+- syncs documents into Google Drive
+- stores reusable Drive links
 
 ## Current Pipeline Checks
 
@@ -108,6 +113,22 @@ Check files that need manual review:
 ```bash
 curl -s http://localhost:8000/api/pipeline/review-queue \
   -H "Authorization: Bearer $TOKEN"
+```
+
+Check stored document records:
+
+```bash
+curl -s http://localhost:8000/api/documents \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Manual Drive sync is still available if needed:
+
+```bash
+curl -s -X POST http://localhost:8000/api/documents/sync-drive \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"limit":100}'
 ```
 
 ## Roadmap
