@@ -7,9 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import GmailConnection, User
 from app.services.document_classifier import classify_document_type
+from app.services.document_extraction_rules import build_extraction_fields
 from app.services.document_metadata import extract_amount, extract_document_date, extract_reference
 from app.services.document_registry import upsert_document_record
+from app.services.document_serialization import parse_document_amount, parse_document_date
 from app.services.document_sync import sync_documents_to_drive
+from app.services.invoice_projection import sync_invoices_from_documents
 from app.services.email_filter import should_process_email
 from app.services.file_namer import build_document_filename
 from app.services.gmail_client import fetch_message_with_pdfs, get_gmail_service, list_recent_message_ids
@@ -26,6 +29,12 @@ def _review_reasons(*, supplier: str, document_type: str) -> list[str]:
     if document_type == "unknown":
         reasons.append("unknown_document_type")
     return reasons
+
+
+def _format_decimal(value) -> str | None:
+    if value is None:
+        return None
+    return f"{value:.2f}"
 
 
 async def scan_recent_documents(
@@ -119,6 +128,24 @@ async def scan_recent_documents(
             amount = extract_amount(pdf_text, document_type)
             review_reasons = _review_reasons(supplier=supplier, document_type=document_type)
             needs_review = bool(review_reasons)
+            extraction_fields = build_extraction_fields(
+                extracted_text=pdf_text,
+                supplier=supplier,
+                document_type=document_type,
+                subject=message.subject,
+                attachment_name=attachment.filename,
+                existing_document_date=parse_document_date(document_date),
+                existing_reference=reference,
+                existing_amount=parse_document_amount(amount),
+                existing_review_reasons=review_reasons,
+                needs_review=needs_review,
+            )
+            document_date_value = extraction_fields.get("document_date")
+            document_date = document_date_value.isoformat() if document_date_value else None
+            reference = extraction_fields.get("reference")
+            amount = _format_decimal(extraction_fields.get("amount"))
+            review_reasons = list(extraction_fields.get("review_reasons") or [])
+            needs_review = bool(extraction_fields.get("needs_review"))
             final_name = build_document_filename(
                 supplier=supplier,
                 document_type=document_type,
@@ -163,6 +190,7 @@ async def scan_recent_documents(
                 source_email_subject=message.subject,
                 source_received_at=message.received_at,
                 stored_file=stored_files[-1],
+                extraction_fields=extraction_fields,
             )
             if document.id is not None:
                 document_ids_touched.append(document.id)
@@ -198,9 +226,15 @@ async def scan_recent_documents(
 
     connection.last_synced_at = datetime.utcnow()
     drive_sync_summary = {"requested": 0, "synced": 0, "skipped": 0, "deduped": 0}
-    if sync_drive and document_ids_touched:
+    if document_ids_touched:
         await db.flush()
         unique_document_ids = list(dict.fromkeys(document_ids_touched))
+        await sync_invoices_from_documents(
+            db=db,
+            user_id=user.id,
+            document_ids=unique_document_ids,
+        )
+    if sync_drive and document_ids_touched:
         drive_sync_summary = await sync_documents_to_drive(
             user=user,
             connection=connection,

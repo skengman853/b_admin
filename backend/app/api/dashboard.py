@@ -9,6 +9,7 @@ from app.db import get_db
 from app.deps import get_current_user
 from app.models import User, Invoice
 from app.schemas import DashboardSummary
+from app.services.invoice_projection import sync_invoices_from_documents
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -19,6 +20,9 @@ async def get_summary(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await sync_invoices_from_documents(db=db, user_id=user.id)
+    await db.commit()
+
     now = datetime.utcnow()
     if month:
         year, m = int(month[:4]), int(month[5:7])

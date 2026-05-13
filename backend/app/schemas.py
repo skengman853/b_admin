@@ -1,6 +1,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -29,9 +30,12 @@ class UserResponse(BaseModel):
 # Invoices
 class InvoiceResponse(BaseModel):
     id: uuid.UUID
+    document_id: uuid.UUID | None
     supplier_name: str | None
+    reference: str | None
     amount: Decimal | None
-    currency: str
+    vat_amount: Decimal | None
+    currency: str | None
     invoice_date: date | None
     confidence_score: float | None
     status: str
@@ -41,7 +45,9 @@ class InvoiceResponse(BaseModel):
 
 class InvoiceUpdateRequest(BaseModel):
     supplier_name: str | None = None
+    reference: str | None = None
     amount: Decimal | None = None
+    vat_amount: Decimal | None = None
     invoice_date: date | None = None
     status: str | None = None
 
@@ -144,13 +150,20 @@ class PipelineReviewQueueResponse(BaseModel):
 # Documents
 class DocumentResponse(BaseModel):
     id: uuid.UUID
+    parent_document_id: uuid.UUID | None
     gmail_message_id: str
     attachment_name: str
+    derivation_index: int
     supplier: str
     document_type: str
     document_date: date | None
     reference: str | None
     amount: Decimal | None
+    vat_amount: Decimal | None
+    currency: str | None
+    confidence_score: float | None
+    extraction_status: str
+    extracted_at: datetime | None
     local_path: str
     needs_review: bool
     review_reasons: list[str] = Field(default_factory=list)
@@ -164,11 +177,41 @@ class DocumentResponse(BaseModel):
     created_at: datetime
 
 
+class DocumentExtractionCandidateResponse(BaseModel):
+    reference: str | None
+    document_date: date | None
+    amount: Decimal | None
+    vat_amount: Decimal | None
+    currency: str | None
+
+
+class DocumentDetailResponse(DocumentResponse):
+    extracted_text: str | None = None
+    extraction_candidates: list[DocumentExtractionCandidateResponse] = Field(default_factory=list)
+    parent_document: DocumentResponse | None = None
+    child_documents: list[DocumentResponse] = Field(default_factory=list)
+
+
 class DocumentListResponse(BaseModel):
     documents: list[DocumentResponse]
     total: int
     page: int
     pages: int
+
+
+class DocumentUpdateRequest(BaseModel):
+    supplier: str | None = None
+    document_type: str | None = None
+    document_date: date | None = None
+    reference: str | None = None
+    amount: Decimal | None = None
+    vat_amount: Decimal | None = None
+    currency: str | None = None
+    confidence_score: float | None = Field(default=None, ge=0, le=1)
+    extraction_status: str | None = None
+    needs_review: bool | None = None
+    review_reasons: list[str] | None = None
+    mark_reviewed: bool = False
 
 
 class DocumentDriveSyncRequest(BaseModel):
@@ -192,3 +235,281 @@ class DocumentDriveSyncResponse(BaseModel):
     skipped: int
     deduped: int = 0
     results: list[DocumentDriveSyncItem] = Field(default_factory=list)
+
+
+class DocumentExtractionRequest(BaseModel):
+    limit: int = Field(default=50, ge=1, le=500)
+    document_ids: list[uuid.UUID] = Field(default_factory=list)
+    force: bool = False
+
+
+class DocumentExtractionItem(BaseModel):
+    document_id: uuid.UUID
+    status: str
+    reason: str | None = None
+    document_type: str
+    supplier: str
+    amount: str | None = None
+    vat_amount: str | None = None
+    confidence_score: float | None = None
+
+
+class DocumentExtractionResponse(BaseModel):
+    requested: int
+    extracted: int
+    skipped: int
+    results: list[DocumentExtractionItem] = Field(default_factory=list)
+
+
+class LocalDocumentImportRequest(BaseModel):
+    source_path: str
+    limit: int = Field(default=250, ge=1, le=2000)
+    supplier_filters: list[str] = Field(default_factory=list)
+    document_types: list[Literal["invoice", "statement", "credit_note", "receipt", "unknown"]] = Field(
+        default_factory=list
+    )
+    pub_filters: list[str] = Field(default_factory=list)
+    month: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}$")
+    include_archives: bool = False
+    recurse: bool = True
+    extract_after_import: bool = True
+
+
+class LocalDocumentImportItem(BaseModel):
+    relative_path: str
+    supplier: str | None = None
+    document_type: str | None = None
+    pub_hint: str | None = None
+    status: str
+    reason: str | None = None
+    saved_path: str | None = None
+    document_id: uuid.UUID | None = None
+
+
+class LocalDocumentImportResponse(BaseModel):
+    source_path: str
+    scanned_files: int
+    eligible_files: int
+    imported_documents: int
+    extracted_documents: int
+    skipped_files: int
+    results: list[LocalDocumentImportItem] = Field(default_factory=list)
+
+
+class DocumentSplitResponse(BaseModel):
+    parent_document: DocumentDetailResponse
+    child_documents: list[DocumentDetailResponse] = Field(default_factory=list)
+    created: int
+    updated: int
+    deleted: int = 0
+
+
+# Transactions
+class TransactionImportRequest(BaseModel):
+    source_type: Literal["vatbook", "bank_statement"] = "vatbook"
+    workbook_path: str | None = None
+    statement_path: str | None = None
+    sheet_name: str | None = None
+    replace_existing: bool = True
+
+
+class TransactionImportResponse(BaseModel):
+    source_type: str
+    source_file: str
+    source_name: str | None = None
+    workbook_path: str | None = None
+    statement_path: str | None = None
+    sheet_name: str | None = None
+    account_name: str | None = None
+    account_number: str | None = None
+    provider: str | None = None
+    imported_transactions: int
+    replaced_transactions: int
+    skipped_transactions: int
+    annotation_count: int
+    first_transaction_date: date | None = None
+    last_transaction_date: date | None = None
+    pubs: list[str] = Field(default_factory=list)
+
+
+class TransactionResponse(BaseModel):
+    id: uuid.UUID
+    source_type: str
+    source_file: str
+    source_sheet: str
+    row_number: int
+    posted_account: str | None
+    pub: str | None
+    transaction_date: date | None
+    description1: str | None
+    description2: str | None
+    debit_amount: Decimal | None
+    credit_amount: Decimal | None
+    transaction_type: str | None
+    category: str | None
+    resale_23_amount: Decimal | None
+    non_resale_23_amount: Decimal | None
+    non_resale_13_5_amount: Decimal | None
+    non_resale_9_amount: Decimal | None
+    non_resale_0_amount: Decimal | None
+    annotation_types: list[str] = Field(default_factory=list)
+    annotation_notes: list[str] = Field(default_factory=list)
+    has_linked_annotation: bool
+    review_status: str
+    review_note: str | None
+    reviewed_at: datetime | None
+    imported_at: datetime
+
+
+class TransactionListResponse(BaseModel):
+    transactions: list[TransactionResponse]
+    total: int
+    page: int
+    pages: int
+
+
+class TransactionDocumentMatchResponse(BaseModel):
+    document_id: uuid.UUID
+    document_type: str
+    supplier: str
+    reference: str | None
+    document_date: date | None
+    amount: Decimal | None
+    vat_amount: Decimal | None
+    score: float | None
+    reason: str
+
+
+class TransactionReconciliationItemResponse(BaseModel):
+    transaction_id: uuid.UUID
+    source_type: str
+    row_number: int
+    pub: str | None
+    transaction_date: date | None
+    description1: str | None
+    description2: str | None
+    category: str | None
+    transaction_type: str | None
+    debit_amount: Decimal | None
+    credit_amount: Decimal | None
+    annotation_types: list[str] = Field(default_factory=list)
+    annotation_notes: list[str] = Field(default_factory=list)
+    has_linked_annotation: bool
+    status: str
+    analysis_note: str | None = None
+    exact_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+    suggested_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+    supporting_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+
+
+class TransactionReconciliationReportResponse(BaseModel):
+    month: str
+    pub: str | None
+    total_transactions: int
+    expense_transactions: int
+    annotated_transactions: int
+    linked_transactions: int
+    matched_transactions: int
+    partial_transactions: int = 0
+    suggested_transactions: int
+    unmatched_transactions: int
+    invoice_documents_in_month: int
+    unmatched_invoice_documents: int
+    transactions: list[TransactionReconciliationItemResponse] = Field(default_factory=list)
+    unmatched_documents: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+
+
+class TransactionLinkedDocumentResponse(BaseModel):
+    id: uuid.UUID
+    supplier: str
+    document_type: str
+    reference: str | None
+    document_date: date | None
+    amount: Decimal | None
+    vat_amount: Decimal | None
+    local_path: str
+    needs_review: bool
+
+
+class TransactionLinkResponse(BaseModel):
+    id: uuid.UUID
+    transaction_id: uuid.UUID
+    document_id: uuid.UUID
+    role: str
+    status: str
+    score: float | None
+    confidence: str | None
+    match_reason: str | None
+    amount_applied: Decimal | None
+    note: str | None
+    created_at: datetime
+    updated_at: datetime
+    document: TransactionLinkedDocumentResponse
+
+
+class TransactionLinksResponse(BaseModel):
+    transaction: TransactionResponse
+    status: str
+    analysis_note: str | None = None
+    persisted_links: list[TransactionLinkResponse] = Field(default_factory=list)
+    exact_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+    suggested_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+    supporting_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+
+
+class TransactionReviewQueueItemResponse(BaseModel):
+    transaction: TransactionResponse
+    status: str
+    needs_action: bool = True
+    analysis_note: str | None = None
+    persisted_links: list[TransactionLinkResponse] = Field(default_factory=list)
+    exact_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+    suggested_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+    supporting_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+
+
+class TransactionReviewQueueResponse(BaseModel):
+    month: str
+    pub: str | None
+    annotated_only: bool
+    statuses: list[str] = Field(default_factory=list)
+    total: int
+    page: int
+    pages: int
+    matched_transactions: int
+    partial_transactions: int
+    suggested_transactions: int
+    unmatched_transactions: int
+    transactions: list[TransactionReviewQueueItemResponse] = Field(default_factory=list)
+
+
+class TransactionReviewUpdateRequest(BaseModel):
+    review_status: Literal[
+        "pending",
+        "linked",
+        "supporting_docs_only",
+        "awaiting_document",
+        "no_document_expected",
+    ]
+    review_note: str | None = None
+
+
+class TransactionLinkCreateRequest(BaseModel):
+    document_id: uuid.UUID
+    role: str = "invoice"
+    status: str = "confirmed"
+    score: float | None = None
+    confidence: str | None = None
+    match_reason: str | None = None
+    amount_applied: Decimal | None = None
+    note: str | None = None
+
+
+class TransactionLinkUpdateRequest(BaseModel):
+    role: str | None = None
+    status: str | None = None
+    score: float | None = None
+    confidence: str | None = None
+    match_reason: str | None = None
+    amount_applied: Decimal | None = None
+    note: str | None = None

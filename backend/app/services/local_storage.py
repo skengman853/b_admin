@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 from app.config import settings
@@ -63,9 +64,8 @@ def _same_file_content(first: Path, second: Path) -> bool:
         return False
 
 
-def move_to_final_storage(
+def planned_storage_path(
     *,
-    temp_path: Path,
     supplier: str,
     document_type: str,
     final_name: str,
@@ -80,13 +80,86 @@ def move_to_final_storage(
         / sanitize_folder_name(supplier)
         / document_type_folder(document_type)
     )
-    destination_dir.mkdir(parents=True, exist_ok=True)
+    return destination_dir / sanitize_file_name(final_name)
 
-    destination = destination_dir / sanitize_file_name(final_name)
+
+def move_to_final_storage(
+    *,
+    temp_path: Path,
+    supplier: str,
+    document_type: str,
+    final_name: str,
+    needs_review: bool = False,
+) -> Path:
+    destination = planned_storage_path(
+        supplier=supplier,
+        document_type=document_type,
+        final_name=final_name,
+        needs_review=needs_review,
+    )
+    destination_dir = destination.parent
+    destination_dir.mkdir(parents=True, exist_ok=True)
     if destination.exists() and _same_file_content(temp_path, destination):
         temp_path.unlink(missing_ok=True)
         return destination
 
     destination = _dedupe_path(destination)
     temp_path.replace(destination)
+    return destination
+
+
+def copy_to_final_storage(
+    *,
+    source_path: Path,
+    supplier: str,
+    document_type: str,
+    final_name: str,
+    needs_review: bool = False,
+) -> Path:
+    destination = planned_storage_path(
+        supplier=supplier,
+        document_type=document_type,
+        final_name=final_name,
+        needs_review=needs_review,
+    )
+    destination_dir = destination.parent
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    if destination.exists() and _same_file_content(source_path, destination):
+        return destination
+
+    destination = _dedupe_path(destination)
+    shutil.copy2(source_path, destination)
+    return destination
+
+
+def relocate_existing_file(
+    *,
+    current_path: str,
+    supplier: str,
+    document_type: str,
+    final_name: str,
+    needs_review: bool = False,
+) -> Path:
+    source = Path(current_path)
+    if not source.exists():
+        raise FileNotFoundError(f"Local file not found: {current_path}")
+
+    destination = planned_storage_path(
+        supplier=supplier,
+        document_type=document_type,
+        final_name=final_name,
+        needs_review=needs_review,
+    )
+    destination_dir = destination.parent
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    if source == destination:
+        return source
+
+    if destination.exists():
+        if _same_file_content(source, destination):
+            source.unlink(missing_ok=True)
+            return destination
+        destination = _dedupe_path(destination)
+
+    source.replace(destination)
     return destination

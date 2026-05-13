@@ -1,16 +1,64 @@
+import uuid
 import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.deps import get_current_user
 from app.models import Document, GmailConnection, User
-from app.schemas import DocumentDriveSyncRequest, DocumentDriveSyncResponse, DocumentListResponse, DocumentResponse
+from app.schemas import (
+    DocumentDetailResponse,
+    DocumentDriveSyncRequest,
+    DocumentDriveSyncResponse,
+    DocumentExtractionCandidateResponse,
+    DocumentExtractionRequest,
+    DocumentExtractionResponse,
+    LocalDocumentImportRequest,
+    LocalDocumentImportResponse,
+    DocumentListResponse,
+    DocumentResponse,
+    DocumentSplitResponse,
+    DocumentUpdateRequest,
+)
+from app.services.document_candidates import extract_multi_invoice_candidates
+from app.services.document_extraction import extract_documents
+from app.services.local_document_import import import_documents_from_local_archive
+from app.services.document_relocation import refile_document_assets
+from app.services.document_split import split_document_into_children, sync_child_documents_from_parent
 from app.services.document_sync import sync_documents_to_drive
+from app.services.invoice_projection import sync_invoices_from_documents
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+
+def _build_document_response(document: Document) -> DocumentResponse:
+    return DocumentResponse.model_validate(document, from_attributes=True)
+
+
+def _build_document_detail_response(
+    document: Document,
+    *,
+    parent_document: Document | None = None,
+    child_documents: list[Document] | None = None,
+) -> DocumentDetailResponse:
+    candidates = extract_multi_invoice_candidates(
+        text=document.extracted_text or "",
+        document_type=document.document_type,
+        subject=document.source_email_subject or "",
+    )
+    payload = DocumentDetailResponse.model_validate(document, from_attributes=True)
+    return payload.model_copy(
+        update={
+            "extraction_candidates": [
+                DocumentExtractionCandidateResponse.model_validate(candidate)
+                for candidate in candidates
+            ],
+            "parent_document": _build_document_response(parent_document) if parent_document else None,
+            "child_documents": [_build_document_response(child) for child in (child_documents or [])],
+        }
+    )
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -18,13 +66,35 @@ async def list_documents(
     needs_review: bool | None = None,
     synced: bool | None = None,
     document_type: str | None = None,
+    extraction_status: str | None = None,
+    parent_document_id: uuid.UUID | None = None,
+    include_split_containers: bool = False,
+    min_confidence: float | None = Query(None, ge=0, le=1),
+    max_confidence: float | None = Query(None, ge=0, le=1),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if (
+        min_confidence is not None
+        and max_confidence is not None
+        and min_confidence > max_confidence
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="min_confidence cannot be greater than max_confidence",
+        )
+
     query = select(Document).where(Document.user_id == user.id)
     count_query = select(func.count(Document.id)).where(Document.user_id == user.id)
+
+    if parent_document_id is not None:
+        query = query.where(Document.parent_document_id == parent_document_id)
+        count_query = count_query.where(Document.parent_document_id == parent_document_id)
+    elif not include_split_containers:
+        query = query.where(Document.extraction_status != "split")
+        count_query = count_query.where(Document.extraction_status != "split")
 
     if needs_review is not None:
         query = query.where(Document.needs_review == needs_review)
@@ -41,16 +111,239 @@ async def list_documents(
         query = query.where(Document.document_type == document_type)
         count_query = count_query.where(Document.document_type == document_type)
 
+    if extraction_status:
+        query = query.where(Document.extraction_status == extraction_status)
+        count_query = count_query.where(Document.extraction_status == extraction_status)
+
+    if min_confidence is not None:
+        query = query.where(Document.confidence_score.is_not(None))
+        query = query.where(Document.confidence_score >= min_confidence)
+        count_query = count_query.where(Document.confidence_score.is_not(None))
+        count_query = count_query.where(Document.confidence_score >= min_confidence)
+
+    if max_confidence is not None:
+        query = query.where(Document.confidence_score.is_not(None))
+        query = query.where(Document.confidence_score <= max_confidence)
+        count_query = count_query.where(Document.confidence_score.is_not(None))
+        count_query = count_query.where(Document.confidence_score <= max_confidence)
+
     total = (await db.execute(count_query)).scalar() or 0
-    query = query.order_by(Document.created_at.desc()).offset((page - 1) * limit).limit(limit)
+    order_by = [Document.created_at.desc()]
+    if parent_document_id is not None:
+        order_by = [
+            Document.document_date.asc().nulls_last(),
+            Document.derivation_index.asc(),
+            Document.created_at.asc(),
+        ]
+    elif extraction_status == "review" or min_confidence is not None or max_confidence is not None:
+        order_by = [Document.confidence_score.asc().nulls_last(), Document.created_at.desc()]
+
+    query = query.order_by(*order_by).offset((page - 1) * limit).limit(limit)
     result = await db.execute(query)
     documents = result.scalars().all()
 
     return DocumentListResponse(
-        documents=[DocumentResponse.model_validate(document, from_attributes=True) for document in documents],
+        documents=[_build_document_response(document) for document in documents],
         total=total,
         page=page,
         pages=math.ceil(total / limit) if total else 1,
+    )
+
+
+@router.get("/review", response_model=DocumentListResponse)
+async def list_review_documents(
+    confidence_below: float = Query(0.7, ge=0, le=1),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    review_condition = or_(
+        Document.needs_review.is_(True),
+        Document.extraction_status == "review",
+        and_(
+            Document.extraction_status.not_in(["reviewed", "split"]),
+            Document.confidence_score.is_not(None),
+            Document.confidence_score < confidence_below,
+        ),
+    )
+
+    query = select(Document).where(
+        Document.user_id == user.id,
+        Document.extraction_status != "split",
+        review_condition,
+    )
+    count_query = select(func.count(Document.id)).where(
+        Document.user_id == user.id,
+        Document.extraction_status != "split",
+        review_condition,
+    )
+
+    total = (await db.execute(count_query)).scalar() or 0
+    query = query.order_by(
+        Document.needs_review.desc(),
+        case((Document.extraction_status == "review", 0), else_=1),
+        Document.confidence_score.asc().nulls_last(),
+        Document.created_at.desc(),
+    ).offset((page - 1) * limit).limit(limit)
+    result = await db.execute(query)
+    documents = result.scalars().all()
+
+    return DocumentListResponse(
+        documents=[_build_document_response(document) for document in documents],
+        total=total,
+        page=page,
+        pages=math.ceil(total / limit) if total else 1,
+    )
+
+
+@router.get("/{document_id}", response_model=DocumentDetailResponse)
+async def get_document(
+    document_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Document).where(Document.id == document_id, Document.user_id == user.id)
+    )
+    document = result.scalar_one_or_none()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    parent_document = None
+    child_documents: list[Document] = []
+
+    if document.parent_document_id is not None:
+        parent_result = await db.execute(
+            select(Document).where(Document.id == document.parent_document_id, Document.user_id == user.id)
+        )
+        parent_document = parent_result.scalar_one_or_none()
+    else:
+        child_result = await db.execute(
+            select(Document)
+            .where(Document.parent_document_id == document.id, Document.user_id == user.id)
+            .order_by(Document.derivation_index.asc(), Document.created_at.asc())
+        )
+        child_documents = list(child_result.scalars().all())
+
+    return _build_document_detail_response(
+        document,
+        parent_document=parent_document,
+        child_documents=child_documents,
+    )
+
+
+@router.patch("/{document_id}", response_model=DocumentDetailResponse)
+async def update_document(
+    document_id: uuid.UUID,
+    body: DocumentUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Document).where(Document.id == document_id, Document.user_id == user.id)
+    )
+    document = result.scalar_one_or_none()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    connection = None
+    if document.drive_file_id:
+        connection_result = await db.execute(
+            select(GmailConnection).where(
+                GmailConnection.user_id == user.id,
+                GmailConnection.is_active == True,
+            )
+        )
+        connection = connection_result.scalar_one_or_none()
+
+    updates = body.model_dump(exclude_unset=True)
+    mark_reviewed = updates.pop("mark_reviewed", False)
+
+    for field, value in updates.items():
+        if field == "currency" and value is not None:
+            value = value.upper()
+        setattr(document, field, value)
+
+    if mark_reviewed:
+        document.needs_review = False
+        document.review_reasons = []
+        document.extraction_status = "reviewed"
+
+    if document.parent_document_id is None:
+        try:
+            await refile_document_assets(document=document, connection=connection, db=db)
+            await sync_child_documents_from_parent(parent_document=document, db=db)
+        except FileNotFoundError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            await db.rollback()
+            raise HTTPException(status_code=502, detail=f"Failed to refile document: {exc.__class__.__name__}") from exc
+
+    await sync_invoices_from_documents(
+        db=db,
+        user_id=user.id,
+        document_ids=[document.id],
+    )
+    await db.commit()
+    await db.refresh(document)
+    return _build_document_detail_response(document)
+
+
+@router.post("/{document_id}/approve", response_model=DocumentDetailResponse)
+async def approve_document(
+    document_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await update_document(
+        document_id=document_id,
+        body=DocumentUpdateRequest(mark_reviewed=True),
+        user=user,
+        db=db,
+    )
+
+
+@router.post("/{document_id}/split", response_model=DocumentSplitResponse)
+async def split_document(
+    document_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Document).where(Document.id == document_id, Document.user_id == user.id)
+    )
+    document = result.scalar_one_or_none()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    try:
+        summary = await split_document_into_children(document=document, db=db)
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    changed_document_ids = [document.id, *[child.id for child in summary["child_documents"]]]
+    await sync_invoices_from_documents(
+        db=db,
+        user_id=user.id,
+        document_ids=changed_document_ids,
+    )
+    await db.commit()
+    await db.refresh(document)
+    for child in summary["child_documents"]:
+        await db.refresh(child)
+
+    return DocumentSplitResponse(
+        parent_document=_build_document_detail_response(document),
+        child_documents=[_build_document_detail_response(child) for child in summary["child_documents"]],
+        created=summary["created"],
+        updated=summary["updated"],
+        deleted=summary["deleted"],
     )
 
 
@@ -79,3 +372,49 @@ async def sync_drive_documents(
         force=body.force,
     )
     return DocumentDriveSyncResponse.model_validate(summary)
+
+
+@router.post("/extract", response_model=DocumentExtractionResponse)
+async def extract_document_data(
+    body: DocumentExtractionRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    summary = await extract_documents(
+        user=user,
+        db=db,
+        limit=body.limit,
+        document_ids=body.document_ids,
+        force=body.force,
+    )
+    return DocumentExtractionResponse.model_validate(summary)
+
+
+@router.post("/import-local", response_model=LocalDocumentImportResponse)
+async def import_local_documents(
+    body: LocalDocumentImportRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        summary = await import_documents_from_local_archive(
+            user=user,
+            db=db,
+            source_path=body.source_path,
+            limit=body.limit,
+            supplier_filters=body.supplier_filters,
+            document_types=body.document_types,
+            pub_filters=body.pub_filters,
+            month=body.month,
+            include_archives=body.include_archives,
+            recurse=body.recurse,
+            extract_after_import=body.extract_after_import,
+        )
+    except FileNotFoundError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return LocalDocumentImportResponse.model_validate(summary, from_attributes=True)

@@ -32,3 +32,6 @@ data/
 backend/Documents/
 backend/temp_pdfs/
 backend/data/
+backend/bankstatements/
+backend/vatbook/
+backend/import_sources/

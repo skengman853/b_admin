@@ -15,11 +15,17 @@ SUPPLIER_RULES = {
     "chris lynch": "Chris Lynch Skip Hire & Waste Management Services",
     "connacht bottlers": "Connacht Bottlers",
     "costco": "Costco",
+    "diageo": "Diageo",
     "makro": "Makro",
     "little luxuries": "Little Luxuries",
+    "moodmaster": "Automatic Amusements",
+    "m&j gleeson": "M&J Gleeson",
+    "m and j gleeson": "M&J Gleeson",
     "railway corporation": "Railway Corporation",
     "seery": "Caterers Cash & Carry",
     "seerys": "Caterers Cash & Carry",
+    "c&c gleeson": "C&C Gleeson",
+    "c and c gleeson": "C&C Gleeson",
     "travisperkins": "Travis Perkins",
     "travis perkins": "Travis Perkins",
     "tcc": "TCC",
@@ -72,6 +78,14 @@ def _match_known_supplier(haystack: str) -> str | None:
         if needle.lower() in haystack:
             return supplier
     return None
+
+
+def canonicalize_supplier_name(candidate: str) -> str | None:
+    cleaned = _clean_candidate(candidate)
+    if not cleaned:
+        return None
+    known = _match_known_supplier(cleaned.lower())
+    return known or cleaned
 
 
 def _extract_supplier_from_subject(subject: str) -> str | None:

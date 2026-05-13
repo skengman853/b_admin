@@ -1,4 +1,5 @@
 import math
+import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -7,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import User, Invoice
+from app.models import Document, User, Invoice
 from app.schemas import InvoiceResponse, InvoiceListResponse, InvoiceUpdateRequest
+from app.services.invoice_projection import sync_invoices_from_documents
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 
@@ -22,6 +24,9 @@ async def list_invoices(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await sync_invoices_from_documents(db=db, user_id=user.id)
+    await db.commit()
+
     query = select(Invoice).where(Invoice.user_id == user.id)
     count_query = select(func.count(Invoice.id)).where(Invoice.user_id == user.id)
 
@@ -37,7 +42,7 @@ async def list_invoices(
         count_query = count_query.where(Invoice.invoice_date >= start, Invoice.invoice_date < end)
 
     total = (await db.execute(count_query)).scalar() or 0
-    query = query.order_by(Invoice.created_at.desc()).offset((page - 1) * limit).limit(limit)
+    query = query.order_by(Invoice.invoice_date.desc().nulls_last(), Invoice.created_at.desc()).offset((page - 1) * limit).limit(limit)
     result = await db.execute(query)
     invoices = result.scalars().all()
 
@@ -51,7 +56,7 @@ async def list_invoices(
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
 async def get_invoice(
-    invoice_id: str,
+    invoice_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -66,7 +71,7 @@ async def get_invoice(
 
 @router.patch("/{invoice_id}", response_model=InvoiceResponse)
 async def update_invoice(
-    invoice_id: str,
+    invoice_id: uuid.UUID,
     body: InvoiceUpdateRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -78,8 +83,28 @@ async def update_invoice(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    for field, value in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    linked_document = None
+    if invoice.document_id is not None:
+        document_result = await db.execute(
+            select(Document).where(Document.id == invoice.document_id, Document.user_id == user.id)
+        )
+        linked_document = document_result.scalar_one_or_none()
+
+    for field, value in updates.items():
         setattr(invoice, field, value)
+        if linked_document is None:
+            continue
+        if field == "supplier_name":
+            linked_document.supplier = value
+        elif field == "reference":
+            linked_document.reference = value
+        elif field == "amount":
+            linked_document.amount = value
+        elif field == "vat_amount":
+            linked_document.vat_amount = value
+        elif field == "invoice_date":
+            linked_document.document_date = value
 
     await db.commit()
     await db.refresh(invoice)
@@ -88,7 +113,7 @@ async def update_invoice(
 
 @router.post("/{invoice_id}/reject")
 async def reject_invoice(
-    invoice_id: str,
+    invoice_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

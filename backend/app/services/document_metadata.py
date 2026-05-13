@@ -14,6 +14,7 @@ DATE_FORMATS = (
 
 AMOUNT_PATTERN = re.compile(r"[€$£]?\s*(\d[\d,]*\.\d{2})")
 REFERENCE_TOKEN = r"([A-Z0-9-]*\d[A-Z0-9-]*)"
+TABLE_HEADER_TOKENS = ("description", "quantity", "qty", "unit", "price", "discount", "rate", "amount")
 
 
 def _normalize_date(raw: str, *, preferred_numeric_order: str | None = None) -> str | None:
@@ -99,6 +100,7 @@ def extract_reference(text: str, subject: str = "", attachment_name: str = "") -
             (
                 rf"Invoice No\.?[: \t]+{REFERENCE_TOKEN}",
                 rf"Invoice number[: \t]+{REFERENCE_TOKEN}",
+                r"\bINVOICE\s+(\d{4,})\b",
                 rf"(?:^|[\\/])Invoice[-_\s]+{REFERENCE_TOKEN}(?:\.[A-Za-z0-9]+)?$",
             ),
         ),
@@ -195,6 +197,10 @@ def _find_total_like_amount(
     for idx, line in enumerate(lines):
         if not any(re.search(pattern, line, flags=re.IGNORECASE) for pattern in label_patterns):
             continue
+        if line.strip().lower() == "total":
+            context = " ".join(lines[max(0, idx - 3) : idx + 4]).lower()
+            if sum(token in context for token in TABLE_HEADER_TOKENS) >= 3:
+                continue
 
         immediate_window = lines[idx : idx + immediate_window_size]
         immediate_candidates: list[float] = []

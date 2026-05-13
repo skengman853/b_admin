@@ -20,7 +20,7 @@ if "pydantic_settings" not in sys.modules:
     sys.modules["pydantic_settings"] = fake_module
 
 from app.config import settings
-from app.services.local_storage import move_to_final_storage
+from app.services.local_storage import copy_to_final_storage, move_to_final_storage, relocate_existing_file
 
 
 class MoveToFinalStorageTests(unittest.TestCase):
@@ -81,6 +81,46 @@ class MoveToFinalStorageTests(unittest.TestCase):
         self.assertIn("Needs Review", destination.parts)
         self.assertTrue(destination.exists())
         self.assertEqual(destination.parent.name, "Other")
+
+    def test_relocates_existing_file_to_resolved_destination(self) -> None:
+        documents_root = Path(settings.documents_root)
+        source_dir = documents_root / "Needs Review" / "Other" / "Invoices"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        source_file = source_dir / "unknown_date_other_invoice_pfinv_121_490_00.pdf"
+        source_file.write_bytes(b"resolved-review-file")
+
+        destination = relocate_existing_file(
+            current_path=str(source_file),
+            supplier="Chris Lynch Skip Hire & Waste Management Services",
+            document_type="invoice",
+            final_name="2026-05-06_chris_lynch_skip_hire_waste_management_services_invoice_pfinv_121_490_00.pdf",
+            needs_review=False,
+        )
+
+        self.assertFalse(source_file.exists())
+        self.assertTrue(destination.exists())
+        self.assertNotIn("Needs Review", destination.parts)
+        self.assertEqual(
+            destination.parent,
+            documents_root / "Chris Lynch Skip Hire & Waste Management Services" / "Invoices",
+        )
+
+    def test_copies_existing_file_without_mutating_source(self) -> None:
+        source_dir = Path(self._tmpdir.name) / "source"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        source_file = source_dir / "invoice.pdf"
+        source_file.write_bytes(b"copy-me")
+
+        destination = copy_to_final_storage(
+            source_path=source_file,
+            supplier="Supplier Name",
+            document_type="invoice",
+            final_name="invoice.pdf",
+        )
+
+        self.assertTrue(source_file.exists())
+        self.assertTrue(destination.exists())
+        self.assertEqual(destination.read_bytes(), b"copy-me")
 
 
 if __name__ == "__main__":

@@ -229,6 +229,49 @@ T1
 """
 
 
+LOVELL_MULTI_INVOICE_TEXT = """Lovell Bros. Ltd.
+
+INVOICE 881489
+
+Qty
+Price
+Discount
+Total
+
+1
+8.09
+0.00
+8.09
+
+VAT Summary
+VAT %
+
+23.00
+
+Nett Total
+298.58
+
+VAT Total
+68.66
+
+Total Nett
+298.58
+VAT
+68.66
+
+TOTAL
+367.24
+
+INVOICE 881548
+
+VAT Total
+17.84
+
+TOTAL
+95.40
+"""
+
+
 class ExtractAmountTests(unittest.TestCase):
     def test_prefers_grand_total_over_order_total_header(self) -> None:
         self.assertEqual(extract_amount(CHRIS_LYNCH_INVOICE_TEXT, "invoice"), "1470.00")
@@ -250,6 +293,9 @@ class ExtractAmountTests(unittest.TestCase):
 
     def test_extracts_grand_total_for_short_invoice_layout(self) -> None:
         self.assertEqual(extract_amount(CHRIS_LYNCH_SHORT_INVOICE_TEXT, "invoice"), "490.00")
+
+    def test_skips_total_column_headers_and_uses_summary_total(self) -> None:
+        self.assertEqual(extract_amount(LOVELL_MULTI_INVOICE_TEXT, "invoice"), "367.24")
 
     def test_extracts_us_style_date_for_david_campbell_template(self) -> None:
         self.assertEqual(extract_document_date(DAVID_CAMPBELL_INVOICE_TEXT), "2026-04-23")

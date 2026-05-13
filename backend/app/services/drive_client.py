@@ -92,3 +92,27 @@ def upload_local_file(service, *, local_path: str, parent_id: str) -> dict:
         .execute()
     )
     return created
+
+
+def move_drive_file(
+    service,
+    *,
+    file_id: str,
+    new_name: str,
+    new_parent_id: str,
+) -> dict:
+    current = service.files().get(fileId=file_id, fields="id, name, parents, webViewLink").execute()
+    current_parents = current.get("parents", [])
+    remove_parents = ",".join(parent for parent in current_parents if parent != new_parent_id)
+
+    update_kwargs = {
+        "fileId": file_id,
+        "body": {"name": new_name},
+        "fields": "id, name, webViewLink, parents",
+    }
+    if new_parent_id not in current_parents:
+        update_kwargs["addParents"] = new_parent_id
+    if remove_parents:
+        update_kwargs["removeParents"] = remove_parents
+
+    return service.files().update(**update_kwargs).execute()

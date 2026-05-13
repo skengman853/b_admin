@@ -31,6 +31,7 @@ async def upsert_document_record(
     source_email_subject: str,
     source_received_at: datetime | None,
     stored_file: dict[str, Any],
+    extraction_fields: dict[str, Any] | None = None,
 ) -> Document:
     payload = normalize_document_record(
         gmail_message_id=gmail_message_id,
@@ -40,12 +41,15 @@ async def upsert_document_record(
         source_received_at=source_received_at,
         stored_file=stored_file,
     )
+    if extraction_fields:
+        payload.update(extraction_fields)
 
     result = await db.execute(
         select(Document).where(
             Document.user_id == user_id,
             Document.gmail_message_id == gmail_message_id,
             Document.attachment_index == attachment_index,
+            Document.derivation_index == 0,
         )
     )
     document = result.scalar_one_or_none()
@@ -55,6 +59,7 @@ async def upsert_document_record(
             select(Document).where(
                 Document.user_id == user_id,
                 Document.local_path == payload["local_path"],
+                Document.derivation_index == 0,
             )
         )
         path_matches = list(path_result.scalars().all())
@@ -67,6 +72,13 @@ async def upsert_document_record(
                     document.drive_web_link = duplicate.drive_web_link
                     document.drive_folder_path = duplicate.drive_folder_path
                     document.synced_at = duplicate.synced_at
+                if document.extracted_text is None and duplicate.extracted_text is not None:
+                    document.extracted_text = duplicate.extracted_text
+                    document.vat_amount = duplicate.vat_amount
+                    document.currency = duplicate.currency
+                    document.confidence_score = duplicate.confidence_score
+                    document.extraction_status = duplicate.extraction_status
+                    document.extracted_at = duplicate.extracted_at
                 await db.delete(duplicate)
             return document
 
@@ -86,6 +98,7 @@ async def dedupe_documents_for_user(
     local_paths: list[str] | None = None,
 ) -> dict[str, int]:
     query = select(Document).where(Document.user_id == user_id)
+    query = query.where(Document.derivation_index == 0)
     if local_paths:
         query = query.where(Document.local_path.in_(local_paths))
 
@@ -108,6 +121,13 @@ async def dedupe_documents_for_user(
                 canonical.drive_web_link = duplicate.drive_web_link
                 canonical.drive_folder_path = duplicate.drive_folder_path
                 canonical.synced_at = duplicate.synced_at
+            if canonical.extracted_text is None and duplicate.extracted_text is not None:
+                canonical.extracted_text = duplicate.extracted_text
+                canonical.vat_amount = duplicate.vat_amount
+                canonical.currency = duplicate.currency
+                canonical.confidence_score = duplicate.confidence_score
+                canonical.extraction_status = duplicate.extraction_status
+                canonical.extracted_at = duplicate.extracted_at
             if canonical.source_email_sender is None and duplicate.source_email_sender is not None:
                 canonical.source_email_sender = duplicate.source_email_sender
             if canonical.source_email_subject is None and duplicate.source_email_subject is not None:

@@ -12,6 +12,7 @@ from app.models import Document, GmailConnection, User
 from app.services.drive_client import ensure_drive_path, get_drive_service, upload_local_file
 from app.services.drive_paths import drive_path_parts_for_local_path
 from app.services.document_registry import dedupe_documents_for_user
+from app.services.document_split import sync_child_documents_from_parent
 
 
 def _sync_error_reason(exc: Exception) -> str:
@@ -45,7 +46,7 @@ async def sync_documents_to_drive(
 ) -> dict:
     dedupe_summary = await dedupe_documents_for_user(db, user_id=user.id)
 
-    query = select(Document).where(Document.user_id == user.id)
+    query = select(Document).where(Document.user_id == user.id, Document.derivation_index == 0)
     if document_ids:
         query = query.where(Document.id.in_(document_ids))
     elif not force:
@@ -121,6 +122,7 @@ async def sync_documents_to_drive(
         document.drive_web_link = uploaded.get("webViewLink")
         document.drive_folder_path = folder_path
         document.synced_at = datetime.utcnow()
+        await sync_child_documents_from_parent(parent_document=document, db=db)
         synced += 1
         response_results.append(
             {
