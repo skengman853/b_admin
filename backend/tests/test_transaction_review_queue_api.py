@@ -233,12 +233,28 @@ else:
                     db=session,
                 )
 
+                bucket_filtered_queue = await get_transaction_review_queue(
+                    month="2026-04",
+                    pub=None,
+                    status=None,
+                    resolution_bucket="confirm_match",
+                    annotated_only=True,
+                    persist_exact_matches=False,
+                    page=1,
+                    limit=20,
+                    user=self.user,
+                    db=session,
+                )
+
             self.assertEqual(queue.total, 3)
             self.assertEqual(queue.matched_transactions, 1)
             self.assertEqual(queue.partial_transactions, 1)
             self.assertEqual(queue.suggested_transactions, 1)
             self.assertEqual(queue.unmatched_transactions, 2)
             self.assertEqual(queue.statuses, ["partial", "suggested", "unmatched"])
+            self.assertEqual(queue.resolution_bucket_counts["confirm_match"], 2)
+            self.assertEqual(queue.resolution_bucket_counts["complete_partial_match"], 1)
+            self.assertEqual(queue.resolution_bucket_counts["awaiting_document"], 2)
             self.assertEqual(
                 [item.status for item in queue.transactions],
                 ["partial", "suggested", "unmatched"],
@@ -247,6 +263,12 @@ else:
             self.assertEqual([link.document.reference for link in queue.transactions[0].persisted_links], ["PT200"])
             self.assertEqual([match.reference for match in queue.transactions[0].exact_matches], ["PT200"])
             self.assertTrue(all(item.needs_action for item in queue.transactions))
+            self.assertEqual(queue.transactions[0].resolution_bucket, "complete_partial_match")
+            self.assertIsNone(queue.transactions[0].recommended_review_status)
+            self.assertEqual(queue.transactions[1].resolution_bucket, "confirm_match")
+            self.assertEqual(queue.transactions[1].recommended_review_status, "linked")
+            self.assertEqual(queue.transactions[2].resolution_bucket, "awaiting_document")
+            self.assertEqual(queue.transactions[2].recommended_review_status, "awaiting_document")
 
             self.assertEqual(filtered_queue.total, 2)
             self.assertEqual(filtered_queue.statuses, ["suggested", "unmatched"])
@@ -254,6 +276,13 @@ else:
                 [item.status for item in filtered_queue.transactions],
                 ["suggested", "unmatched"],
             )
+
+            self.assertEqual(bucket_filtered_queue.total, 1)
+            self.assertEqual(
+                [item.transaction.row_number for item in bucket_filtered_queue.transactions],
+                [12],
+            )
+            self.assertEqual(bucket_filtered_queue.transactions[0].resolution_bucket, "confirm_match")
 
 
 if __name__ == "__main__":

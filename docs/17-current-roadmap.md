@@ -135,3 +135,15 @@ That means:
 - false positive suggestions are low
 - unresolved items are genuinely unresolved, not just parser mistakes
 - manual decisions persist cleanly in the system
+
+## Strategic Next Layer
+
+After the current April calibration work, the next architectural layer is the hybrid workflow:
+
+- this app as reconciliation engine
+- Claude as workflow/operator layer
+- QuickBooks as accounting system of record
+
+That plan is detailed in:
+
+- `docs/19-claude-quickbooks-roadmap.md`

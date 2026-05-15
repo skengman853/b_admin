@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/gmail/callback"
     openai_api_key: str = ""
+    ai_document_extraction_enabled: bool = True
+    ai_document_extraction_model: str = "gpt-4.1-mini"
+    ai_document_extraction_min_confidence: float = 0.7
     s3_bucket: str = ""
     sentry_dsn: str = ""
     frontend_url: str = "http://localhost:3000"

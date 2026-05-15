@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import types
 import unittest
 from decimal import Decimal
 from pathlib import Path
@@ -10,6 +11,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.document_candidates import extract_multi_invoice_candidates  # noqa: E402
 from app.services.document_extraction_rules import build_extraction_fields, extract_currency, extract_vat_amount  # noqa: E402
+
+_ai_import_error: str | None = None
+try:  # pragma: no cover - host Python may not have full app deps
+    from app.services.ai_document_extraction import AIDocumentExtractionResult, merge_ai_extraction  # noqa: E402
+except ModuleNotFoundError as exc:  # pragma: no cover
+    _ai_import_error = str(exc)
 
 
 CHRIS_LYNCH_SHORT_INVOICE_TEXT = """Invoice
@@ -199,6 +206,56 @@ SPARSE_PROMO_STATEMENT_TEXT = """May Promotional Activity 2026 Connacht Bottlers
 
 Promo Support
 €47.50
+"""
+
+BULMERS_ARCHIVE_INVOICE_TEXT = """INVOICE,9890200,9890201,1466,60008348,12/12/16,2205.36,273263,15/12/16,60009694,,,00060~CCCI_2016347_225404.TXT
+
+Issued by
+Bulmers Ireland
+
+INVOICE
+Invoiced To
+
+CAREY'S BAR LTD
+T/A CAREY'S
+
+Invoice Number
+
+4150707
+
+Delivery Date
+
+15/04/26
+
+Order Date
+
+14/04/26
+
+VAT
+
+Invoice Date: 15/04/26
+
+Goods Value
+
+VAT Value
+
+0.00
+18.00
+
+0.00
+0.00
+
+18.00
+
+0.00
+
+Total €
+
+18.00
+
+Payment Method:
+
+Direct Debit
 """
 
 
@@ -426,6 +483,60 @@ class DocumentExtractionTests(unittest.TestCase):
             "low_confidence_extraction",
         ])
 
+    @unittest.skipIf(_ai_import_error is not None, f"AI extraction helper unavailable: {_ai_import_error}")
+    def test_ai_merge_can_promote_sparse_statement_into_structured_extraction(self) -> None:
+        payload = build_extraction_fields(
+            extracted_text=SPARSE_PROMO_STATEMENT_TEXT,
+            supplier="Connacht Bottlers",
+            document_type="statement",
+            subject="Connacht Bottlers Statement",
+            attachment_name="May Promotional Activity 2026 Connacht Bottlers.pdf",
+            needs_review=False,
+        )
+        document = types.SimpleNamespace(
+            document_type="statement",
+            supplier="Connacht Bottlers",
+            attachment_name="statement.pdf",
+            source_email_subject="Connacht statement",
+            ai_extraction_status=None,
+            ai_extraction_provider=None,
+            ai_extraction_model=None,
+            ai_extraction_payload=None,
+            ai_extracted_at=None,
+        )
+        ai_result = AIDocumentExtractionResult(
+            document_date="2026-05-31",
+            statement_kind="trade_statement",
+            is_financial=True,
+            account_number="CAREY01",
+            closing_balance="47.50",
+            confidence_score=0.88,
+            note="Recovered statement metadata from weak OCR text.",
+            entries=[
+                {
+                    "event_date": "2026-05-31",
+                    "reference": "DD-31-05",
+                    "transaction_type": "Receipt",
+                    "amount": "47.50",
+                    "raw_text": "31/05/2026 DD-31-05 Receipt 47.50",
+                }
+            ],
+        )
+
+        merged = merge_ai_extraction(
+            document=document,
+            extraction_fields=payload,
+            ai_result=ai_result,
+        )
+
+        self.assertEqual(str(merged["document_date"]), "2026-05-31")
+        self.assertEqual(merged["extraction_status"], "extracted")
+        self.assertFalse(merged["needs_review"])
+        self.assertEqual(merged["review_reasons"], [])
+        self.assertEqual(document.ai_extraction_status, "completed")
+        self.assertIsNotNone(document.ai_extraction_payload)
+        self.assertEqual(document.ai_extraction_payload["statement_kind"], "trade_statement")
+
     def test_extracts_multi_invoice_candidates(self) -> None:
         candidates = extract_multi_invoice_candidates(
             text=LOVELL_MULTI_INVOICE_TEXT,
@@ -501,6 +612,21 @@ class DocumentExtractionTests(unittest.TestCase):
         self.assertEqual(payload["extraction_status"], "review")
         self.assertTrue(payload["needs_review"])
         self.assertIn("suspicious_amounts", payload["review_reasons"])
+
+    def test_builds_archive_invoice_fields_from_filename_and_total(self) -> None:
+        payload = build_extraction_fields(
+            extracted_text=BULMERS_ARCHIVE_INVOICE_TEXT,
+            supplier="Bulmers",
+            document_type="invoice",
+            subject="Bulmers Ireland/Invoices/Careys Bar/Bulmers Ireland - Inv 106 - 4150707 - Date 15-04-2026 - Linked.pdf",
+            attachment_name="Careys Bar - Bulmers Ireland - Inv 106 - 4150707 - Date 15-04-2026.pdf",
+            needs_review=False,
+        )
+
+        self.assertEqual(str(payload["document_date"]), "2026-04-15")
+        self.assertEqual(payload["reference"], "4150707")
+        self.assertEqual(str(payload["amount"]), "18.00")
+        self.assertIsNone(payload["vat_amount"])
 
 
 if __name__ == "__main__":

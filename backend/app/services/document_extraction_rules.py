@@ -203,7 +203,7 @@ def build_extraction_fields(
 ) -> dict:
     document_date = existing_document_date
     if document_date is None or not prefer_existing_values:
-        extracted_date_raw = extract_document_date(extracted_text, subject)
+        extracted_date_raw = extract_document_date(extracted_text, subject, attachment_name)
         if extracted_date_raw:
             document_date = datetime.fromisoformat(extracted_date_raw).date()
 

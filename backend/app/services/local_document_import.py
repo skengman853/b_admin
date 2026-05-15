@@ -6,14 +6,16 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import User
+from app.models import Transaction, User
 from app.services.document_classifier import classify_document_type
 from app.services.document_extraction import extract_documents
 from app.services.document_metadata import extract_document_date, extract_reference
 from app.services.document_registry import upsert_document_record
 from app.services.local_storage import copy_to_final_storage
+from app.services.supplier_profiles import match_supplier_profile
 from app.services.supplier_rules import canonicalize_supplier_name, detect_supplier
 from app.services.vatbook_import import backend_root
 
@@ -35,6 +37,10 @@ REFERENCE_PATTERNS = (
     re.compile(r"\b(?:invoice\s+number|invoice\s+no|inv\s+no|invoice|statement|receipt|credit\s+note)\s*[-#:]*\s*([A-Z0-9-]{2,})\b", re.IGNORECASE),
     re.compile(r"\b(TCT\d{3,})\b", re.IGNORECASE),
 )
+BANK_STATEMENT_SUPPLIER_PREFIX_PATTERN = re.compile(
+    r"^(?:\*?(?:inet|mobi|pos|visa|mc|card)\s+|(?:d/d|dd|vdp|vdc)\s*[- ]*)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(slots=True)
@@ -52,6 +58,22 @@ class LocalDocumentImportItem:
 @dataclass(slots=True)
 class LocalDocumentImportResult:
     source_path: str
+    scanned_files: int
+    eligible_files: int
+    imported_documents: int
+    extracted_documents: int
+    skipped_files: int
+    results: list[LocalDocumentImportItem]
+
+
+@dataclass(slots=True)
+class StatementContextImportResult:
+    source_path: str
+    month: str
+    months_considered: list[str]
+    source_type: str
+    suppliers_considered: list[str]
+    pubs_considered: list[str]
     scanned_files: int
     eligible_files: int
     imported_documents: int
@@ -86,6 +108,7 @@ async def import_documents_from_local_archive(
     document_types: list[str] | None = None,
     pub_filters: list[str] | None = None,
     month: str | None = None,
+    months: list[str] | None = None,
     include_archives: bool = False,
     recurse: bool = True,
     extract_after_import: bool = True,
@@ -102,7 +125,7 @@ async def import_documents_from_local_archive(
         unsupported = ", ".join(sorted(normalized_document_types - KNOWN_DOCUMENT_TYPES))
         raise ValueError(f"Unsupported document types: {unsupported}")
 
-    target_month = _parse_month(month) if month else None
+    target_months = _normalize_target_months(month=month, months=months)
     files = _collect_candidate_files(resolved_path, recurse=recurse)
 
     results: list[LocalDocumentImportItem] = []
@@ -211,7 +234,7 @@ async def import_documents_from_local_archive(
             )
             continue
 
-        if target_month and (date_hint is None or not date_hint.startswith(target_month)):
+        if target_months and (date_hint is None or not any(date_hint.startswith(target_month) for target_month in target_months)):
             skipped_files += 1
             results.append(
                 LocalDocumentImportItem(
@@ -314,6 +337,89 @@ async def import_documents_from_local_archive(
     )
 
 
+async def import_statement_context_from_local_archive(
+    *,
+    user: User,
+    db: AsyncSession,
+    source_path: str,
+    month: str,
+    source_type: str = "bank_statement",
+    pub: str | None = None,
+    supplier_filters: list[str] | None = None,
+    adjacent_months: int = 1,
+    limit: int = 250,
+    recurse: bool = True,
+    extract_after_import: bool = True,
+) -> StatementContextImportResult:
+    normalized_month = _parse_month(month)
+    if adjacent_months < 0:
+        raise ValueError("adjacent_months must be zero or greater")
+
+    months_considered = _expand_month_window(normalized_month, adjacent_months)
+    transaction_start, transaction_end = _month_date_bounds(normalized_month)
+    transaction_query = select(Transaction).where(
+        Transaction.user_id == user.id,
+        Transaction.transaction_date >= transaction_start,
+        Transaction.transaction_date < transaction_end,
+    )
+    if source_type:
+        transaction_query = transaction_query.where(Transaction.source_type == source_type)
+    if pub:
+        transaction_query = transaction_query.where(Transaction.pub == pub)
+
+    transactions = list((await db.scalars(transaction_query)).all())
+    auto_suppliers = _detect_statement_suppliers_from_transactions(transactions)
+    explicit_suppliers = _normalize_explicit_statement_suppliers(supplier_filters or [])
+    suppliers_considered = sorted({*auto_suppliers, *explicit_suppliers})
+    pubs_considered = sorted({transaction.pub for transaction in transactions if transaction.pub})
+    if pub and pub not in pubs_considered:
+        pubs_considered.append(pub)
+
+    if not suppliers_considered:
+        return StatementContextImportResult(
+            source_path=str(resolve_local_archive_path(source_path).relative_to(backend_root())),
+            month=normalized_month,
+            months_considered=months_considered,
+            source_type=source_type,
+            suppliers_considered=[],
+            pubs_considered=pubs_considered,
+            scanned_files=0,
+            eligible_files=0,
+            imported_documents=0,
+            extracted_documents=0,
+            skipped_files=0,
+            results=[],
+        )
+
+    import_result = await import_documents_from_local_archive(
+        user=user,
+        db=db,
+        source_path=source_path,
+        limit=limit,
+        supplier_filters=suppliers_considered,
+        document_types=["statement"],
+        pub_filters=pubs_considered,
+        months=months_considered,
+        include_archives=False,
+        recurse=recurse,
+        extract_after_import=extract_after_import,
+    )
+    return StatementContextImportResult(
+        source_path=import_result.source_path,
+        month=normalized_month,
+        months_considered=months_considered,
+        source_type=source_type,
+        suppliers_considered=suppliers_considered,
+        pubs_considered=pubs_considered,
+        scanned_files=import_result.scanned_files,
+        eligible_files=import_result.eligible_files,
+        imported_documents=import_result.imported_documents,
+        extracted_documents=import_result.extracted_documents,
+        skipped_files=import_result.skipped_files,
+        results=import_result.results,
+    )
+
+
 def _collect_candidate_files(source_path: Path, *, recurse: bool) -> list[Path]:
     if source_path.is_file():
         return [source_path] if source_path.suffix.lower() in KNOWN_DOCUMENT_SUFFIXES else []
@@ -411,6 +517,73 @@ def _parse_month(month: str) -> str:
     if not re.fullmatch(r"\d{4}-\d{2}", month):
         raise ValueError("month must use YYYY-MM format")
     return month
+
+
+def _normalize_target_months(*, month: str | None, months: list[str] | None) -> list[str] | None:
+    if month and months:
+        raise ValueError("Provide either month or months, not both")
+    if month:
+        return [_parse_month(month)]
+    if months:
+        normalized = sorted({_parse_month(value) for value in months})
+        return normalized or None
+    return None
+
+
+def _month_date_bounds(month: str) -> tuple[date, date]:
+    normalized = _parse_month(month)
+    year, month_number = (int(part) for part in normalized.split("-"))
+    start = date(year, month_number, 1)
+    if month_number == 12:
+        return start, date(year + 1, 1, 1)
+    return start, date(year, month_number + 1, 1)
+
+
+def _shift_month(month: str, offset: int) -> str:
+    normalized = _parse_month(month)
+    year, month_number = (int(part) for part in normalized.split("-"))
+    month_index = (year * 12) + (month_number - 1) + offset
+    shifted_year, shifted_zero_based_month = divmod(month_index, 12)
+    return f"{shifted_year:04d}-{shifted_zero_based_month + 1:02d}"
+
+
+def _expand_month_window(month: str, adjacent_months: int) -> list[str]:
+    normalized = _parse_month(month)
+    return [_shift_month(normalized, offset) for offset in range(-adjacent_months, adjacent_months + 1)]
+
+
+def _normalize_explicit_statement_suppliers(supplier_filters: list[str]) -> list[str]:
+    normalized: set[str] = set()
+    for candidate in supplier_filters:
+        canonical = canonicalize_supplier_name(candidate)
+        if canonical:
+            normalized.add(canonical)
+    return sorted(normalized)
+
+
+def _clean_bank_payee(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = BANK_STATEMENT_SUPPLIER_PREFIX_PATTERN.sub("", value).strip(" -*")
+    return cleaned or None
+
+
+def _detect_statement_suppliers_from_transactions(transactions: list[Transaction]) -> list[str]:
+    suppliers: set[str] = set()
+    for transaction in transactions:
+        candidates = [
+            transaction.expected_supplier,
+            transaction.description1,
+            _clean_bank_payee(transaction.description1),
+            transaction.description2,
+        ]
+        for candidate in candidates:
+            profile = match_supplier_profile(candidate)
+            if profile is None or not profile.parser_family:
+                continue
+            suppliers.add(profile.canonical_name)
+            break
+    return sorted(suppliers)
 
 
 def _matches_filters(filters: list[str], *values: str | None) -> bool:

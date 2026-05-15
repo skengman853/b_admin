@@ -23,6 +23,7 @@ class User(Base):
     documents: Mapped[list["Document"]] = relationship(back_populates="user")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
     transaction_document_links: Mapped[list["TransactionDocumentLink"]] = relationship(back_populates="user")
+    transaction_review_events: Mapped[list["TransactionReviewEvent"]] = relationship(back_populates="user")
 
 
 class GmailConnection(Base):
@@ -100,6 +101,11 @@ class Document(Base):
     extracted_text: Mapped[str | None] = mapped_column(Text)
     extraction_status: Mapped[str] = mapped_column(String(20), default="pending")
     extracted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    ai_extraction_status: Mapped[str | None] = mapped_column(String(20))
+    ai_extraction_provider: Mapped[str | None] = mapped_column(String(50))
+    ai_extraction_model: Mapped[str | None] = mapped_column(String(100))
+    ai_extraction_payload: Mapped[dict | None] = mapped_column(JSON)
+    ai_extracted_at: Mapped[datetime | None] = mapped_column(DateTime)
     local_path: Mapped[str] = mapped_column(Text, nullable=False)
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
     review_reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
@@ -169,6 +175,7 @@ class Transaction(Base):
     has_linked_annotation: Mapped[bool] = mapped_column(Boolean, default=False)
     review_status: Mapped[str] = mapped_column(String(32), default="pending")
     review_note: Mapped[str | None] = mapped_column(Text)
+    expected_supplier: Mapped[str | None] = mapped_column(String(255))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     raw_row_json: Mapped[dict] = mapped_column(JSON, default=dict)
     imported_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -176,6 +183,11 @@ class Transaction(Base):
     user: Mapped["User"] = relationship(back_populates="transactions")
     document_links: Mapped[list["TransactionDocumentLink"]] = relationship(
         "TransactionDocumentLink",
+        back_populates="transaction",
+        cascade="all, delete-orphan",
+    )
+    review_events: Mapped[list["TransactionReviewEvent"]] = relationship(
+        "TransactionReviewEvent",
         back_populates="transaction",
         cascade="all, delete-orphan",
     )
@@ -207,6 +219,30 @@ class TransactionDocumentLink(Base):
     user: Mapped["User"] = relationship(back_populates="transaction_document_links")
     transaction: Mapped["Transaction"] = relationship(back_populates="document_links")
     document: Mapped["Document"] = relationship(back_populates="transaction_document_links")
+
+
+class TransactionReviewEvent(Base):
+    __tablename__ = "transaction_review_events"
+    __table_args__ = (
+        Index("idx_transaction_review_events_transaction", "transaction_id", "created_at"),
+        Index("idx_transaction_review_events_user", "user_id", "created_at"),
+        Index("idx_transaction_review_events_event_type", "event_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    transaction_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"))
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    actor_email: Mapped[str | None] = mapped_column(String(255))
+    previous_review_status: Mapped[str | None] = mapped_column(String(32))
+    current_review_status: Mapped[str | None] = mapped_column(String(32))
+    document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"))
+    link_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("transaction_document_links.id", ondelete="SET NULL"))
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="transaction_review_events")
+    transaction: Mapped["Transaction"] = relationship(back_populates="review_events")
 
 
 class ProcessedEmail(Base):

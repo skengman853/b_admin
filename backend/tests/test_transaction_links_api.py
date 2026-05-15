@@ -27,6 +27,7 @@ try:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
     from app.api.transactions import (  # noqa: E402
         create_transaction_link,
+        get_transaction_history,
         get_transaction_links,
         update_transaction_link,
     )
@@ -194,6 +195,11 @@ else:
                     user=self.user,
                     db=session,
                 )
+                history = await get_transaction_history(
+                    transaction_id=self.transaction.id,
+                    user=self.user,
+                    db=session,
+                )
 
             self.assertEqual(len(refreshed.persisted_links), 2)
             self.assertEqual(refreshed.transaction.review_status, "pending")
@@ -205,6 +211,12 @@ else:
                 [link.document.reference for link in refreshed.persisted_links],
                 ["EX100", "MN200"],
             )
+            self.assertEqual(
+                [event.event_type for event in history.events[:4]],
+                ["link_updated", "link_updated", "auto_review_status_changed", "link_created"],
+            )
+            self.assertEqual(history.events[0].payload["current_link_state"]["status"], "rejected")
+            self.assertEqual(history.events[2].current_review_status, "linked")
 
 
 if __name__ == "__main__":

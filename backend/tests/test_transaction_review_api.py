@@ -24,9 +24,10 @@ _missing_dependencies: str | None = None
 
 try:
     import aiosqlite  # noqa: F401,E402
+    from sqlalchemy import select  # noqa: E402
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
-    from app.api.transactions import update_transaction_review  # noqa: E402
-    from app.models import Base, Transaction, User  # noqa: E402
+    from app.api.transactions import get_transaction_detail, get_transaction_history, update_transaction_review  # noqa: E402
+    from app.models import Base, Transaction, TransactionReviewEvent, User  # noqa: E402
     from app.schemas import TransactionReviewUpdateRequest  # noqa: E402
 except ModuleNotFoundError as exc:  # pragma: no cover - host Python may not have app deps
     _missing_dependencies = str(exc)
@@ -76,6 +77,7 @@ else:
                     body=TransactionReviewUpdateRequest(
                         review_status="awaiting_document",
                         review_note="supplier invoice not received yet",
+                        expected_supplier="Bulmers",
                     ),
                     user=self.user,
                     db=session,
@@ -83,7 +85,58 @@ else:
 
             self.assertEqual(updated.review_status, "awaiting_document")
             self.assertEqual(updated.review_note, "supplier invoice not received yet")
+            self.assertEqual(updated.expected_supplier, "Bulmers")
             self.assertIsNotNone(updated.reviewed_at)
+
+            async with self.session_factory() as session:
+                events = (
+                    await session.scalars(
+                        select(TransactionReviewEvent).where(
+                            TransactionReviewEvent.transaction_id == self.transaction.id
+                        )
+                    )
+                ).all()
+                self.assertEqual(len(events), 1)
+                self.assertEqual(events[0].event_type, "review_updated")
+                self.assertEqual(events[0].previous_review_status, "pending")
+                self.assertEqual(events[0].current_review_status, "awaiting_document")
+                self.assertEqual(events[0].payload["current_expected_supplier"], "Bulmers")
+
+        async def test_detail_and_history_endpoints_return_stable_shapes(self) -> None:
+            async with self.session_factory() as session:
+                await update_transaction_review(
+                    transaction_id=self.transaction.id,
+                    body=TransactionReviewUpdateRequest(
+                        review_status="awaiting_document",
+                        review_note="supplier invoice not received yet",
+                        expected_supplier="Bulmers",
+                    ),
+                    user=self.user,
+                    db=session,
+                )
+
+            async with self.session_factory() as session:
+                detail = await get_transaction_detail(
+                    transaction_id=self.transaction.id,
+                    persist_exact_matches=False,
+                    user=self.user,
+                    db=session,
+                )
+                history = await get_transaction_history(
+                    transaction_id=self.transaction.id,
+                    user=self.user,
+                    db=session,
+                )
+
+            self.assertEqual(detail.transaction.id, self.transaction.id)
+            self.assertEqual(detail.transaction.review_status, "awaiting_document")
+            self.assertEqual(detail.history_count, 1)
+            self.assertIsNotNone(detail.reconciliation_flow)
+            self.assertEqual(detail.reconciliation_flow.flow_type, "document_gap")
+            self.assertGreaterEqual(len(detail.reconciliation_flow.stages), 4)
+            self.assertEqual(history.transaction_id, self.transaction.id)
+            self.assertEqual(len(history.events), 1)
+            self.assertEqual(history.events[0].event_type, "review_updated")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Document, User
+from app.services.ai_document_extraction import (
+    extract_document_with_ai,
+    merge_ai_extraction,
+    should_attempt_ai_extraction,
+)
 from app.services.document_extraction_rules import build_extraction_fields
 from app.services.invoice_projection import sync_invoices_from_documents
 from app.services.pdf_text import extract_pdf_text
@@ -119,6 +124,23 @@ async def extract_documents(
             existing_review_reasons=document.review_reasons,
             needs_review=document.needs_review,
         )
+        if should_attempt_ai_extraction(document=document, extraction_fields=extraction_fields):
+            try:
+                ai_result = await extract_document_with_ai(
+                    document=document,
+                    extracted_text=extracted_text,
+                )
+            except Exception:
+                document.ai_extraction_status = "failed"
+            else:
+                if ai_result is not None:
+                    extraction_fields = merge_ai_extraction(
+                        document=document,
+                        extraction_fields=extraction_fields,
+                        ai_result=ai_result,
+                    )
+                else:
+                    document.ai_extraction_status = "skipped"
         for field, value in extraction_fields.items():
             setattr(document, field, value)
 

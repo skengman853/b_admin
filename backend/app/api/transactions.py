@@ -1,23 +1,31 @@
 import math
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import Document, Transaction, TransactionDocumentLink, User
+from app.models import Document, Transaction, TransactionDocumentLink, TransactionReviewEvent, User
 from app.schemas import (
+    TransactionDetailResponse,
     TransactionDocumentMatchResponse,
+    TransactionFlowDocumentResponse,
+    TransactionFlowResponse,
+    TransactionFlowSettlementResponse,
+    TransactionFlowStageResponse,
+    TransactionHistoryResponse,
     TransactionImportRequest,
     TransactionImportResponse,
     TransactionLinkCreateRequest,
     TransactionLinkedDocumentResponse,
     TransactionLinkResponse,
     TransactionLinksResponse,
+    TransactionReviewEventResponse,
     TransactionReviewUpdateRequest,
     TransactionLinkUpdateRequest,
     TransactionListResponse,
@@ -28,12 +36,17 @@ from app.schemas import (
     TransactionResponse,
 )
 from app.services.transaction_reconciliation import (
+    VALID_RESOLUTION_BUCKETS,
+    build_transaction_reconciliation_flow,
     build_reconciliation_report,
     build_transaction_review_queue,
-    build_transaction_reconciliation_item_from_db,
+    build_transaction_reconciliation_item,
     month_bounds,
+    load_candidate_documents_for_transaction,
+    load_supporting_documents_for_transaction,
     sync_exact_transaction_document_links,
 )
+from app.services.document_ledger import build_document_ledgers
 from app.services.vatbook_import import import_transactions_from_vatbook
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
@@ -84,6 +97,23 @@ def _build_transaction_response(transaction: Transaction) -> TransactionResponse
     return TransactionResponse.model_validate(transaction, from_attributes=True)
 
 
+def _build_transaction_review_event_response(
+    event: TransactionReviewEvent,
+) -> TransactionReviewEventResponse:
+    return TransactionReviewEventResponse(
+        id=event.id,
+        transaction_id=event.transaction_id,
+        event_type=event.event_type,
+        actor_email=event.actor_email,
+        previous_review_status=event.previous_review_status,
+        current_review_status=event.current_review_status,
+        document_id=event.document_id,
+        link_id=event.link_id,
+        payload=event.payload or {},
+        created_at=event.created_at,
+    )
+
+
 def _parse_review_statuses(review_status: str | None) -> list[str] | None:
     if review_status is None:
         return None
@@ -99,18 +129,52 @@ def _parse_review_statuses(review_status: str | None) -> list[str] | None:
     return values
 
 
+def _parse_resolution_buckets(resolution_bucket: str | None) -> list[str] | None:
+    if resolution_bucket is None:
+        return None
+
+    values = [value.strip().lower() for value in resolution_bucket.split(",") if value.strip()]
+    invalid = [value for value in values if value not in VALID_RESOLUTION_BUCKETS]
+    if invalid:
+        allowed = ", ".join(sorted(VALID_RESOLUTION_BUCKETS))
+        raise HTTPException(
+            status_code=422,
+            detail=f"resolution_bucket must be one of: {allowed}",
+        )
+    return values
+
+
 async def _synchronize_transaction_review_state_for_link(
     *,
     db: AsyncSession,
     transaction: Transaction,
     document: Document,
     link_status: str,
+    user: User,
+    link: TransactionDocumentLink | None = None,
 ) -> None:
+    previous_review_status = transaction.review_status
     if document.document_type == "invoice" and link_status == "confirmed":
         transaction.review_status = "linked"
         transaction.reviewed_at = datetime.utcnow()
         if transaction.review_note is None:
             transaction.review_note = None
+        if previous_review_status != transaction.review_status:
+            _append_transaction_review_event(
+                db=db,
+                transaction=transaction,
+                user=user,
+                event_type="auto_review_status_changed",
+                previous_review_status=previous_review_status,
+                current_review_status=transaction.review_status,
+                document_id=document.id,
+                link_id=link.id if link is not None else None,
+                payload={
+                    "reason": "confirmed_invoice_link",
+                    "link_status": link_status,
+                    "document_type": document.document_type,
+                },
+            )
         return
 
     if transaction.review_status != "linked":
@@ -130,6 +194,49 @@ async def _synchronize_transaction_review_state_for_link(
     if confirmed_invoice_link_result.first() is None:
         transaction.review_status = "pending"
         transaction.reviewed_at = datetime.utcnow()
+        if previous_review_status != transaction.review_status:
+            _append_transaction_review_event(
+                db=db,
+                transaction=transaction,
+                user=user,
+                event_type="auto_review_status_changed",
+                previous_review_status=previous_review_status,
+                current_review_status=transaction.review_status,
+                document_id=document.id,
+                link_id=link.id if link is not None else None,
+                payload={
+                    "reason": "no_confirmed_invoice_links_remaining",
+                    "link_status": link_status,
+                    "document_type": document.document_type,
+                },
+            )
+
+
+def _append_transaction_review_event(
+    *,
+    db: AsyncSession,
+    transaction: Transaction,
+    user: User,
+    event_type: str,
+    previous_review_status: str | None = None,
+    current_review_status: str | None = None,
+    document_id: uuid.UUID | None = None,
+    link_id: uuid.UUID | None = None,
+    payload: dict | None = None,
+) -> TransactionReviewEvent:
+    event = TransactionReviewEvent(
+        user_id=user.id,
+        transaction_id=transaction.id,
+        event_type=event_type,
+        actor_email=user.email,
+        previous_review_status=previous_review_status,
+        current_review_status=current_review_status,
+        document_id=document_id,
+        link_id=link_id,
+        payload=payload or {},
+    )
+    db.add(event)
+    return event
 
 
 def _build_match_response(match) -> TransactionDocumentMatchResponse:
@@ -143,6 +250,113 @@ def _build_match_response(match) -> TransactionDocumentMatchResponse:
         vat_amount=match.vat_amount,
         score=match.score,
         reason=match.reason,
+    )
+
+
+def _build_reconciliation_item_response(item) -> TransactionReconciliationItemResponse:
+    return TransactionReconciliationItemResponse(
+        transaction_id=item.transaction_id,
+        source_type=item.source_type,
+        row_number=item.row_number,
+        pub=item.pub,
+        transaction_date=item.transaction_date,
+        description1=item.description1,
+        description2=item.description2,
+        category=item.category,
+        transaction_type=item.transaction_type,
+        debit_amount=item.debit_amount,
+        credit_amount=item.credit_amount,
+        annotation_types=item.annotation_types,
+        annotation_notes=item.annotation_notes,
+        has_linked_annotation=item.has_linked_annotation,
+        status=item.status,
+        analysis_note=item.analysis_note,
+        resolution_bucket=item.resolution_bucket,
+        recommended_review_status=item.recommended_review_status,
+        resolution_reason=item.resolution_reason,
+        exact_matches=[_build_match_response(match) for match in item.exact_matches],
+        suggested_matches=[_build_match_response(match) for match in item.suggested_matches],
+        supporting_matches=[_build_match_response(match) for match in item.supporting_matches],
+    )
+
+
+def _build_flow_document_response(document) -> TransactionFlowDocumentResponse:
+    return TransactionFlowDocumentResponse(
+        document_id=document.document_id,
+        supplier=document.supplier,
+        document_type=document.document_type,
+        reference=document.reference,
+        document_date=document.document_date,
+        amount=document.amount,
+        vat_amount=document.vat_amount,
+        score=document.score,
+        role=document.role,
+        reason=document.reason,
+        statement_kind=document.statement_kind,
+        is_financial=document.is_financial,
+        invoice_reference_count=document.invoice_reference_count,
+        payment_reference_count=document.payment_reference_count,
+        credit_reference_count=document.credit_reference_count,
+        settlement_count=document.settlement_count,
+    )
+
+
+def _build_flow_response(flow) -> TransactionFlowResponse:
+    def _ledger_entry_response(entry):
+        return {
+            "document_id": entry.document_id,
+            "document_type": entry.document_type,
+            "supplier": entry.supplier,
+            "entry_kind": entry.entry_kind,
+            "event_date": entry.event_date,
+            "due_date": entry.due_date,
+            "reference": entry.reference,
+            "related_reference": entry.related_reference,
+            "amount": entry.amount,
+            "signed_amount": entry.signed_amount,
+            "vat_amount": entry.vat_amount,
+            "currency": entry.currency,
+            "is_financial": entry.is_financial,
+            "statement_kind": entry.statement_kind,
+            "account_number": entry.account_number,
+            "account_name": entry.account_name,
+            "raw_text": entry.raw_text,
+        }
+
+    return TransactionFlowResponse(
+        flow_type=flow.flow_type,
+        supplier_label=flow.supplier_label,
+        bank_counterparty=flow.bank_counterparty,
+        next_step=flow.next_step,
+        stages=[
+            TransactionFlowStageResponse(
+                key=stage.key,
+                title=stage.title,
+                status=stage.status,
+                summary=stage.summary,
+                items=list(stage.items),
+                documents=[_build_flow_document_response(document) for document in stage.documents],
+            )
+            for stage in flow.stages
+        ],
+        settlements=[
+            TransactionFlowSettlementResponse(
+                source_document_id=settlement.source_document_id,
+                source_supplier=settlement.source_supplier,
+                source_reference=settlement.source_reference,
+                source_document_date=settlement.source_document_date,
+                statement_kind=settlement.statement_kind,
+                payment_entry=_ledger_entry_response(settlement.payment_entry),
+                component_entries=[
+                    _ledger_entry_response(entry)
+                    for entry in settlement.component_entries
+                ],
+                net_amount=settlement.net_amount,
+                matches_transaction_amount=settlement.matches_transaction_amount,
+            )
+            for settlement in flow.settlements
+            if settlement.payment_entry is not None
+        ],
     )
 
 
@@ -173,6 +387,100 @@ def _build_transaction_link_response(link: TransactionDocumentLink) -> Transacti
             local_path=link.document.local_path,
             needs_review=link.document.needs_review,
         ),
+    )
+
+
+async def _load_transaction_history(
+    *,
+    db: AsyncSession,
+    user_id,
+    transaction_id: uuid.UUID,
+) -> list[TransactionReviewEvent]:
+    result = await db.execute(
+        select(TransactionReviewEvent)
+        .where(
+            TransactionReviewEvent.transaction_id == transaction_id,
+            TransactionReviewEvent.user_id == user_id,
+        )
+        .order_by(TransactionReviewEvent.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def _build_transaction_detail_response(
+    *,
+    db: AsyncSession,
+    user: User,
+    transaction: Transaction,
+    persist_exact_matches: bool,
+) -> TransactionDetailResponse:
+    candidate_documents = await load_candidate_documents_for_transaction(
+        db=db,
+        user_id=user.id,
+        transaction=transaction,
+    )
+    supporting_documents = await load_supporting_documents_for_transaction(
+        db=db,
+        user_id=user.id,
+        transaction=transaction,
+    )
+    candidate_ledgers = build_document_ledgers(candidate_documents)
+    supporting_ledgers = build_document_ledgers(supporting_documents)
+    analysis = build_transaction_reconciliation_item(
+        transaction=transaction,
+        documents=candidate_documents,
+        supporting_documents=supporting_documents,
+        document_ledgers=candidate_ledgers,
+        supporting_document_ledgers=supporting_ledgers,
+    )
+
+    if persist_exact_matches and analysis.exact_matches:
+        await sync_exact_transaction_document_links(
+            db=db,
+            user_id=user.id,
+            exact_matches_by_transaction={transaction.id: analysis.exact_matches},
+        )
+        await db.commit()
+
+    link_result = await db.execute(
+        select(TransactionDocumentLink)
+        .options(selectinload(TransactionDocumentLink.document))
+        .where(
+            TransactionDocumentLink.transaction_id == transaction.id,
+            TransactionDocumentLink.user_id == user.id,
+        )
+        .order_by(TransactionDocumentLink.status.asc(), TransactionDocumentLink.created_at.asc())
+    )
+    persisted_links = list(link_result.scalars().all())
+    flow = build_transaction_reconciliation_flow(
+        transaction=transaction,
+        analysis=analysis,
+        invoice_documents=candidate_documents,
+        supporting_documents=supporting_documents,
+        invoice_ledgers=candidate_ledgers,
+        supporting_ledgers=supporting_ledgers,
+        persisted_links=persisted_links,
+    )
+    history_count = await db.scalar(
+        select(func.count(TransactionReviewEvent.id)).where(
+            TransactionReviewEvent.transaction_id == transaction.id,
+            TransactionReviewEvent.user_id == user.id,
+        )
+    )
+
+    return TransactionDetailResponse(
+        transaction=_build_transaction_response(transaction),
+        status=analysis.status,
+        analysis_note=analysis.analysis_note,
+        resolution_bucket=analysis.resolution_bucket,
+        recommended_review_status=analysis.recommended_review_status,
+        resolution_reason=analysis.resolution_reason,
+        reconciliation_flow=_build_flow_response(flow),
+        history_count=history_count or 0,
+        persisted_links=[_build_transaction_link_response(link) for link in persisted_links],
+        exact_matches=[_build_match_response(match) for match in analysis.exact_matches],
+        suggested_matches=[_build_match_response(match) for match in analysis.suggested_matches],
+        supporting_matches=[_build_match_response(match) for match in analysis.supporting_matches],
     )
 
 
@@ -317,6 +625,7 @@ async def get_transaction_review_queue(
     source_type: str | None = None,
     pub: str | None = None,
     status: str | None = None,
+    resolution_bucket: str | None = None,
     review_status: str | None = None,
     annotated_only: bool | None = None,
     persist_exact_matches: bool = True,
@@ -335,6 +644,7 @@ async def get_transaction_review_queue(
     requested_statuses = None
     if status:
         requested_statuses = [value.strip() for value in status.split(",") if value.strip()]
+    requested_resolution_buckets = _parse_resolution_buckets(resolution_bucket)
     requested_review_statuses = _parse_review_statuses(review_status)
 
     queue = await build_transaction_review_queue(
@@ -344,6 +654,7 @@ async def get_transaction_review_queue(
         source_type=normalized_source_type,
         pub=pub,
         statuses=requested_statuses,
+        resolution_buckets=requested_resolution_buckets,
         review_statuses=requested_review_statuses,
         annotated_only=effective_annotated_only,
         persist_exact_matches=persist_exact_matches,
@@ -383,6 +694,9 @@ async def get_transaction_review_queue(
                     and transaction.review_status not in RESOLVED_TRANSACTION_REVIEW_STATUSES
                 ),
                 analysis_note=item.analysis_note,
+                resolution_bucket=item.resolution_bucket,
+                recommended_review_status=item.recommended_review_status,
+                resolution_reason=item.resolution_reason,
                 persisted_links=[_build_transaction_link_response(link) for link in persisted_links],
                 exact_matches=[_build_match_response(match) for match in item.exact_matches],
                 suggested_matches=[_build_match_response(match) for match in item.suggested_matches],
@@ -402,7 +716,49 @@ async def get_transaction_review_queue(
         partial_transactions=queue.partial_transactions,
         suggested_transactions=queue.suggested_transactions,
         unmatched_transactions=queue.unmatched_transactions,
+        resolution_bucket_counts=queue.resolution_bucket_counts,
         transactions=items,
+    )
+
+
+@router.get("/{transaction_id}/detail", response_model=TransactionDetailResponse)
+async def get_transaction_detail(
+    transaction_id: uuid.UUID,
+    persist_exact_matches: bool = False,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    transaction_result = await db.execute(
+        select(Transaction).where(Transaction.id == transaction_id, Transaction.user_id == user.id)
+    )
+    transaction = transaction_result.scalar_one_or_none()
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    return await _build_transaction_detail_response(
+        db=db,
+        user=user,
+        transaction=transaction,
+        persist_exact_matches=persist_exact_matches,
+    )
+
+
+@router.get("/{transaction_id}/history", response_model=TransactionHistoryResponse)
+async def get_transaction_history(
+    transaction_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    transaction_result = await db.execute(
+        select(Transaction.id).where(Transaction.id == transaction_id, Transaction.user_id == user.id)
+    )
+    if transaction_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    events = await _load_transaction_history(db=db, user_id=user.id, transaction_id=transaction_id)
+    return TransactionHistoryResponse(
+        transaction_id=transaction_id,
+        events=[_build_transaction_review_event_response(event) for event in events],
     )
 
 
@@ -420,39 +776,24 @@ async def get_transaction_links(
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    analysis = await build_transaction_reconciliation_item_from_db(
+    detail = await _build_transaction_detail_response(
         db=db,
-        user_id=user.id,
+        user=user,
         transaction=transaction,
+        persist_exact_matches=persist_exact_matches,
     )
-
-    if persist_exact_matches and analysis.exact_matches:
-        await sync_exact_transaction_document_links(
-            db=db,
-            user_id=user.id,
-            exact_matches_by_transaction={transaction.id: analysis.exact_matches},
-        )
-        await db.commit()
-
-    link_result = await db.execute(
-        select(TransactionDocumentLink)
-        .options(selectinload(TransactionDocumentLink.document))
-        .where(
-            TransactionDocumentLink.transaction_id == transaction.id,
-            TransactionDocumentLink.user_id == user.id,
-        )
-        .order_by(TransactionDocumentLink.status.asc(), TransactionDocumentLink.created_at.asc())
-    )
-    persisted_links = list(link_result.scalars().all())
 
     return TransactionLinksResponse(
-        transaction=_build_transaction_response(transaction),
-        status=analysis.status,
-        analysis_note=analysis.analysis_note,
-        persisted_links=[_build_transaction_link_response(link) for link in persisted_links],
-        exact_matches=[_build_match_response(match) for match in analysis.exact_matches],
-        suggested_matches=[_build_match_response(match) for match in analysis.suggested_matches],
-        supporting_matches=[_build_match_response(match) for match in analysis.supporting_matches],
+        transaction=detail.transaction,
+        status=detail.status,
+        analysis_note=detail.analysis_note,
+        resolution_bucket=detail.resolution_bucket,
+        recommended_review_status=detail.recommended_review_status,
+        resolution_reason=detail.resolution_reason,
+        persisted_links=detail.persisted_links,
+        exact_matches=detail.exact_matches,
+        suggested_matches=detail.suggested_matches,
+        supporting_matches=detail.supporting_matches,
     )
 
 
@@ -470,9 +811,27 @@ async def update_transaction_review(
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+    previous_review_status = transaction.review_status
+    previous_review_note = transaction.review_note
+    previous_expected_supplier = transaction.expected_supplier
     transaction.review_status = body.review_status
     transaction.review_note = body.review_note
+    transaction.expected_supplier = (body.expected_supplier or "").strip() or None
     transaction.reviewed_at = datetime.utcnow()
+    _append_transaction_review_event(
+        db=db,
+        transaction=transaction,
+        user=user,
+        event_type="review_updated",
+        previous_review_status=previous_review_status,
+        current_review_status=transaction.review_status,
+        payload={
+            "previous_review_note": previous_review_note,
+            "current_review_note": transaction.review_note,
+            "previous_expected_supplier": previous_expected_supplier,
+            "current_expected_supplier": transaction.expected_supplier,
+        },
+    )
 
     await db.commit()
     await db.refresh(transaction)
@@ -511,6 +870,7 @@ async def create_transaction_link(
         )
     )
     link = link_result.scalar_one_or_none()
+    existing_link = link is not None
     if link is None:
         link = TransactionDocumentLink(
             user_id=user.id,
@@ -531,6 +891,26 @@ async def create_transaction_link(
         transaction=transaction,
         document=document,
         link_status=link.status,
+        user=user,
+        link=link,
+    )
+    _append_transaction_review_event(
+        db=db,
+        transaction=transaction,
+        user=user,
+        event_type="link_updated" if existing_link else "link_created",
+        previous_review_status=None,
+        current_review_status=transaction.review_status,
+        document_id=document.id,
+        link_id=link.id,
+        payload={
+            "role": link.role,
+            "link_status": link.status,
+            "score": link.score,
+            "confidence": link.confidence,
+            "amount_applied": str(link.amount_applied) if isinstance(link.amount_applied, Decimal) else None,
+            "note": link.note,
+        },
     )
 
     await db.commit()
@@ -562,6 +942,15 @@ async def update_transaction_link(
     )
     transaction = transaction_result.scalar_one()
 
+    previous_link_state = {
+        "role": link.role,
+        "status": link.status,
+        "score": link.score,
+        "confidence": link.confidence,
+        "amount_applied": str(link.amount_applied) if isinstance(link.amount_applied, Decimal) else None,
+        "note": link.note,
+    }
+    previous_review_status = transaction.review_status
     updates = body.model_dump(exclude_unset=True)
     for field, value in updates.items():
         setattr(link, field, value)
@@ -573,6 +962,29 @@ async def update_transaction_link(
         transaction=transaction,
         document=link.document,
         link_status=link.status,
+        user=user,
+        link=link,
+    )
+    _append_transaction_review_event(
+        db=db,
+        transaction=transaction,
+        user=user,
+        event_type="link_updated",
+        previous_review_status=previous_review_status,
+        current_review_status=transaction.review_status,
+        document_id=link.document_id,
+        link_id=link.id,
+        payload={
+            "previous_link_state": previous_link_state,
+            "current_link_state": {
+                "role": link.role,
+                "status": link.status,
+                "score": link.score,
+                "confidence": link.confidence,
+                "amount_applied": str(link.amount_applied) if isinstance(link.amount_applied, Decimal) else None,
+                "note": link.note,
+            },
+        },
     )
 
     await db.commit()
@@ -624,29 +1036,7 @@ async def get_reconciliation_report(
         unmatched_transactions=report.unmatched_transactions,
         invoice_documents_in_month=report.invoice_documents_in_month,
         unmatched_invoice_documents=report.unmatched_invoice_documents,
-        transactions=[
-            TransactionReconciliationItemResponse(
-                transaction_id=item.transaction_id,
-                source_type=item.source_type,
-                row_number=item.row_number,
-                pub=item.pub,
-                transaction_date=item.transaction_date,
-                description1=item.description1,
-                description2=item.description2,
-                category=item.category,
-                transaction_type=item.transaction_type,
-                debit_amount=item.debit_amount,
-                credit_amount=item.credit_amount,
-                annotation_types=item.annotation_types,
-                annotation_notes=item.annotation_notes,
-                has_linked_annotation=item.has_linked_annotation,
-                status=item.status,
-                analysis_note=item.analysis_note,
-                exact_matches=[_build_match_response(match) for match in item.exact_matches],
-                suggested_matches=[_build_match_response(match) for match in item.suggested_matches],
-                supporting_matches=[_build_match_response(match) for match in item.supporting_matches],
-            )
-            for item in report.transactions
-        ],
+        resolution_bucket_counts=report.resolution_bucket_counts,
+        transactions=[_build_reconciliation_item_response(item) for item in report.transactions],
         unmatched_documents=[_build_match_response(match) for match in report.unmatched_documents],
     )

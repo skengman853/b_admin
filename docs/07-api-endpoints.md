@@ -170,8 +170,16 @@ Return one full document record, including:
 
 - `extracted_text`
 - `extraction_candidates`
+- `statement_analysis`
+- `ledger_analysis`
 - `parent_document`
 - `child_documents`
+
+For statement and account-style documents, `ledger_analysis` now also includes normalized settlement groups. That gives the UI a way to show:
+
+- the payment line on the statement
+- the invoices and credit notes that net to that payment
+- the grouped settlement math behind one bank transaction
 
 `extraction_candidates` is mainly for multi-invoice PDFs. It returns the per-invoice candidates the extractor can see inside one attachment, for example:
 
@@ -305,6 +313,13 @@ Useful when:
 - documents were imported from a non-Gmail source
 - you want to re-extract a specific set after metadata or rule changes
 
+The extraction pass now works in layers:
+
+- PDF text extraction
+- rules-based metadata extraction
+- optional AI fallback for weak invoices and statements when `openai_api_key` is configured
+- invoice projection refresh for touched documents
+
 #### `POST /api/documents/import-local`
 
 Import PDFs from a staged local archive that sits inside `backend/`.
@@ -357,6 +372,51 @@ The response includes:
 - `extracted_documents`
 - `skipped_files`
 - per-file statuses such as `imported`, `deduped`, or `skipped`
+
+#### `POST /api/documents/import-statement-context`
+
+Import only statement documents for suppliers that appear in a review month’s transactions, while automatically looking across the previous, current, and next months.
+
+This is intended for month-end statement suppliers such as:
+
+- `Heineken`
+- `Diageo`
+- `Bulmers`
+- `Connacht Bottlers`
+
+The endpoint:
+
+- inspects transactions for the requested month
+- detects suppliers that belong to statement parser families
+- expands the search window to adjacent months
+- imports only statement PDFs from the staged local archive
+- filters by pub when provided
+- runs the normal extraction flow after import
+
+Example:
+
+```bash
+curl -s -X POST "http://localhost:8000/api/documents/import-statement-context" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_path": "backend/import_sources/Invoices - Pubs",
+    "month": "2026-04",
+    "source_type": "bank_statement",
+    "pub": "Careys",
+    "adjacent_months": 1,
+    "limit": 250
+  }'
+```
+
+The response includes:
+
+- `months_considered`
+- `suppliers_considered`
+- `pubs_considered`
+- `imported_documents`
+- `extracted_documents`
+- per-file statuses for the imported statement PDFs
 
 ### Current Scaffolding Endpoints from Earlier Direction
 
@@ -425,9 +485,23 @@ Return the transaction-vs-document reconciliation analysis for one month.
 This includes:
 
 - `matched`, `partial`, `suggested`, and `unmatched` counts
+- `resolution_bucket_counts` so unresolved work is grouped into action buckets
 - candidate invoice matches
 - supporting document matches such as statements or credit notes when invoice matches do not exist
 - `analysis_note` to explain unresolved-but-informative rows
+
+The reconciliation layer now runs on a shared normalized ledger model:
+
+- invoice documents normalize to ledger entries
+- credit notes normalize to negative ledger entries
+- receipts normalize to payment ledger entries
+- parsed supplier statement lines normalize to the same entry model
+
+That lets the engine reason about statement settlements such as:
+
+- invoice + credit note = receipt
+- statement payment row = bank payment
+- support-document rows without direct invoice PDFs
 
 #### `GET /api/transactions/review-queue`
 
@@ -442,9 +516,61 @@ By default this excludes transactions whose persistent `review_status` is alread
 Useful filters:
 
 - `status=partial,suggested,unmatched`
+- `resolution_bucket=confirm_match,review_supporting_docs,awaiting_document`
 - `review_status=awaiting_document`
 - `source_type=bank_statement`
 - `month=2026-04`
+
+Each queue item also returns:
+
+- `resolution_bucket`
+- `recommended_review_status`
+- `resolution_reason`
+
+Current resolution buckets:
+
+- `confirm_match`
+- `complete_partial_match`
+- `review_supporting_docs`
+- `awaiting_document`
+- `no_document_expected`
+- `needs_matcher_improvement`
+
+#### `GET /api/documents/{document_id}`
+
+Document detail now includes two useful analysis blocks for the review UI:
+
+- `statement_analysis`
+  - supplier-statement-specific parsed metadata and line recovery
+- `ledger_analysis`
+  - the normalized financial entry view used by reconciliation
+
+`ledger_analysis.entries` can contain common entry kinds such as:
+
+- `invoice`
+- `credit_note`
+- `payment`
+- `other`
+
+This is now the canonical document-inspection endpoint for operator tools and future Claude connector work.
+
+#### `GET /api/transactions/{transaction_id}/detail`
+
+Return the canonical transaction detail payload for operator tools.
+
+This includes:
+
+- the transaction row
+- `reconciliation_flow`
+  - a standardized supplier -> statement -> invoices / credits -> resolve chain
+- persisted links
+- exact matches
+- suggested invoice matches
+- supporting document matches
+- resolution bucket guidance
+- `history_count` for the transaction audit trail
+
+This is the preferred transaction-detail endpoint for future workflow integrations.
 
 #### `GET /api/transactions/{transaction_id}/links`
 
@@ -455,6 +581,30 @@ Return:
 - exact matches
 - suggested invoice matches
 - supporting document matches
+- resolution bucket guidance for that row
+
+This remains available for backward compatibility with the current review UI.
+
+#### `GET /api/transactions/{transaction_id}/history`
+
+Return the transaction review audit trail.
+
+Each event includes:
+
+- `event_type`
+- `actor_email`
+- `previous_review_status`
+- `current_review_status`
+- `document_id`
+- `link_id`
+- `payload`
+- `created_at`
+
+This is intended for:
+
+- operator auditability
+- future Claude action tracing
+- debugging why a row moved between review states
 
 #### `PATCH /api/transactions/{transaction_id}/review`
 
@@ -467,6 +617,13 @@ Allowed `review_status` values:
 - `supporting_docs_only`
 - `awaiting_document`
 - `no_document_expected`
+
+This endpoint also accepts:
+
+- `review_note`
+- `expected_supplier`
+
+Each update now records a review-history event.
 
 Example:
 
@@ -485,6 +642,8 @@ curl -s -X PATCH "http://localhost:8000/api/transactions/TRANSACTION_ID/review" 
 Create or upsert a manual transaction-to-document link.
 
 Confirmed invoice links now promote the transaction review state to `linked`.
+
+Each link create or update now records a transaction review-history event.
 
 #### `PATCH /api/transactions/links/{link_id}`
 

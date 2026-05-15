@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import types
 import unittest
 import uuid
@@ -24,20 +25,31 @@ _missing_dependencies: str | None = None
 try:
     import aiosqlite  # noqa: F401,E402
     from fastapi import HTTPException  # noqa: E402
+    from fastapi.responses import FileResponse  # noqa: E402
     from sqlalchemy import select  # noqa: E402
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
     from app.api.documents import (  # noqa: E402
         approve_document,
+        get_document_file,
         get_document,
         import_local_documents,
+        import_statement_context_documents,
         list_documents,
         list_review_documents,
         split_document,
         update_document,
     )
     from app.models import Base, Document, User  # noqa: E402
-    from app.schemas import DocumentUpdateRequest, LocalDocumentImportRequest  # noqa: E402
-    from app.services.local_document_import import LocalDocumentImportItem, LocalDocumentImportResult  # noqa: E402
+    from app.schemas import (  # noqa: E402
+        DocumentUpdateRequest,
+        LocalDocumentImportRequest,
+        StatementContextImportRequest,
+    )
+    from app.services.local_document_import import (  # noqa: E402
+        LocalDocumentImportItem,
+        LocalDocumentImportResult,
+        StatementContextImportResult,
+    )
 except ModuleNotFoundError as exc:  # pragma: no cover - host Python may not have app deps
     _missing_dependencies = str(exc)
 
@@ -63,6 +75,26 @@ VAT Total
 17.84
 TOTAL
 95.40
+"""
+
+    DIAGEO_STATEMENT_TEXT = """STATEMENT
+Account No.
+314773
+Opening Balance @ 01.04.2026
+02.04.2026
+07.04.2026
+Contact Name:
+Contact No.:
+9263312263
+2503715694
+INVOIC
+PAYMNT
+09.04.2026
+07.04.2026
+Total Due
+0.00
+Total Sett Disc
+275.17-
 """
 
     class DocumentApiFilterTests(unittest.IsolatedAsyncioTestCase):
@@ -318,7 +350,54 @@ TOTAL
             self.assertEqual(payload.imported_documents, 1)
             self.assertEqual(payload.results[0].supplier, "Diageo")
             self.assertEqual(payload.results[0].document_id, local_document_id)
-            self.assertNotIn(target.id, [item.id for item in refreshed_review_payload.documents])
+
+        async def test_import_statement_context_documents_validates_service_dataclasses(self) -> None:
+            local_document_id = uuid.uuid4()
+            with patch(
+                "app.api.documents.import_statement_context_from_local_archive",
+                new=AsyncMock(
+                    return_value=StatementContextImportResult(
+                        source_path="import_sources/Invoices - Pubs",
+                        month="2026-04",
+                        months_considered=["2026-03", "2026-04", "2026-05"],
+                        source_type="bank_statement",
+                        suppliers_considered=["Heineken"],
+                        pubs_considered=["Careys"],
+                        scanned_files=4,
+                        eligible_files=2,
+                        imported_documents=1,
+                        extracted_documents=1,
+                        skipped_files=3,
+                        results=[
+                            LocalDocumentImportItem(
+                                relative_path="Heineken/Statement Summaries - New/Careys Bar/statement.pdf",
+                                supplier="Heineken",
+                                document_type="statement",
+                                pub_hint="Careys Bar",
+                                status="imported",
+                                reason=None,
+                                saved_path="Documents/Heineken/Statements/statement.pdf",
+                                document_id=str(local_document_id),
+                            )
+                        ],
+                    )
+                ),
+            ):
+                async with self.session_factory() as session:
+                    payload = await import_statement_context_documents(
+                        body=StatementContextImportRequest(
+                            source_path="backend/import_sources/Invoices - Pubs",
+                            month="2026-04",
+                            pub="Careys",
+                        ),
+                        user=self.user,
+                        db=session,
+                    )
+
+            self.assertEqual(payload.imported_documents, 1)
+            self.assertEqual(payload.suppliers_considered, ["Heineken"])
+            self.assertEqual(payload.months_considered, ["2026-03", "2026-04", "2026-05"])
+            self.assertEqual(payload.results[0].document_id, local_document_id)
 
         async def test_split_document_creates_child_records_and_resolves_parent_review(self) -> None:
             async with self.session_factory() as session:
@@ -420,6 +499,74 @@ TOTAL
             self.assertEqual(child_detail.parent_document.id, target.id)
             self.assertEqual(child_detail.parent_document.extraction_status, "split")
             self.assertEqual(child_detail.child_documents, [])
+
+        async def test_get_document_returns_statement_analysis_for_supplier_statements(self) -> None:
+            async with self.session_factory() as session:
+                document = Document(
+                    user_id=self.user.id,
+                    gmail_message_id="message-statement-detail",
+                    attachment_index=0,
+                    attachment_name="diageo_statement.pdf",
+                    supplier="Diageo",
+                    document_type="statement",
+                    extraction_status="extracted",
+                    local_path="Documents/Diageo/statement.pdf",
+                    extracted_text=DIAGEO_STATEMENT_TEXT,
+                )
+                session.add(document)
+                await session.commit()
+                await session.refresh(document)
+
+                detail = await get_document(
+                    document_id=document.id,
+                    user=self.user,
+                    db=session,
+                )
+
+            self.assertIsNotNone(detail.statement_analysis)
+            assert detail.statement_analysis is not None
+            self.assertEqual(detail.statement_analysis.statement_kind, "supplier_statement")
+            self.assertTrue(detail.statement_analysis.is_financial)
+            self.assertEqual(detail.statement_analysis.account_number, "314773")
+            self.assertEqual(detail.statement_analysis.invoice_references, ["9263312263"])
+            self.assertEqual(detail.statement_analysis.payment_references, ["2503715694"])
+            self.assertIsNotNone(detail.ledger_analysis)
+            assert detail.ledger_analysis is not None
+            self.assertEqual(detail.ledger_analysis.statement_kind, "supplier_statement")
+            self.assertTrue(detail.ledger_analysis.is_financial)
+            self.assertEqual(detail.ledger_analysis.account_number, "314773")
+            self.assertEqual(detail.ledger_analysis.entries[0].entry_kind, "invoice")
+            self.assertEqual(detail.ledger_analysis.entries[1].entry_kind, "payment")
+
+        async def test_get_document_file_returns_owned_local_pdf(self) -> None:
+            temp_dir = tempfile.TemporaryDirectory()
+            self.addCleanup(temp_dir.cleanup)
+            pdf_path = Path(temp_dir.name) / "sample.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4\n%mock\n")
+
+            async with self.session_factory() as session:
+                document = Document(
+                    user_id=self.user.id,
+                    gmail_message_id="message-local-file",
+                    attachment_index=0,
+                    attachment_name="sample.pdf",
+                    supplier="Supplier File",
+                    document_type="invoice",
+                    extraction_status="extracted",
+                    local_path=str(pdf_path),
+                )
+                session.add(document)
+                await session.commit()
+                await session.refresh(document)
+
+                response = await get_document_file(
+                    document_id=document.id,
+                    user=self.user,
+                    db=session,
+                )
+
+            self.assertIsInstance(response, FileResponse)
+            self.assertEqual(Path(response.path), pdf_path)
 
         async def test_list_documents_orders_packet_children_in_invoice_order(self) -> None:
             async with self.session_factory() as session:

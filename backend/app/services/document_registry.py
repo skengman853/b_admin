@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Document
@@ -83,9 +84,25 @@ async def upsert_document_record(
             return document
 
         document = Document(user_id=user_id, **payload)
-        db.add(document)
-        await db.flush()
-        return document
+        try:
+            async with db.begin_nested():
+                db.add(document)
+                await db.flush()
+            return document
+        except IntegrityError:
+            retry_result = await db.execute(
+                select(Document).where(
+                    Document.user_id == user_id,
+                    Document.gmail_message_id == gmail_message_id,
+                    Document.attachment_index == attachment_index,
+                    Document.derivation_index == 0,
+                )
+            )
+            existing_document = retry_result.scalar_one_or_none()
+            if existing_document is None:
+                raise
+            _merge_document_payload(existing_document, payload, preserve_identity=False)
+            return existing_document
 
     _merge_document_payload(document, payload, preserve_identity=False)
     return document

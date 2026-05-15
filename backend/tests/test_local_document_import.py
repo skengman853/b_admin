@@ -5,6 +5,7 @@ import tempfile
 import types
 import unittest
 import uuid
+from datetime import date
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -29,8 +30,11 @@ try:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
     from app.config import settings  # noqa: E402
-    from app.models import Base, Document, User  # noqa: E402
-    from app.services.local_document_import import import_documents_from_local_archive  # noqa: E402
+    from app.models import Base, Document, Transaction, User  # noqa: E402
+    from app.services.local_document_import import (  # noqa: E402
+        import_documents_from_local_archive,
+        import_statement_context_from_local_archive,
+    )
 except ModuleNotFoundError as exc:  # pragma: no cover - host Python may not have app deps
     _missing_dependencies = str(exc)
 
@@ -146,6 +150,73 @@ else:
             self.assertEqual(result.extracted_documents, 1)
             self.assertEqual(extract_mock.await_count, 1)
             self.assertEqual(len(extract_mock.await_args.kwargs["document_ids"]), 1)
+
+        async def test_imports_adjacent_month_statement_context_for_statement_suppliers(self) -> None:
+            archive_root = self.tmp_path / "import_sources" / "Invoices - Pubs"
+            careys_april_statement = archive_root / "Heineken" / "Statement Summaries - New" / "Careys Bar" / (
+                "Heineken - 050 - Statement Summary - Date - 02-04-2026.pdf"
+            )
+            careys_may_statement = archive_root / "Heineken" / "Statement Summaries - New" / "Careys Bar" / (
+                "Heineken - 051 - Statement Summary - Date - 05-05-2026.pdf"
+            )
+            canal_may_statement = archive_root / "Heineken" / "Statement Summaries - New" / "Canal Turn" / (
+                "Heineken - TCT051 - Statement Summary - Date - 05-05-2026.pdf"
+            )
+            june_statement = archive_root / "Heineken" / "Statement Summaries - New" / "Careys Bar" / (
+                "Heineken - 052 - Statement Summary - Date - 03-06-2026.pdf"
+            )
+            invoice_path = archive_root / "Heineken" / "Invoices" / "Careys Bar" / (
+                "Heineken - 194141091 - Date - 01-04-2026.pdf"
+            )
+            for path in [careys_april_statement, careys_may_statement, canal_may_statement, june_statement, invoice_path]:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"%PDF-1.4\nstatement-context-test")
+
+            async with self.session_factory() as session:
+                session.add(
+                    Transaction(
+                        user_id=self.user.id,
+                        source_type="bank_statement",
+                        source_file="bank.pdf",
+                        source_sheet="careys",
+                        row_number=1,
+                        pub="Careys",
+                        transaction_date=date(2026, 4, 7),
+                        description1="D/D HEINEKEN IRELA",
+                        raw_row_json={},
+                    )
+                )
+                await session.commit()
+
+                result = await import_statement_context_from_local_archive(
+                    user=self.user,
+                    db=session,
+                    source_path=str(archive_root),
+                    month="2026-04",
+                    source_type="bank_statement",
+                    pub="Careys",
+                    adjacent_months=1,
+                    extract_after_import=False,
+                )
+
+                documents = list(
+                    (
+                        await session.execute(
+                            select(Document).where(Document.user_id == self.user.id).order_by(Document.document_date.asc())
+                        )
+                    ).scalars().all()
+                )
+
+            self.assertEqual(result.suppliers_considered, ["Heineken"])
+            self.assertEqual(result.months_considered, ["2026-03", "2026-04", "2026-05"])
+            self.assertEqual(result.pubs_considered, ["Careys"])
+            self.assertEqual(result.imported_documents, 2)
+            self.assertEqual(len(documents), 2)
+            self.assertTrue(all(document.document_type == "statement" for document in documents))
+            self.assertTrue(all(document.pub in (None, "") or document.pub == "Careys Bar" for document in documents))
+            imported_paths = {Path(document.local_path).name for document in documents}
+            self.assertIn("Careys Bar - Heineken - 050 - Statement Summary - Date - 02-04-2026.pdf", imported_paths)
+            self.assertIn("Careys Bar - Heineken - 051 - Statement Summary - Date - 05-05-2026.pdf", imported_paths)
 
 
 if __name__ == "__main__":

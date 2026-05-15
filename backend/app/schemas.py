@@ -185,9 +185,76 @@ class DocumentExtractionCandidateResponse(BaseModel):
     currency: str | None
 
 
+class DocumentStatementEntryResponse(BaseModel):
+    event_date: date | None = None
+    reference: str | None = None
+    transaction_type: str | None = None
+    due_date: date | None = None
+    clearing_reference: str | None = None
+    amount: Decimal | None = None
+    raw_text: str | None = None
+
+
+class DocumentStatementAnalysisResponse(BaseModel):
+    statement_kind: str
+    is_financial: bool
+    account_number: str | None = None
+    account_name: str | None = None
+    period_start: date | None = None
+    period_end: date | None = None
+    total_due: Decimal | None = None
+    settlement_discount_total: Decimal | None = None
+    closing_balance: Decimal | None = None
+    invoice_references: list[str] = Field(default_factory=list)
+    payment_references: list[str] = Field(default_factory=list)
+    note: str | None = None
+    entries: list[DocumentStatementEntryResponse] = Field(default_factory=list)
+
+
+class DocumentLedgerEntryResponse(BaseModel):
+    document_id: uuid.UUID
+    document_type: str
+    supplier: str
+    entry_kind: str
+    event_date: date | None = None
+    due_date: date | None = None
+    reference: str | None = None
+    related_reference: str | None = None
+    amount: Decimal | None = None
+    signed_amount: Decimal | None = None
+    vat_amount: Decimal | None = None
+    currency: str | None = None
+    is_financial: bool = True
+    statement_kind: str | None = None
+    account_number: str | None = None
+    account_name: str | None = None
+    raw_text: str | None = None
+
+
+class DocumentLedgerSettlementResponse(BaseModel):
+    payment_entry: DocumentLedgerEntryResponse
+    component_entries: list[DocumentLedgerEntryResponse] = Field(default_factory=list)
+    net_amount: Decimal | None = None
+
+
+class DocumentLedgerAnalysisResponse(BaseModel):
+    document_id: uuid.UUID
+    supplier: str
+    document_type: str
+    is_financial: bool
+    statement_kind: str | None = None
+    account_number: str | None = None
+    account_name: str | None = None
+    note: str | None = None
+    entries: list[DocumentLedgerEntryResponse] = Field(default_factory=list)
+    settlements: list[DocumentLedgerSettlementResponse] = Field(default_factory=list)
+
+
 class DocumentDetailResponse(DocumentResponse):
     extracted_text: str | None = None
     extraction_candidates: list[DocumentExtractionCandidateResponse] = Field(default_factory=list)
+    statement_analysis: DocumentStatementAnalysisResponse | None = None
+    ledger_analysis: DocumentLedgerAnalysisResponse | None = None
     parent_document: DocumentResponse | None = None
     child_documents: list[DocumentResponse] = Field(default_factory=list)
 
@@ -296,6 +363,33 @@ class LocalDocumentImportResponse(BaseModel):
     results: list[LocalDocumentImportItem] = Field(default_factory=list)
 
 
+class StatementContextImportRequest(BaseModel):
+    source_path: str
+    month: str = Field(pattern=r"^\d{4}-\d{2}$")
+    source_type: Literal["bank_statement", "vatbook"] = "bank_statement"
+    pub: str | None = None
+    supplier_filters: list[str] = Field(default_factory=list)
+    adjacent_months: int = Field(default=1, ge=0, le=3)
+    limit: int = Field(default=250, ge=1, le=2000)
+    recurse: bool = True
+    extract_after_import: bool = True
+
+
+class StatementContextImportResponse(BaseModel):
+    source_path: str
+    month: str
+    months_considered: list[str] = Field(default_factory=list)
+    source_type: str
+    suppliers_considered: list[str] = Field(default_factory=list)
+    pubs_considered: list[str] = Field(default_factory=list)
+    scanned_files: int
+    eligible_files: int
+    imported_documents: int
+    extracted_documents: int
+    skipped_files: int
+    results: list[LocalDocumentImportItem] = Field(default_factory=list)
+
+
 class DocumentSplitResponse(BaseModel):
     parent_document: DocumentDetailResponse
     child_documents: list[DocumentDetailResponse] = Field(default_factory=list)
@@ -357,6 +451,7 @@ class TransactionResponse(BaseModel):
     has_linked_annotation: bool
     review_status: str
     review_note: str | None
+    expected_supplier: str | None
     reviewed_at: datetime | None
     imported_at: datetime
 
@@ -380,6 +475,55 @@ class TransactionDocumentMatchResponse(BaseModel):
     reason: str
 
 
+class TransactionFlowDocumentResponse(BaseModel):
+    document_id: uuid.UUID
+    supplier: str
+    document_type: str
+    reference: str | None = None
+    document_date: date | None = None
+    amount: Decimal | None = None
+    vat_amount: Decimal | None = None
+    score: float | None = None
+    role: str | None = None
+    reason: str | None = None
+    statement_kind: str | None = None
+    is_financial: bool | None = None
+    invoice_reference_count: int = 0
+    payment_reference_count: int = 0
+    credit_reference_count: int = 0
+    settlement_count: int = 0
+
+
+class TransactionFlowSettlementResponse(BaseModel):
+    source_document_id: uuid.UUID
+    source_supplier: str
+    source_reference: str | None = None
+    source_document_date: date | None = None
+    statement_kind: str | None = None
+    payment_entry: DocumentLedgerEntryResponse
+    component_entries: list[DocumentLedgerEntryResponse] = Field(default_factory=list)
+    net_amount: Decimal | None = None
+    matches_transaction_amount: bool = False
+
+
+class TransactionFlowStageResponse(BaseModel):
+    key: str
+    title: str
+    status: str
+    summary: str
+    items: list[str] = Field(default_factory=list)
+    documents: list[TransactionFlowDocumentResponse] = Field(default_factory=list)
+
+
+class TransactionFlowResponse(BaseModel):
+    flow_type: str
+    supplier_label: str | None = None
+    bank_counterparty: str | None = None
+    next_step: str
+    stages: list[TransactionFlowStageResponse] = Field(default_factory=list)
+    settlements: list[TransactionFlowSettlementResponse] = Field(default_factory=list)
+
+
 class TransactionReconciliationItemResponse(BaseModel):
     transaction_id: uuid.UUID
     source_type: str
@@ -397,6 +541,9 @@ class TransactionReconciliationItemResponse(BaseModel):
     has_linked_annotation: bool
     status: str
     analysis_note: str | None = None
+    resolution_bucket: str
+    recommended_review_status: str | None = None
+    resolution_reason: str | None = None
     exact_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
     suggested_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
     supporting_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
@@ -415,6 +562,7 @@ class TransactionReconciliationReportResponse(BaseModel):
     unmatched_transactions: int
     invoice_documents_in_month: int
     unmatched_invoice_documents: int
+    resolution_bucket_counts: dict[str, int] = Field(default_factory=dict)
     transactions: list[TransactionReconciliationItemResponse] = Field(default_factory=list)
     unmatched_documents: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
 
@@ -447,14 +595,50 @@ class TransactionLinkResponse(BaseModel):
     document: TransactionLinkedDocumentResponse
 
 
+class TransactionReviewEventResponse(BaseModel):
+    id: uuid.UUID
+    transaction_id: uuid.UUID
+    event_type: str
+    actor_email: str | None
+    previous_review_status: str | None
+    current_review_status: str | None
+    document_id: uuid.UUID | None
+    link_id: uuid.UUID | None
+    payload: dict = Field(default_factory=dict)
+    created_at: datetime
+
+
 class TransactionLinksResponse(BaseModel):
     transaction: TransactionResponse
     status: str
     analysis_note: str | None = None
+    resolution_bucket: str
+    recommended_review_status: str | None = None
+    resolution_reason: str | None = None
     persisted_links: list[TransactionLinkResponse] = Field(default_factory=list)
     exact_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
     suggested_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
     supporting_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+
+
+class TransactionDetailResponse(BaseModel):
+    transaction: TransactionResponse
+    status: str
+    analysis_note: str | None = None
+    resolution_bucket: str
+    recommended_review_status: str | None = None
+    resolution_reason: str | None = None
+    reconciliation_flow: TransactionFlowResponse | None = None
+    history_count: int = 0
+    persisted_links: list[TransactionLinkResponse] = Field(default_factory=list)
+    exact_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+    suggested_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+    supporting_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
+
+
+class TransactionHistoryResponse(BaseModel):
+    transaction_id: uuid.UUID
+    events: list[TransactionReviewEventResponse] = Field(default_factory=list)
 
 
 class TransactionReviewQueueItemResponse(BaseModel):
@@ -462,6 +646,9 @@ class TransactionReviewQueueItemResponse(BaseModel):
     status: str
     needs_action: bool = True
     analysis_note: str | None = None
+    resolution_bucket: str
+    recommended_review_status: str | None = None
+    resolution_reason: str | None = None
     persisted_links: list[TransactionLinkResponse] = Field(default_factory=list)
     exact_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
     suggested_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
@@ -480,6 +667,7 @@ class TransactionReviewQueueResponse(BaseModel):
     partial_transactions: int
     suggested_transactions: int
     unmatched_transactions: int
+    resolution_bucket_counts: dict[str, int] = Field(default_factory=dict)
     transactions: list[TransactionReviewQueueItemResponse] = Field(default_factory=list)
 
 
@@ -492,6 +680,7 @@ class TransactionReviewUpdateRequest(BaseModel):
         "no_document_expected",
     ]
     review_note: str | None = None
+    expected_supplier: str | None = None
 
 
 class TransactionLinkCreateRequest(BaseModel):

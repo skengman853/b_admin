@@ -1,0 +1,2273 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reconciliation Review Workbench</title>
+    <style>
+      :root {
+        --bg: #efe6d8;
+        --bg-deep: #d8c8b1;
+        --panel: rgba(255, 251, 244, 0.84);
+        --panel-strong: rgba(255, 252, 247, 0.96);
+        --ink: #1d2a33;
+        --muted: #6d6b64;
+        --line: rgba(42, 51, 61, 0.14);
+        --accent: #0d6b62;
+        --accent-soft: rgba(13, 107, 98, 0.12);
+        --warn: #9a5c16;
+        --warn-soft: rgba(154, 92, 22, 0.14);
+        --danger: #8d3c33;
+        --danger-soft: rgba(141, 60, 51, 0.14);
+        --shadow: 0 20px 60px rgba(39, 32, 24, 0.12);
+        --radius: 24px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.72), transparent 30%),
+          linear-gradient(160deg, var(--bg) 0%, #f7f0e5 42%, var(--bg-deep) 100%);
+      }
+
+      .shell {
+        width: min(1440px, calc(100% - 2rem));
+        margin: 0 auto;
+        padding: 1.4rem 0 2rem;
+      }
+
+      .hero,
+      .panel,
+      .detail-card {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        backdrop-filter: blur(14px);
+        box-shadow: var(--shadow);
+        border-radius: var(--radius);
+      }
+
+      .hero {
+        padding: 1.35rem 1.5rem 1.2rem;
+        display: grid;
+        gap: 1rem;
+      }
+
+      .hero-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+        font-size: clamp(2rem, 4vw, 3.2rem);
+        line-height: 0.94;
+        letter-spacing: -0.03em;
+      }
+
+      .hero p {
+        margin: 0.45rem 0 0;
+        max-width: 62ch;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .status-pill,
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.42rem 0.72rem;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.72);
+        font-size: 0.83rem;
+        font-weight: 700;
+      }
+
+      .status-pill[data-tone="accent"],
+      .tag[data-tone="confirm_match"] {
+        background: var(--accent-soft);
+        color: var(--accent);
+        border-color: rgba(13, 107, 98, 0.18);
+      }
+
+      .tag[data-tone="review_supporting_docs"],
+      .tag[data-tone="complete_partial_match"] {
+        background: rgba(36, 84, 135, 0.11);
+        color: #28537a;
+        border-color: rgba(40, 83, 122, 0.18);
+      }
+
+      .tag[data-tone="awaiting_document"] {
+        background: var(--warn-soft);
+        color: var(--warn);
+        border-color: rgba(154, 92, 22, 0.18);
+      }
+
+      .tag[data-tone="needs_matcher_improvement"],
+      .tag[data-tone="unmatched"] {
+        background: var(--danger-soft);
+        color: var(--danger);
+        border-color: rgba(141, 60, 51, 0.18);
+      }
+
+      .tag[data-tone="suggested"] {
+        background: rgba(64, 84, 54, 0.12);
+        color: #486038;
+        border-color: rgba(72, 96, 56, 0.18);
+      }
+
+      .tag[data-tone="supporting_docs_only"] {
+        background: rgba(93, 74, 135, 0.11);
+        color: #5d4a87;
+        border-color: rgba(93, 74, 135, 0.18);
+      }
+
+      .auth-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .auth-actions,
+      .filter-row,
+      .detail-actions,
+      .queue-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+        align-items: center;
+      }
+
+      .field {
+        display: grid;
+        gap: 0.32rem;
+        min-width: 140px;
+      }
+
+      .field label {
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      input,
+      select,
+      textarea,
+      button {
+        font: inherit;
+      }
+
+      input,
+      select,
+      textarea {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 0.72rem 0.85rem;
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--ink);
+      }
+
+      textarea {
+        min-height: 92px;
+        resize: vertical;
+      }
+
+      button {
+        border: 1px solid transparent;
+        border-radius: 16px;
+        padding: 0.78rem 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      .button-primary {
+        background: var(--ink);
+        color: #fffaf2;
+      }
+
+      .button-secondary {
+        background: rgba(255, 255, 255, 0.84);
+        color: var(--ink);
+        border-color: var(--line);
+      }
+
+      .button-accent {
+        background: var(--accent);
+        color: #f5fffd;
+      }
+
+      .button-warn {
+        background: #b06b17;
+        color: #fff8ef;
+      }
+
+      .button-danger {
+        background: #9d4137;
+        color: #fff7f5;
+      }
+
+      .button-ghost {
+        background: transparent;
+        color: var(--muted);
+        border-color: var(--line);
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 0.75rem;
+      }
+
+      .stat-card {
+        padding: 0.95rem 1rem;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.66);
+        border: 1px solid rgba(42, 51, 61, 0.09);
+      }
+
+      .stat-card strong {
+        display: block;
+        font-size: 1.4rem;
+        margin-top: 0.12rem;
+      }
+
+      .stat-card span {
+        color: var(--muted);
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .bucket-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+      }
+
+      .bucket-chip {
+        border-radius: 999px;
+        padding: 0.72rem 0.95rem;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--ink);
+        font-weight: 700;
+        display: inline-flex;
+        gap: 0.55rem;
+        align-items: center;
+      }
+
+      .bucket-chip.is-active {
+        background: var(--ink);
+        color: #fff8ee;
+      }
+
+      .workspace {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+        gap: 1rem;
+      }
+
+      .panel {
+        padding: 1rem;
+      }
+
+      .queue-list {
+        display: grid;
+        gap: 0.75rem;
+        margin-top: 0.9rem;
+      }
+
+      .queue-item {
+        border: 1px solid rgba(42, 51, 61, 0.08);
+        background: rgba(255, 255, 255, 0.66);
+        border-radius: 20px;
+        padding: 0.9rem 0.95rem;
+        display: grid;
+        gap: 0.65rem;
+        cursor: pointer;
+      }
+
+      .queue-item.is-active {
+        border-color: rgba(13, 107, 98, 0.26);
+        box-shadow: inset 0 0 0 1px rgba(13, 107, 98, 0.14);
+        background: rgba(243, 255, 252, 0.82);
+      }
+
+      .queue-item-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+
+      .queue-item h3,
+      .detail-card h3,
+      .detail-card h4 {
+        margin: 0;
+      }
+
+      .queue-item h3 {
+        font-size: 1rem;
+        line-height: 1.25;
+      }
+
+      .queue-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .queue-empty,
+      .detail-empty,
+      .error-banner,
+      .success-banner {
+        border-radius: 18px;
+        padding: 1rem;
+        border: 1px solid var(--line);
+      }
+
+      .queue-empty,
+      .detail-empty {
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.6);
+      }
+
+      .error-banner {
+        background: rgba(157, 65, 55, 0.12);
+        color: #7f3129;
+        border-color: rgba(157, 65, 55, 0.18);
+      }
+
+      .success-banner {
+        background: rgba(13, 107, 98, 0.11);
+        color: #0d6b62;
+        border-color: rgba(13, 107, 98, 0.18);
+      }
+
+      .detail-stack {
+        display: grid;
+        gap: 0.9rem;
+      }
+
+      .detail-card {
+        padding: 1rem 1.05rem;
+      }
+
+      .detail-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+
+      .detail-grid {
+        margin-top: 0.9rem;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+      }
+
+      .meta-block {
+        padding: 0.85rem 0.9rem;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.68);
+        border: 1px solid rgba(42, 51, 61, 0.08);
+      }
+
+      .meta-block label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.3rem;
+      }
+
+      .match-list {
+        display: grid;
+        gap: 0.8rem;
+      }
+
+      .match-card {
+        padding: 0.95rem;
+        border-radius: 18px;
+        border: 1px solid rgba(42, 51, 61, 0.08);
+        background: rgba(255, 255, 255, 0.66);
+        display: grid;
+        gap: 0.55rem;
+      }
+
+      .match-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        align-items: flex-start;
+      }
+
+      .match-check {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+      }
+
+      .match-check input {
+        width: 1rem;
+        height: 1rem;
+      }
+
+      .match-reason {
+        color: var(--muted);
+        line-height: 1.45;
+        font-size: 0.92rem;
+      }
+
+      .match-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+      }
+
+      .toolbar-spacer {
+        flex: 1 1 auto;
+      }
+
+      .small-note {
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.45;
+      }
+
+      .flow-header {
+        display: grid;
+        gap: 0.75rem;
+      }
+
+      .flow-stage-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.8rem;
+      }
+
+      .flow-stage {
+        padding: 0.95rem;
+        border-radius: 18px;
+        border: 1px solid rgba(42, 51, 61, 0.08);
+        background: rgba(255, 255, 255, 0.66);
+        display: grid;
+        gap: 0.6rem;
+      }
+
+      .flow-stage[data-status="ready"],
+      .flow-stage[data-status="resolved"] {
+        border-color: rgba(13, 107, 98, 0.16);
+        background: rgba(241, 253, 250, 0.78);
+      }
+
+      .flow-stage[data-status="partial"] {
+        border-color: rgba(40, 83, 122, 0.16);
+        background: rgba(244, 248, 253, 0.82);
+      }
+
+      .flow-stage[data-status="missing"] {
+        border-color: rgba(154, 92, 22, 0.16);
+        background: rgba(255, 248, 238, 0.8);
+      }
+
+      .flow-document-list,
+      .flow-settlement-list {
+        display: grid;
+        gap: 0.7rem;
+      }
+
+      .flow-document {
+        padding: 0.8rem 0.85rem;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(42, 51, 61, 0.08);
+        display: grid;
+        gap: 0.5rem;
+      }
+
+      .flow-list {
+        margin: 0;
+        padding-left: 1rem;
+        color: var(--muted);
+        display: grid;
+        gap: 0.35rem;
+      }
+
+      .detail-expander summary {
+        cursor: pointer;
+        font-weight: 700;
+        list-style: none;
+      }
+
+      .detail-expander summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .detail-expander .expander-body {
+        margin-top: 0.9rem;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      @media (max-width: 1120px) {
+        .stats-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .shell {
+          width: min(100%, calc(100% - 1rem));
+        }
+
+        .hero,
+        .panel,
+        .detail-card {
+          border-radius: 20px;
+        }
+
+        .stats-grid,
+        .detail-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .flow-stage-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-top,
+        .detail-header,
+        .queue-item-top {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="hero">
+        <div class="hero-top">
+          <div>
+            <h1>Reconciliation Review Workbench</h1>
+            <p>
+              Work one month at a time. Review invoice suggestions, resolve statement-led payments,
+              and push the queue into real bookkeeping outcomes instead of raw match guesses.
+            </p>
+          </div>
+          <div class="status-pill" id="auth-status" data-tone="accent">Signed out</div>
+        </div>
+
+        <div class="auth-bar">
+          <div class="auth-actions" id="login-form">
+            <div class="field">
+              <label for="email-input">Email</label>
+              <input id="email-input" type="email" placeholder="you@example.com" />
+            </div>
+            <div class="field">
+              <label for="password-input">Password</label>
+              <input id="password-input" type="password" placeholder="Password" />
+            </div>
+            <button class="button-primary" id="login-button">Log In</button>
+            <button class="button-secondary" id="reuse-token-button" type="button">Reuse Saved Session</button>
+          </div>
+          <div class="auth-actions hidden" id="session-panel">
+            <div class="small-note" id="user-label">Signed in</div>
+            <button class="button-secondary" id="refresh-button" type="button">Refresh Queue</button>
+            <button class="button-ghost" id="logout-button" type="button">Log Out</button>
+          </div>
+        </div>
+
+        <div id="message-banner" class="hidden"></div>
+      </section>
+
+      <section class="panel" style="margin-top: 1rem">
+        <div class="filter-row">
+          <div class="field">
+            <label for="month-input">Month</label>
+            <input id="month-input" type="month" />
+          </div>
+          <div class="field">
+            <label for="source-type-select">Source</label>
+            <select id="source-type-select">
+              <option value="bank_statement">Bank Statement</option>
+              <option value="vatbook">VAT Book</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="pub-select">Pub</label>
+            <select id="pub-select">
+              <option value="">All</option>
+              <option value="Careys">Careys</option>
+              <option value="Canal">Canal</option>
+              <option value="Careys Bar">Careys Bar</option>
+              <option value="Canal Turn">Canal Turn</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="page-size-select">Rows</label>
+            <select id="page-size-select">
+              <option value="15">15</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+          <div class="field" style="min-width: 180px">
+            <label for="queue-mode-select">Queue mode</label>
+            <select id="queue-mode-select">
+              <option value="actionable">Actionable</option>
+              <option value="completed">Completed</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div class="toolbar-spacer"></div>
+          <button class="button-secondary" id="apply-filters-button" type="button">Apply Filters</button>
+        </div>
+
+        <div class="stats-grid" id="stats-grid" style="margin-top: 1rem"></div>
+        <div class="bucket-bar" id="bucket-bar" style="margin-top: 1rem"></div>
+      </section>
+
+      <section class="workspace">
+        <aside class="panel">
+          <div class="queue-toolbar">
+            <div>
+              <strong id="queue-title">Queue</strong>
+              <div class="small-note" id="queue-subtitle">Log in to load the review queue.</div>
+            </div>
+            <div class="toolbar-spacer"></div>
+            <button class="button-ghost" id="prev-page-button" type="button">Previous</button>
+            <button class="button-ghost" id="next-page-button" type="button">Next</button>
+          </div>
+          <div class="queue-list" id="queue-list">
+            <div class="queue-empty">No queue loaded yet.</div>
+          </div>
+        </aside>
+
+        <main class="detail-stack" id="detail-stack">
+          <div class="detail-empty">
+            Pick a transaction from the queue to inspect the suggested invoices, supporting
+            documents, persisted links, and recommended review action.
+          </div>
+        </main>
+      </section>
+    </div>
+
+    <script>
+      const state = {
+        token: localStorage.getItem("b_admin_token") || "",
+        month: "",
+        sourceType: "bank_statement",
+        pub: "",
+        bucket: "",
+        page: 1,
+        limit: 25,
+        queueMode: "actionable",
+        queue: null,
+        selectedTransactionId: null,
+        detail: null,
+        previewDocument: null,
+        documentCache: {},
+      };
+
+      const bucketLabels = {
+        confirm_match: "Confirm Match",
+        complete_partial_match: "Complete Partial Match",
+        review_supporting_docs: "Review Supporting Docs",
+        awaiting_document: "Awaiting Document",
+        no_document_expected: "No Document Expected",
+        needs_matcher_improvement: "Needs Matcher Improvement",
+      };
+
+      const statusLabels = {
+        linked: "Linked",
+        supporting_docs_only: "Supporting Docs Only",
+        awaiting_document: "Awaiting Document",
+        no_document_expected: "No Document Expected",
+        pending: "Pending",
+      };
+
+      const sourceTypeSelect = document.getElementById("source-type-select");
+      const pubSelect = document.getElementById("pub-select");
+      const monthInput = document.getElementById("month-input");
+      const pageSizeSelect = document.getElementById("page-size-select");
+      const queueModeSelect = document.getElementById("queue-mode-select");
+      const queueList = document.getElementById("queue-list");
+      const detailStack = document.getElementById("detail-stack");
+      const bucketBar = document.getElementById("bucket-bar");
+      const statsGrid = document.getElementById("stats-grid");
+      const queueTitle = document.getElementById("queue-title");
+      const queueSubtitle = document.getElementById("queue-subtitle");
+      const authStatus = document.getElementById("auth-status");
+      const messageBanner = document.getElementById("message-banner");
+      const loginForm = document.getElementById("login-form");
+      const sessionPanel = document.getElementById("session-panel");
+      const userLabel = document.getElementById("user-label");
+
+      function defaultMonthValue() {
+        const now = new Date();
+        now.setMonth(now.getMonth() - 1);
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        return `${year}-${month}`;
+      }
+
+      function setBanner(type, message) {
+        if (!message) {
+          messageBanner.className = "hidden";
+          messageBanner.textContent = "";
+          return;
+        }
+        messageBanner.className = type === "error" ? "error-banner" : "success-banner";
+        messageBanner.textContent = message;
+      }
+
+      function formatCurrency(value) {
+        if (value === null || value === undefined || value === "") {
+          return "—";
+        }
+        const amount = Number(value);
+        if (Number.isNaN(amount)) {
+          return String(value);
+        }
+        return new Intl.NumberFormat("en-IE", {
+          style: "currency",
+          currency: "EUR",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(amount);
+      }
+
+      function formatDate(value) {
+        if (!value) return "—";
+        return value;
+      }
+
+      function decimalValue(value) {
+        if (value === null || value === undefined || value === "") {
+          return null;
+        }
+        const amount = Number(value);
+        return Number.isNaN(amount) ? null : amount;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function buildTag(label, tone) {
+        return `<span class="tag" data-tone="${escapeHtml(tone)}">${escapeHtml(label)}</span>`;
+      }
+
+      function extractDocumentClues(text) {
+        if (!text) {
+          return [];
+        }
+
+        const lines = text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        const preferred = lines.filter((line) =>
+          /(invoice to|bill to|account no|account:|invoice no|careys|canal|tavern|mardyke|athlone|ballymahon|car18|can02)/i.test(line)
+        );
+        return (preferred.length ? preferred : lines).slice(0, 10);
+      }
+
+      function renderAmountMath(match, transactionAmount) {
+        const gross = decimalValue(match.amount);
+        if (gross === null) {
+          return "";
+        }
+
+        const vat = decimalValue(match.vat_amount);
+        const bankAmount = decimalValue(transactionAmount);
+        const notes = [];
+
+        if (vat !== null) {
+          const net = gross - vat;
+          notes.push(`Net ${formatCurrency(net)} + VAT ${formatCurrency(vat)} = Gross ${formatCurrency(gross)}`);
+        } else {
+          notes.push(`Gross ${formatCurrency(gross)}`);
+        }
+
+        if (bankAmount !== null) {
+          const delta = Math.abs(gross - bankAmount);
+          if (delta < 0.005) {
+            notes.push(`Gross matches bank amount ${formatCurrency(bankAmount)}`);
+          } else {
+            notes.push(`Gross differs from bank amount by ${formatCurrency(delta)}`);
+          }
+        }
+
+        return `<div class="small-note" style="margin-top:0.45rem">${escapeHtml(notes.join(" · "))}</div>`;
+      }
+
+      function monthKey(value) {
+        if (!value || typeof value !== "string" || value.length < 7) {
+          return "";
+        }
+        return value.slice(0, 7);
+      }
+
+      function renderMatchContextTags(match, transactionDate) {
+        const tags = [];
+        const documentType = (match.document_type || "").toLowerCase();
+        const reason = (match.reason || "").toLowerCase();
+        const transactionMonth = monthKey(transactionDate);
+        const documentMonth = monthKey(match.document_date);
+
+        if (documentType === "statement" || reason.includes("statement settlement") || reason.includes("account/statement settlement")) {
+          tags.push(buildTag("Statement Settlement", "supporting_docs_only"));
+        }
+
+        if (documentType === "invoice" && transactionMonth && documentMonth) {
+          if (documentMonth === transactionMonth) {
+            tags.push(buildTag("Same-month Invoice", "confirm_match"));
+          } else if (documentMonth < transactionMonth) {
+            tags.push(buildTag("Prior-month Invoice", "review_supporting_docs"));
+          } else {
+            tags.push(buildTag("Next-month Invoice", "review_supporting_docs"));
+          }
+        }
+
+        if (documentType === "credit_note" && transactionMonth && documentMonth) {
+          if (documentMonth < transactionMonth) {
+            tags.push(buildTag("Prior-month Credit", "review_supporting_docs"));
+          } else if (documentMonth === transactionMonth) {
+            tags.push(buildTag("Same-month Credit", "review_supporting_docs"));
+          } else {
+            tags.push(buildTag("Next-month Credit", "review_supporting_docs"));
+          }
+        }
+
+        return tags.join("");
+      }
+
+      function statementKindLabel(kind) {
+        return {
+          supplier_statement: "Supplier Statement",
+          trade_statement: "Trade Statement",
+          sub_account_statement: "Sub-Account Statement",
+          keg_flow_statement: "Keg Flow Statement",
+          statement: "Statement",
+        }[kind] || kind || "Statement";
+      }
+
+      function ledgerEntryLabel(kind) {
+        return {
+          invoice: "Invoice",
+          credit_note: "Credit Note",
+          payment: "Payment",
+          other: "Other",
+        }[kind] || kind || "Entry";
+      }
+
+      function approximatelyEqualAmount(left, right) {
+        if (left === null || left === undefined || right === null || right === undefined) {
+          return false;
+        }
+        return Math.abs(Number(left) - Number(right)) < 0.005;
+      }
+
+      async function requestJson(path, options = {}) {
+        const headers = new Headers(options.headers || {});
+        headers.set("Content-Type", "application/json");
+        if (state.token) {
+          headers.set("Authorization", `Bearer ${state.token}`);
+        }
+
+        const response = await fetch(path, {
+          ...options,
+          headers,
+        });
+
+        if (response.status === 204) {
+          return null;
+        }
+
+        const text = await response.text();
+        let payload = null;
+        if (text) {
+          try {
+            payload = JSON.parse(text);
+          } catch {
+            payload = text;
+          }
+        }
+
+        if (!response.ok) {
+          const detail =
+            payload && typeof payload === "object" && payload.detail
+              ? JSON.stringify(payload.detail)
+              : response.statusText;
+          throw new Error(detail);
+        }
+
+        return payload;
+      }
+
+      async function fetchDocumentDetailCached(documentId) {
+        if (!documentId) {
+          return null;
+        }
+        if (state.documentCache[documentId]) {
+          return state.documentCache[documentId];
+        }
+        const detail = await requestJson(`/api/documents/${documentId}`);
+        state.documentCache[documentId] = detail;
+        return detail;
+      }
+
+      async function login() {
+        const email = document.getElementById("email-input").value.trim();
+        const password = document.getElementById("password-input").value;
+        if (!email || !password) {
+          setBanner("error", "Enter email and password first.");
+          return;
+        }
+
+        setBanner(null, "");
+        try {
+          const payload = await requestJson("/api/auth/login", {
+            method: "POST",
+            headers: {},
+            body: JSON.stringify({ email, password }),
+          });
+          state.token = payload.token;
+          localStorage.setItem("b_admin_token", state.token);
+          await initializeSession();
+          setBanner("success", "Session started.");
+        } catch (error) {
+          setBanner("error", `Login failed: ${error.message}`);
+        }
+      }
+
+      async function initializeSession() {
+        if (!state.token) {
+          setSignedOut();
+          return;
+        }
+
+        try {
+          const me = await requestJson("/api/auth/me");
+          authStatus.textContent = "Signed in";
+          authStatus.dataset.tone = "accent";
+          userLabel.textContent = `${me.email} · Gmail ${me.gmail_connected ? "connected" : "not connected"}`;
+          loginForm.classList.add("hidden");
+          sessionPanel.classList.remove("hidden");
+          await loadQueue();
+        } catch (error) {
+          localStorage.removeItem("b_admin_token");
+          state.token = "";
+          setSignedOut();
+          setBanner("error", `Saved session failed: ${error.message}`);
+        }
+      }
+
+      function setSignedOut() {
+        authStatus.textContent = "Signed out";
+        authStatus.dataset.tone = "accent";
+        loginForm.classList.remove("hidden");
+        sessionPanel.classList.add("hidden");
+        queueList.innerHTML = '<div class="queue-empty">Log in to load the review queue.</div>';
+        detailStack.innerHTML =
+          '<div class="detail-empty">Log in to start reviewing transactions.</div>';
+        statsGrid.innerHTML = "";
+        bucketBar.innerHTML = "";
+      }
+
+      function buildQueueQuery() {
+        const params = new URLSearchParams({
+          month: state.month,
+          limit: String(state.limit),
+          page: String(state.page),
+          source_type: state.sourceType,
+        });
+        if (state.pub) {
+          params.set("pub", state.pub);
+        }
+        if (state.bucket) {
+          params.set("resolution_bucket", state.bucket);
+        }
+        if (state.queueMode === "completed") {
+          params.set(
+            "review_status",
+            "linked,supporting_docs_only,no_document_expected"
+          );
+        } else if (state.queueMode === "all") {
+          params.set(
+            "review_status",
+            "pending,linked,supporting_docs_only,awaiting_document,no_document_expected"
+          );
+        }
+        return params.toString();
+      }
+
+      async function loadQueue() {
+        if (!state.token) return;
+        queueList.innerHTML = '<div class="queue-empty">Loading queue…</div>';
+        try {
+          const payload = await requestJson(`/api/transactions/review-queue?${buildQueueQuery()}`);
+          state.queue = payload;
+          renderStats(payload);
+          renderBuckets(payload);
+          renderQueue(payload);
+
+          const currentIds = new Set(payload.transactions.map((item) => item.transaction.id));
+          if (!state.selectedTransactionId || !currentIds.has(state.selectedTransactionId)) {
+            state.selectedTransactionId = payload.transactions[0]?.transaction.id || null;
+          }
+
+          if (state.selectedTransactionId) {
+            await loadTransactionDetail(state.selectedTransactionId);
+          } else {
+            detailStack.innerHTML =
+              '<div class="detail-empty">No transactions in this bucket for the selected month.</div>';
+          }
+        } catch (error) {
+          queueList.innerHTML = `<div class="error-banner">Queue load failed: ${escapeHtml(error.message)}</div>`;
+          detailStack.innerHTML =
+            '<div class="detail-empty">The detail panel is waiting for a queue result.</div>';
+        }
+      }
+
+      function renderStats(payload) {
+        const cards = [
+          ["Queue", payload.total],
+          ["Suggested", payload.suggested_transactions],
+          ["Unmatched", payload.unmatched_transactions],
+          ["Matched", payload.matched_transactions],
+          ["Partial", payload.partial_transactions],
+          ["Page", `${payload.page}/${payload.pages}`],
+        ];
+        statsGrid.innerHTML = cards
+          .map(
+            ([label, value]) => `
+              <div class="stat-card">
+                <span>${escapeHtml(label)}</span>
+                <strong>${escapeHtml(value)}</strong>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function renderBuckets(payload) {
+        const orderedBuckets = [
+          "confirm_match",
+          "review_supporting_docs",
+          "awaiting_document",
+          "needs_matcher_improvement",
+          "no_document_expected",
+          "complete_partial_match",
+        ];
+        const allLabel = {
+          actionable: "All actionable",
+          completed: "All completed",
+          all: "All rows",
+        }[state.queueMode] || "All actionable";
+        bucketBar.innerHTML =
+          `<button class="bucket-chip ${state.bucket === "" ? "is-active" : ""}" data-bucket="">${escapeHtml(allLabel)} <strong>${payload.total}</strong></button>` +
+          orderedBuckets
+            .map((bucket) => {
+              const count = payload.resolution_bucket_counts?.[bucket] || 0;
+              return `
+                <button class="bucket-chip ${state.bucket === bucket ? "is-active" : ""}" data-bucket="${bucket}">
+                  ${escapeHtml(bucketLabels[bucket] || bucket)} <strong>${count}</strong>
+                </button>
+              `;
+            })
+            .join("");
+
+        bucketBar.querySelectorAll("[data-bucket]").forEach((button) => {
+          button.addEventListener("click", async () => {
+            state.bucket = button.dataset.bucket;
+            state.page = 1;
+            await loadQueue();
+          });
+        });
+      }
+
+      function renderQueue(payload) {
+        queueTitle.textContent = `${payload.month} · ${state.sourceType.replaceAll("_", " ")}`;
+        const modeLabel = {
+          actionable: "actionable",
+          completed: "completed",
+          all: "total",
+        }[state.queueMode] || "actionable";
+        queueSubtitle.textContent =
+          state.bucket
+            ? `${bucketLabels[state.bucket] || state.bucket} · ${payload.total} row(s)`
+            : `${payload.total} ${modeLabel} row(s)`;
+
+        if (!payload.transactions.length) {
+          queueList.innerHTML = '<div class="queue-empty">No rows matched the current filters.</div>';
+          return;
+        }
+
+        queueList.innerHTML = payload.transactions
+          .map((item) => {
+            const transaction = item.transaction;
+            const amount = transaction.debit_amount || transaction.credit_amount || "—";
+            return `
+              <article class="queue-item ${state.selectedTransactionId === transaction.id ? "is-active" : ""}" data-id="${transaction.id}">
+                <div class="queue-item-top">
+                  <div>
+                    <h3>#${transaction.row_number} · ${escapeHtml(transaction.description1 || "Untitled transaction")}</h3>
+                    <div class="queue-meta">
+                      <span>${escapeHtml(transaction.transaction_date || "—")}</span>
+                      <span>${escapeHtml(transaction.pub || "—")}</span>
+                      <span>${escapeHtml(transaction.transaction_type || "—")}</span>
+                      <span>${escapeHtml(formatCurrency(amount))}</span>
+                    </div>
+                  </div>
+                  <div style="display:grid;gap:0.4rem;justify-items:end">
+                    ${buildTag(item.status, item.status)}
+                    ${buildTag(bucketLabels[item.resolution_bucket] || item.resolution_bucket, item.resolution_bucket)}
+                  </div>
+                </div>
+                <div class="small-note">${escapeHtml(item.resolution_reason || item.analysis_note || "No guidance yet.")}</div>
+              </article>
+            `;
+          })
+          .join("");
+
+        queueList.querySelectorAll(".queue-item").forEach((node) => {
+          node.addEventListener("click", async () => {
+            state.selectedTransactionId = node.dataset.id;
+            renderQueue(payload);
+            await loadTransactionDetail(node.dataset.id);
+          });
+        });
+      }
+
+      async function loadTransactionDetail(transactionId) {
+        detailStack.innerHTML = '<div class="detail-empty">Loading transaction detail…</div>';
+        try {
+          const payload = await requestJson(`/api/transactions/${transactionId}/detail`);
+          state.detail = payload;
+          renderDetail(payload);
+        } catch (error) {
+          detailStack.innerHTML = `<div class="error-banner">Detail load failed: ${escapeHtml(error.message)}</div>`;
+        }
+      }
+
+      function uniqueMatches(matches) {
+        const seen = new Set();
+        return (matches || []).filter((match) => {
+          if (seen.has(match.document_id)) return false;
+          seen.add(match.document_id);
+          return true;
+        });
+      }
+
+      function renderMatchCards(matches, { group, selectable, tone, transactionAmount, transactionDate }) {
+        const unique = uniqueMatches(matches);
+        if (!unique.length) {
+          return '<div class="small-note">None.</div>';
+        }
+        return `
+          <div class="match-list">
+            ${unique
+              .map(
+                (match, index) => `
+                  <article class="match-card">
+                    <div class="match-top">
+                      <div>
+                        <div class="match-check">
+                          ${
+                            selectable
+                              ? `<input type="checkbox" data-match-group="${group}" data-doc-id="${match.document_id}" data-doc-role="${match.document_type}" ${index < 3 ? "checked" : ""} />`
+                              : ""
+                          }
+                          <strong>${escapeHtml(match.supplier || "Unknown supplier")}</strong>
+                        </div>
+                        <div class="queue-meta" style="margin-top:0.45rem">
+                          <span>${escapeHtml(match.document_type)}</span>
+                          <span>${escapeHtml(match.reference || "No reference")}</span>
+                          <span>${escapeHtml(formatDate(match.document_date))}</span>
+                          <span>${escapeHtml(formatCurrency(match.amount))}</span>
+                          <span>Score ${escapeHtml(match.score ?? "—")}</span>
+                        </div>
+                      </div>
+                      ${buildTag(match.document_type.replaceAll("_", " "), tone || match.document_type)}
+                    </div>
+                    <div class="queue-meta" style="margin-top:0.7rem">
+                      ${renderMatchContextTags(match, transactionDate)}
+                    </div>
+                    <div class="match-reason">${escapeHtml(match.reason || "")}</div>
+                    ${renderAmountMath(match, transactionAmount)}
+                    <div class="match-actions">
+                      <button class="button-ghost" data-inspect-document-id="${match.document_id}" type="button">Inspect</button>
+                      <button class="button-secondary" data-open-document-id="${match.document_id}" type="button">Open PDF</button>
+                    </div>
+                  </article>
+                `
+              )
+              .join("")}
+          </div>
+        `;
+      }
+
+      function renderPersistedLinks(links, transactionAmount, transactionDate) {
+        if (!links?.length) {
+          return '<div class="small-note">No persisted links yet.</div>';
+        }
+        return `
+          <div class="match-list">
+            ${links
+              .map(
+                (link) => `
+                  <article class="match-card">
+                    <div class="match-top">
+                      <div>
+                        <strong>${escapeHtml(link.document.supplier || "Unknown supplier")}</strong>
+                        <div class="queue-meta" style="margin-top:0.45rem">
+                          <span>${escapeHtml(link.role)}</span>
+                          <span>${escapeHtml(link.status)}</span>
+                          <span>${escapeHtml(link.document.reference || "No reference")}</span>
+                          <span>${escapeHtml(formatCurrency(link.amount_applied || link.document.amount))}</span>
+                        </div>
+                      </div>
+                      ${buildTag(statusLabels[link.status] || link.status, link.status)}
+                    </div>
+                    <div class="queue-meta" style="margin-top:0.7rem">
+                      ${renderMatchContextTags(
+                        {
+                          document_type: link.document.document_type,
+                          document_date: link.document.document_date,
+                          reason: link.match_reason || link.note || "",
+                        },
+                        transactionDate
+                      )}
+                    </div>
+                    <div class="match-reason">${escapeHtml(link.match_reason || link.note || "Persisted transaction link.")}</div>
+                    ${renderAmountMath(
+                      {
+                        amount: link.amount_applied || link.document.amount,
+                        vat_amount: link.document.vat_amount,
+                      },
+                      transactionAmount
+                    )}
+                    <div class="match-actions">
+                      <button class="button-secondary" data-inspect-document-id="${link.document_id}" type="button">Inspect</button>
+                      <button class="button-ghost" data-open-document-id="${link.document_id}" type="button">Open PDF</button>
+                      <button class="button-ghost" data-reject-link-id="${link.id}" type="button">Reject Link</button>
+                    </div>
+                  </article>
+                `
+              )
+              .join("")}
+          </div>
+        `;
+      }
+
+      function renderDocumentInspector(documentDetail) {
+        const inspector = document.getElementById("document-inspector");
+        if (!inspector) return;
+
+        if (!documentDetail) {
+          inspector.innerHTML =
+            '<div class="detail-empty">Pick a suggested or linked document and click Inspect to see venue, account, and other invoice clues here.</div>';
+          return;
+        }
+
+        const clueLines = extractDocumentClues(documentDetail.extracted_text);
+        const statementAnalysis = documentDetail.statement_analysis;
+        const ledgerAnalysis = documentDetail.ledger_analysis;
+        const ledgerSummary = ledgerAnalysis
+          ? `
+            <div class="meta-block" style="margin-top:0.85rem">
+              <label>Ledger Analysis</label>
+              <div style="display:grid;gap:0.45rem">
+                <div>
+                  ${escapeHtml(ledgerAnalysis.document_type || "Document")} ·
+                  ${escapeHtml(ledgerAnalysis.is_financial ? "Financial" : "Operational only")}
+                  ${
+                    ledgerAnalysis.statement_kind
+                      ? ` · ${escapeHtml(statementKindLabel(ledgerAnalysis.statement_kind))}`
+                      : ""
+                  }
+                </div>
+                <div class="small-note">
+                  ${escapeHtml(
+                    [
+                      ledgerAnalysis.account_number ? `Account ${ledgerAnalysis.account_number}` : null,
+                      ledgerAnalysis.account_name ? ledgerAnalysis.account_name : null,
+                      ledgerAnalysis.entries?.length
+                        ? `${ledgerAnalysis.entries.length} normalized ledger entr${ledgerAnalysis.entries.length === 1 ? "y" : "ies"}`
+                        : null,
+                      ledgerAnalysis.settlements?.length
+                        ? `${ledgerAnalysis.settlements.length} settlement group${ledgerAnalysis.settlements.length === 1 ? "" : "s"}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "No normalized ledger details."
+                  )}
+                </div>
+                ${
+                  ledgerAnalysis.note
+                    ? `<div class="small-note">${escapeHtml(ledgerAnalysis.note)}</div>`
+                    : ""
+                }
+              </div>
+            </div>
+          `
+          : "";
+        const statementSummary = statementAnalysis
+          ? `
+            <div class="meta-block" style="margin-top:0.85rem">
+              <label>Statement Analysis</label>
+              <div style="display:grid;gap:0.45rem">
+                <div>${escapeHtml(statementKindLabel(statementAnalysis.statement_kind))} · ${escapeHtml(statementAnalysis.is_financial ? "Financial" : "Operational only")}</div>
+                <div class="small-note">
+                  ${escapeHtml(
+                    [
+                      statementAnalysis.account_number ? `Account ${statementAnalysis.account_number}` : null,
+                      statementAnalysis.period_start || statementAnalysis.period_end
+                        ? `Period ${formatDate(statementAnalysis.period_start)} to ${formatDate(statementAnalysis.period_end)}`
+                        : null,
+                      statementAnalysis.total_due !== null && statementAnalysis.total_due !== undefined
+                        ? `Total due ${formatCurrency(statementAnalysis.total_due)}`
+                        : null,
+                      statementAnalysis.settlement_discount_total !== null && statementAnalysis.settlement_discount_total !== undefined
+                        ? `Settlement discount ${formatCurrency(statementAnalysis.settlement_discount_total)}`
+                        : null,
+                      statementAnalysis.closing_balance !== null && statementAnalysis.closing_balance !== undefined
+                        ? `Closing balance ${formatCurrency(statementAnalysis.closing_balance)}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "No statement totals parsed."
+                  )}
+                </div>
+                ${
+                  statementAnalysis.note
+                    ? `<div class="small-note">${escapeHtml(statementAnalysis.note)}</div>`
+                    : ""
+                }
+                ${
+                  statementAnalysis.invoice_references?.length
+                    ? `<div class="small-note">Invoice refs: ${escapeHtml(statementAnalysis.invoice_references.slice(0, 12).join(", "))}</div>`
+                    : ""
+                }
+                ${
+                  statementAnalysis.payment_references?.length
+                    ? `<div class="small-note">Payment refs: ${escapeHtml(statementAnalysis.payment_references.slice(0, 12).join(", "))}</div>`
+                    : ""
+                }
+              </div>
+            </div>
+          `
+          : "";
+        const ledgerEntries = ledgerAnalysis?.entries?.length
+          ? `
+            <div class="meta-block" style="margin-top:0.85rem">
+              <label>Ledger Entries</label>
+              <div style="display:grid;gap:0.55rem">
+                ${ledgerAnalysis.entries
+                  .slice(0, 12)
+                  .map(
+                    (entry) => `
+                      <div style="padding:0.7rem 0.75rem;border-radius:14px;background:rgba(255,255,255,0.7);border:1px solid rgba(42,51,61,0.08)">
+                        <div><strong>${escapeHtml(ledgerEntryLabel(entry.entry_kind))}</strong> · ${escapeHtml(entry.reference || "—")}</div>
+                        <div class="small-note">${escapeHtml(
+                          [
+                            entry.event_date ? `Date ${formatDate(entry.event_date)}` : null,
+                            entry.due_date ? `Due ${formatDate(entry.due_date)}` : null,
+                            entry.related_reference ? `Linked ref ${entry.related_reference}` : null,
+                            entry.amount !== null && entry.amount !== undefined ? `Gross ${formatCurrency(entry.amount)}` : null,
+                            entry.signed_amount !== null && entry.signed_amount !== undefined && entry.signed_amount !== entry.amount
+                              ? `Signed ${formatCurrency(entry.signed_amount)}`
+                              : null,
+                            entry.vat_amount !== null && entry.vat_amount !== undefined ? `VAT ${formatCurrency(entry.vat_amount)}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "No normalized ledger details."
+                        )}</div>
+                      </div>
+                    `
+                  )
+                  .join("")}
+              </div>
+            </div>
+          `
+          : "";
+        const statementEntries = statementAnalysis?.entries?.length
+          ? `
+            <div class="meta-block" style="margin-top:0.85rem">
+              <label>Statement Lines</label>
+              <div style="display:grid;gap:0.55rem">
+                ${statementAnalysis.entries
+                  .slice(0, 12)
+                  .map(
+                    (entry) => `
+                      <div style="padding:0.7rem 0.75rem;border-radius:14px;background:rgba(255,255,255,0.7);border:1px solid rgba(42,51,61,0.08)">
+                        <div><strong>${escapeHtml(entry.transaction_type || "Line")}</strong> · ${escapeHtml(entry.reference || "—")}</div>
+                        <div class="small-note">${escapeHtml(
+                          [
+                            entry.event_date ? `Doc ${formatDate(entry.event_date)}` : null,
+                            entry.due_date ? `Due ${formatDate(entry.due_date)}` : null,
+                            entry.clearing_reference ? `Ref ${entry.clearing_reference}` : null,
+                            entry.amount !== null && entry.amount !== undefined ? `Amount ${formatCurrency(entry.amount)}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "No structured line details."
+                        )}</div>
+                      </div>
+                    `
+                  )
+                  .join("")}
+              </div>
+            </div>
+          `
+          : "";
+        inspector.innerHTML = `
+          <div class="detail-grid">
+            <div class="meta-block">
+              <label>Supplier</label>
+              <div>${escapeHtml(documentDetail.supplier || "—")}</div>
+            </div>
+            <div class="meta-block">
+              <label>Attachment</label>
+              <div>${escapeHtml(documentDetail.attachment_name || "—")}</div>
+            </div>
+            <div class="meta-block">
+              <label>Reference</label>
+              <div>${escapeHtml(documentDetail.reference || "—")}</div>
+            </div>
+            <div class="meta-block">
+              <label>Date</label>
+              <div>${escapeHtml(formatDate(documentDetail.document_date))}</div>
+            </div>
+          </div>
+          <div class="small-note" style="margin-top:0.85rem">
+            ${escapeHtml(documentDetail.source_email_subject || "No subject metadata.")}
+          </div>
+          <div class="match-actions" style="margin-top:0.85rem">
+            <button class="button-secondary" id="open-preview-document-button" type="button">Open PDF</button>
+          </div>
+          ${ledgerSummary}
+          ${statementSummary}
+          ${ledgerEntries}
+          ${statementEntries}
+          <div class="meta-block" style="margin-top:0.85rem">
+            <label>Invoice Clues</label>
+            <div style="white-space:pre-wrap;line-height:1.5">${escapeHtml(clueLines.join("\n") || "No extracted clue lines available.")}</div>
+          </div>
+        `;
+
+        document.getElementById("open-preview-document-button")?.addEventListener("click", () => {
+          openDocumentFile(documentDetail.id);
+        });
+      }
+
+      async function inspectDocument(documentId) {
+        try {
+          const document = await requestJson(`/api/documents/${documentId}`);
+          state.previewDocument = document;
+          renderDocumentInspector(document);
+        } catch (error) {
+          setBanner("error", `Could not inspect document: ${error.message}`);
+        }
+      }
+
+      async function openDocumentFile(documentId) {
+        try {
+          const headers = new Headers();
+          if (state.token) {
+            headers.set("Authorization", `Bearer ${state.token}`);
+          }
+          const response = await fetch(`/api/documents/${documentId}/file`, { headers });
+          if (!response.ok) {
+            throw new Error(response.statusText || "Document open failed");
+          }
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          window.open(url, "_blank", "noopener,noreferrer");
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        } catch (error) {
+          setBanner("error", `Could not open document: ${error.message}`);
+        }
+      }
+
+      function settlementEntryKey(entry) {
+        return [
+          entry.entry_kind || "",
+          entry.reference || "",
+          entry.related_reference || "",
+          entry.event_date || "",
+          entry.amount ?? "",
+        ].join("|");
+      }
+
+      function settlementDocIds(payload) {
+        const ids = [];
+        uniqueMatches(payload.supporting_matches).forEach((match) => {
+          if (match.document_id) {
+            ids.push(match.document_id);
+          }
+        });
+        (payload.persisted_links || []).forEach((link) => {
+          if (link.document_id && ["statement", "credit_note", "receipt"].includes((link.document?.document_type || link.role || "").toLowerCase())) {
+            ids.push(link.document_id);
+          }
+        });
+        return [...new Set(ids)];
+      }
+
+      function settlementRelatedDocsSummary(payload, references) {
+        const refSet = new Set((references || []).filter(Boolean));
+        if (!refSet.size) {
+          return "";
+        }
+
+        const hits = [];
+        uniqueMatches(payload.suggested_matches).forEach((match) => {
+          if (match.reference && refSet.has(match.reference)) {
+            hits.push(`${match.reference} (${match.document_type})`);
+          }
+        });
+        uniqueMatches(payload.exact_matches || []).forEach((match) => {
+          if (match.reference && refSet.has(match.reference)) {
+            hits.push(`${match.reference} (${match.document_type})`);
+          }
+        });
+        (payload.persisted_links || []).forEach((link) => {
+          const reference = link.document?.reference;
+          if (reference && refSet.has(reference)) {
+            hits.push(`${reference} (${statusLabels[link.status] || link.status})`);
+          }
+        });
+
+        const uniqueHits = [...new Set(hits)];
+        if (!uniqueHits.length) {
+          return "";
+        }
+
+        return `<div class="small-note" style="margin-top:0.65rem">Related imported docs: ${escapeHtml(uniqueHits.slice(0, 8).join(", "))}</div>`;
+      }
+
+      function renderSettlementEntry(entry) {
+        const signed = decimalValue(entry.signed_amount);
+        const amountLabel =
+          entry.entry_kind === "credit_note" && signed !== null
+            ? formatCurrency(signed)
+            : formatCurrency(entry.amount);
+        const rawText = entry.raw_text ? String(entry.raw_text).trim() : "";
+        return `
+          <div style="padding:0.7rem 0.75rem;border-radius:14px;background:rgba(255,255,255,0.7);border:1px solid rgba(42,51,61,0.08)">
+            <div><strong>${escapeHtml(ledgerEntryLabel(entry.entry_kind))}</strong> · ${escapeHtml(entry.reference || "—")}</div>
+            <div class="small-note">${escapeHtml(
+              [
+                entry.event_date ? `Date ${formatDate(entry.event_date)}` : null,
+                entry.due_date ? `Due ${formatDate(entry.due_date)}` : null,
+                entry.related_reference ? `Linked ref ${entry.related_reference}` : null,
+                entry.amount !== null && entry.amount !== undefined ? `Gross ${formatCurrency(entry.amount)}` : null,
+                entry.entry_kind === "credit_note" && signed !== null ? `Signed ${formatCurrency(signed)}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "No normalized ledger details."
+            )}</div>
+            ${rawText ? `<div class="small-note" style="margin-top:0.45rem">${escapeHtml(rawText)}</div>` : ""}
+          </div>
+        `;
+      }
+
+      function renderSettlementCard(documentDetail, settlement, payload) {
+        const ledger = documentDetail.ledger_analysis;
+        const componentRefs = settlement.component_entries.map((entry) => entry.reference).filter(Boolean);
+        return `
+          <article class="match-card">
+            <div class="match-top">
+              <div>
+                <strong>${escapeHtml(documentDetail.supplier || "Unknown supplier")}</strong>
+                <div class="queue-meta" style="margin-top:0.45rem">
+                  <span>${escapeHtml(statementKindLabel(ledger.statement_kind || "statement"))}</span>
+                  <span>${escapeHtml(ledger.account_number ? `Account ${ledger.account_number}` : "No account")}</span>
+                  <span>${escapeHtml(formatDate(documentDetail.document_date))}</span>
+                  <span>${escapeHtml(formatCurrency(settlement.payment_entry.amount))}</span>
+                </div>
+              </div>
+              ${buildTag("Statement Settlement", "supporting_docs_only")}
+            </div>
+            <div class="match-reason">
+              Bank payment lines up with statement payment ref <strong>${escapeHtml(settlement.payment_entry.reference || "—")}</strong>
+              and clears ${escapeHtml(String(settlement.component_entries.length))} component entr${settlement.component_entries.length === 1 ? "y" : "ies"}.
+            </div>
+            <div class="small-note" style="margin-top:0.45rem">
+              ${escapeHtml(
+                [
+                  settlement.payment_entry.event_date ? `Payment date ${formatDate(settlement.payment_entry.event_date)}` : null,
+                  settlement.payment_entry.due_date ? `Due ${formatDate(settlement.payment_entry.due_date)}` : null,
+                  settlement.net_amount !== null && settlement.net_amount !== undefined ? `Net of components ${formatCurrency(settlement.net_amount)}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "Statement-backed settlement"
+              )}
+            </div>
+            ${settlementRelatedDocsSummary(payload, componentRefs)}
+            <div class="meta-block" style="margin-top:0.75rem">
+              <label>Settlement components</label>
+              <div style="display:grid;gap:0.55rem">
+                ${settlement.component_entries.map((entry) => renderSettlementEntry(entry)).join("")}
+              </div>
+            </div>
+            <div class="match-actions">
+              <button class="button-ghost" data-inspect-document-id="${documentDetail.id}" type="button">Inspect Statement</button>
+              <button class="button-secondary" data-open-document-id="${documentDetail.id}" type="button">Open PDF</button>
+            </div>
+          </article>
+        `;
+      }
+
+      function renderSettlementLineCard(documentDetail, entry, payload) {
+        const ledger = documentDetail.ledger_analysis;
+        const relatedRefs = [entry.reference, entry.related_reference].filter(Boolean);
+        return `
+          <article class="match-card">
+            <div class="match-top">
+              <div>
+                <strong>${escapeHtml(documentDetail.supplier || "Unknown supplier")}</strong>
+                <div class="queue-meta" style="margin-top:0.45rem">
+                  <span>${escapeHtml(statementKindLabel(ledger.statement_kind || "statement"))}</span>
+                  <span>${escapeHtml(ledgerEntryLabel(entry.entry_kind))}</span>
+                  <span>${escapeHtml(entry.reference || "No ref")}</span>
+                  <span>${escapeHtml(formatCurrency(entry.amount))}</span>
+                </div>
+              </div>
+              ${buildTag("Matching Statement Line", "review_supporting_docs")}
+            </div>
+            <div class="match-reason">
+              The statement contains a ${escapeHtml(ledgerEntryLabel(entry.entry_kind).toLowerCase())} line at the bank amount.
+              Use this when the payment is explained by the statement, even if the invoice PDF is not linked yet.
+            </div>
+            <div class="small-note" style="margin-top:0.45rem">
+              ${escapeHtml(
+                [
+                  entry.event_date ? `Line date ${formatDate(entry.event_date)}` : null,
+                  entry.due_date ? `Due ${formatDate(entry.due_date)}` : null,
+                  entry.related_reference ? `Linked ref ${entry.related_reference}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "No extra line timing found."
+              )}
+            </div>
+            ${settlementRelatedDocsSummary(payload, relatedRefs)}
+            <div class="meta-block" style="margin-top:0.75rem">
+              <label>Matching line</label>
+              ${renderSettlementEntry(entry)}
+            </div>
+            <div class="match-actions">
+              <button class="button-ghost" data-inspect-document-id="${documentDetail.id}" type="button">Inspect Statement</button>
+              <button class="button-secondary" data-open-document-id="${documentDetail.id}" type="button">Open PDF</button>
+            </div>
+          </article>
+        `;
+      }
+
+      function flowStageTone(status) {
+        return {
+          ready: "confirm_match",
+          resolved: "supporting_docs_only",
+          partial: "review_supporting_docs",
+          missing: "awaiting_document",
+        }[status] || "review_supporting_docs";
+      }
+
+      function renderFlowDocument(document) {
+        const detailBits = [
+          document.reference ? `Ref ${document.reference}` : null,
+          document.document_date ? formatDate(document.document_date) : null,
+          document.amount !== null && document.amount !== undefined ? formatCurrency(document.amount) : null,
+        ].filter(Boolean);
+        const statementBits = [
+          document.statement_kind ? statementKindLabel(document.statement_kind) : null,
+          document.invoice_reference_count ? `${document.invoice_reference_count} invoice ref(s)` : null,
+          document.credit_reference_count ? `${document.credit_reference_count} credit ref(s)` : null,
+          document.payment_reference_count ? `${document.payment_reference_count} payment ref(s)` : null,
+          document.settlement_count ? `${document.settlement_count} settlement group(s)` : null,
+        ].filter(Boolean);
+
+        return `
+          <article class="flow-document">
+            <div class="match-top">
+              <div>
+                <strong>${escapeHtml(document.supplier || "Unknown supplier")}</strong>
+                <div class="queue-meta" style="margin-top:0.45rem">
+                  <span>${escapeHtml(document.document_type || "document")}</span>
+                  ${detailBits.map((bit) => `<span>${escapeHtml(bit)}</span>`).join("")}
+                </div>
+              </div>
+              ${buildTag(
+                document.statement_kind ? statementKindLabel(document.statement_kind) : (document.role || "document").replaceAll("_", " "),
+                flowStageTone(document.is_financial === false ? "partial" : "ready")
+              )}
+            </div>
+            ${document.reason ? `<div class="match-reason">${escapeHtml(document.reason)}</div>` : ""}
+            ${statementBits.length ? `<div class="small-note">${escapeHtml(statementBits.join(" · "))}</div>` : ""}
+            <div class="match-actions">
+              <button class="button-ghost" data-inspect-document-id="${document.document_id}" type="button">Inspect</button>
+              <button class="button-secondary" data-open-document-id="${document.document_id}" type="button">Open PDF</button>
+            </div>
+          </article>
+        `;
+      }
+
+      function renderFlowSettlement(settlement) {
+        return `
+          <article class="flow-document">
+            <div class="match-top">
+              <div>
+                <strong>${escapeHtml(settlement.source_supplier || "Statement")}</strong>
+                <div class="queue-meta" style="margin-top:0.45rem">
+                  <span>${escapeHtml(statementKindLabel(settlement.statement_kind || "statement"))}</span>
+                  <span>${escapeHtml(settlement.source_reference || "No ref")}</span>
+                  <span>${escapeHtml(formatDate(settlement.source_document_date))}</span>
+                  <span>${escapeHtml(formatCurrency(settlement.payment_entry?.amount))}</span>
+                </div>
+              </div>
+              ${buildTag("Settlement Group", "supporting_docs_only")}
+            </div>
+            <div class="match-reason">
+              Payment ref <strong>${escapeHtml(settlement.payment_entry?.reference || "—")}</strong>
+              clears ${escapeHtml(String((settlement.component_entries || []).length))} invoice / credit component(s).
+            </div>
+            <div class="small-note">
+              ${escapeHtml(
+                [
+                  settlement.payment_entry?.event_date ? `Payment date ${formatDate(settlement.payment_entry.event_date)}` : null,
+                  settlement.payment_entry?.due_date ? `Due ${formatDate(settlement.payment_entry.due_date)}` : null,
+                  settlement.net_amount !== null && settlement.net_amount !== undefined ? `Net ${formatCurrency(settlement.net_amount)}` : null,
+                ].filter(Boolean).join(" · ") || "Statement-backed settlement"
+              )}
+            </div>
+            <div style="display:grid;gap:0.55rem">
+              ${(settlement.component_entries || []).map((entry) => renderSettlementEntry(entry)).join("")}
+            </div>
+            <div class="match-actions">
+              <button class="button-ghost" data-inspect-document-id="${settlement.source_document_id}" type="button">Inspect Statement</button>
+              <button class="button-secondary" data-open-document-id="${settlement.source_document_id}" type="button">Open PDF</button>
+            </div>
+          </article>
+        `;
+      }
+
+      function renderReconciliationFlow(flow) {
+        if (!flow) {
+          return '<div class="detail-empty">No standardized reconciliation flow has been built for this row yet.</div>';
+        }
+
+        return `
+          <div class="flow-header">
+            <div class="queue-meta">
+              ${flow.supplier_label ? `<span>${escapeHtml(`Supplier ${flow.supplier_label}`)}</span>` : ""}
+              ${flow.bank_counterparty ? `<span>${escapeHtml(`Bank payee ${flow.bank_counterparty}`)}</span>` : ""}
+              <span>${escapeHtml((flow.flow_type || "flow").replaceAll("_", " "))}</span>
+            </div>
+            <div class="meta-block">
+              <label>Next step</label>
+              <div>${escapeHtml(flow.next_step || "Review the evidence chain and resolve the row.")}</div>
+            </div>
+            ${
+              flow.settlements && flow.settlements.length
+                ? `
+                  <div>
+                    <div class="small-note" style="margin-bottom:0.55rem">Recovered settlement groups</div>
+                    <div class="flow-settlement-list">
+                      ${flow.settlements.map((settlement) => renderFlowSettlement(settlement)).join("")}
+                    </div>
+                  </div>
+                `
+                : ""
+            }
+            <div class="flow-stage-grid">
+              ${(flow.stages || []).map((stage) => `
+                <article class="flow-stage" data-status="${escapeHtml(stage.status || "partial")}">
+                  <div class="match-top">
+                    <strong>${escapeHtml(stage.title || "Stage")}</strong>
+                    ${buildTag(stage.status || "partial", flowStageTone(stage.status || "partial"))}
+                  </div>
+                  <div class="match-reason">${escapeHtml(stage.summary || "No summary available.")}</div>
+                  ${
+                    stage.items && stage.items.length
+                      ? `<ul class="flow-list">${stage.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+                      : ""
+                  }
+                  ${
+                    stage.documents && stage.documents.length
+                      ? `<div class="flow-document-list">${stage.documents.map((document) => renderFlowDocument(document)).join("")}</div>`
+                      : ""
+                  }
+                </article>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      async function renderSettlementPreview(payload) {
+        const container = document.getElementById("settlement-preview");
+        if (!container) return;
+
+        const transactionAmount = decimalValue(payload.transaction.debit_amount || payload.transaction.credit_amount);
+        if (transactionAmount === null) {
+          container.innerHTML = '<div class="detail-empty">No amount is available to build a settlement view.</div>';
+          return;
+        }
+
+        const documentIds = settlementDocIds(payload);
+        if (!documentIds.length) {
+          container.innerHTML =
+            '<div class="detail-empty">No statement or credit-note documents are attached yet, so there is no settlement view to build.</div>';
+          return;
+        }
+
+        container.innerHTML = '<div class="detail-empty">Building settlement view…</div>';
+
+        try {
+          const documentDetails = (await Promise.all(documentIds.map((documentId) => fetchDocumentDetailCached(documentId))))
+            .filter(Boolean);
+
+          const cards = [];
+          for (const documentDetail of documentDetails) {
+            const ledger = documentDetail.ledger_analysis;
+            if (!ledger || !ledger.is_financial) {
+              continue;
+            }
+
+            const matchingSettlements = (ledger.settlements || []).filter((settlement) =>
+              approximatelyEqualAmount(decimalValue(settlement.payment_entry.amount), transactionAmount)
+            );
+            const settlementKeys = new Set(
+              matchingSettlements.map((settlement) => settlementEntryKey(settlement.payment_entry))
+            );
+
+            matchingSettlements.forEach((settlement) => {
+              cards.push(renderSettlementCard(documentDetail, settlement, payload));
+            });
+
+            (ledger.entries || [])
+              .filter((entry) =>
+                ["payment", "invoice", "credit_note"].includes(entry.entry_kind) &&
+                approximatelyEqualAmount(decimalValue(entry.amount), transactionAmount) &&
+                !settlementKeys.has(settlementEntryKey(entry))
+              )
+              .slice(0, 3)
+              .forEach((entry) => {
+                cards.push(renderSettlementLineCard(documentDetail, entry, payload));
+              });
+          }
+
+          if (!cards.length) {
+            container.innerHTML =
+              '<div class="detail-empty">The current docs do not yet form a clean payment-to-statement settlement view for this row.</div>';
+            return;
+          }
+
+          container.innerHTML = cards.join("");
+          container.querySelectorAll("[data-inspect-document-id]").forEach((button) => {
+            button.addEventListener("click", () => inspectDocument(button.dataset.inspectDocumentId));
+          });
+          container.querySelectorAll("[data-open-document-id]").forEach((button) => {
+            button.addEventListener("click", () => openDocumentFile(button.dataset.openDocumentId));
+          });
+        } catch (error) {
+          container.innerHTML = `<div class="error-banner">Settlement view failed: ${escapeHtml(error.message)}</div>`;
+        }
+      }
+
+      function renderDetail(payload) {
+        const transaction = payload.transaction;
+        const suggestedMatches = uniqueMatches(payload.suggested_matches);
+        const supportingMatches = uniqueMatches(payload.supporting_matches);
+        const transactionAmount = transaction.debit_amount || transaction.credit_amount;
+        const showInvoiceCandidates = suggestedMatches.length > 0;
+        const showSupportDocs = supportingMatches.length > 0;
+        state.previewDocument = null;
+
+        detailStack.innerHTML = `
+          <section class="detail-card">
+            <div class="detail-header">
+              <div>
+                <h3>#${transaction.row_number} · ${escapeHtml(transaction.description1 || "Untitled transaction")}</h3>
+                <div class="queue-meta" style="margin-top:0.55rem">
+                  <span>${escapeHtml(transaction.transaction_date || "—")}</span>
+                  <span>${escapeHtml(transaction.pub || "—")}</span>
+                  <span>${escapeHtml(transaction.transaction_type || "—")}</span>
+                  <span>${escapeHtml(formatCurrency(transaction.debit_amount || transaction.credit_amount))}</span>
+                  <span>Review ${escapeHtml(statusLabels[transaction.review_status] || transaction.review_status)}</span>
+                </div>
+              </div>
+              <div style="display:grid;gap:0.45rem;justify-items:end">
+                ${buildTag(payload.status, payload.status)}
+                ${buildTag(bucketLabels[payload.resolution_bucket] || payload.resolution_bucket, payload.resolution_bucket)}
+              </div>
+            </div>
+
+            <div class="detail-grid">
+              <div class="meta-block">
+                <label>Recommended action</label>
+                <div>${escapeHtml(statusLabels[payload.recommended_review_status] || payload.recommended_review_status || "Manual review")}</div>
+              </div>
+              <div class="meta-block">
+                <label>Resolution reason</label>
+                <div>${escapeHtml(payload.resolution_reason || "No resolution guidance recorded.")}</div>
+              </div>
+              <div class="meta-block">
+                <label>Description 2</label>
+                <div>${escapeHtml(transaction.description2 || "—")}</div>
+              </div>
+              <div class="meta-block">
+                <label>Category</label>
+                <div>${escapeHtml(transaction.category || "—")}</div>
+              </div>
+              <div class="meta-block">
+                <label>Review history</label>
+                <div>${escapeHtml(String(payload.history_count || 0))} event(s)</div>
+              </div>
+            </div>
+
+            <div class="small-note" style="margin-top:0.9rem">${escapeHtml(payload.analysis_note || "No extra analysis note.")}</div>
+          </section>
+
+          <section class="detail-card">
+            <h4>Reconciliation Flow</h4>
+            <div class="small-note" style="margin-top:0.55rem">
+              Use the same order every time: supplier, statement, invoices / credits, then resolve the row.
+            </div>
+            <div id="reconciliation-flow" style="margin-top:0.85rem">
+              ${renderReconciliationFlow(payload.reconciliation_flow)}
+            </div>
+          </section>
+
+          <details class="detail-card detail-expander" ${showInvoiceCandidates ? "open" : ""}>
+            <summary>Invoice candidates (${suggestedMatches.length})</summary>
+            <div class="expander-body">
+            <div class="detail-actions" style="margin:0 0 1rem">
+              <button class="button-accent" id="confirm-selected-button" type="button" ${suggestedMatches.length ? "" : "disabled"}>
+                Confirm selected suggestions
+              </button>
+              <button class="button-secondary" id="confirm-all-button" type="button" ${suggestedMatches.length ? "" : "disabled"}>
+                Confirm all suggestions
+              </button>
+            </div>
+            ${renderMatchCards(suggestedMatches, {
+              group: "suggested",
+              selectable: true,
+              tone: "confirm_match",
+              transactionAmount,
+              transactionDate: transaction.transaction_date,
+            })}
+            </div>
+          </details>
+
+          <details class="detail-card detail-expander" ${payload.resolution_bucket === "review_supporting_docs" && showSupportDocs ? "open" : ""}>
+            <summary>Statement / support docs (${supportingMatches.length})</summary>
+            <div class="expander-body">
+            <div class="detail-actions" style="margin:0 0 1rem">
+              <button class="button-secondary" id="attach-support-button" type="button" ${supportingMatches.length ? "" : "disabled"}>
+                Link selected support docs + resolve
+              </button>
+            </div>
+            ${renderMatchCards(supportingMatches, {
+              group: "supporting",
+              selectable: true,
+              tone: "supporting_docs_only",
+              transactionAmount,
+              transactionDate: transaction.transaction_date,
+            })}
+            </div>
+          </details>
+
+          <details class="detail-card detail-expander">
+            <summary>Saved links (${(payload.persisted_links || []).length})</summary>
+            <div class="expander-body">
+              ${renderPersistedLinks(payload.persisted_links, transactionAmount, transaction.transaction_date)}
+            </div>
+          </details>
+
+          <details class="detail-card detail-expander">
+            <summary>Document inspector</summary>
+            <div class="expander-body" id="document-inspector">
+              <div class="detail-empty">Pick a suggested or linked document and click Inspect to see venue, account, and other invoice clues here.</div>
+            </div>
+          </details>
+
+          <section class="detail-card">
+            <h4>Manual review action</h4>
+            <div class="field" style="margin-top:0.8rem">
+              <label for="expected-supplier-input">Expected supplier / statement name</label>
+              <input id="expected-supplier-input" type="text" placeholder="e.g. Bulmers, Heineken, Connacht Bottlers" value="${escapeHtml(transaction.expected_supplier || "")}" />
+            </div>
+            <div class="field" style="margin-top:0.8rem">
+              <label for="review-note-input">Review note</label>
+              <textarea id="review-note-input" placeholder="Why you are resolving this row in this way..."></textarea>
+            </div>
+            <div class="detail-actions" style="margin-top:1rem">
+              <button class="button-secondary" id="save-hint-button" type="button">Save Hint + Refresh</button>
+              <button class="button-primary" id="mark-supporting-button" type="button">Mark Supporting Docs Only</button>
+              <button class="button-warn" id="mark-awaiting-button" type="button">Mark Awaiting Document</button>
+              <button class="button-secondary" id="mark-no-doc-button" type="button">Mark No Document Expected</button>
+              <button class="button-ghost" id="mark-pending-button" type="button">Reset To Pending</button>
+            </div>
+          </section>
+        `;
+
+        document.getElementById("confirm-selected-button")?.addEventListener("click", () => confirmSuggestedSelection(false));
+        document.getElementById("confirm-all-button")?.addEventListener("click", () => confirmSuggestedSelection(true));
+        document.getElementById("attach-support-button")?.addEventListener("click", attachSupportDocsAndResolve);
+        document.getElementById("save-hint-button")?.addEventListener("click", saveExpectedSupplierHint);
+        document.getElementById("mark-supporting-button")?.addEventListener("click", () => updateReviewStatus("supporting_docs_only"));
+        document.getElementById("mark-awaiting-button")?.addEventListener("click", () => updateReviewStatus("awaiting_document"));
+        document.getElementById("mark-no-doc-button")?.addEventListener("click", () => updateReviewStatus("no_document_expected"));
+        document.getElementById("mark-pending-button")?.addEventListener("click", () => updateReviewStatus("pending"));
+        detailStack.querySelectorAll("[data-reject-link-id]").forEach((button) => {
+          button.addEventListener("click", () => rejectLink(button.dataset.rejectLinkId));
+        });
+        detailStack.querySelectorAll("[data-inspect-document-id]").forEach((button) => {
+          button.addEventListener("click", () => inspectDocument(button.dataset.inspectDocumentId));
+        });
+        detailStack.querySelectorAll("[data-open-document-id]").forEach((button) => {
+          button.addEventListener("click", () => openDocumentFile(button.dataset.openDocumentId));
+        });
+        renderDocumentInspector(null);
+      }
+
+      function selectedDocumentIds(group) {
+        return Array.from(
+          detailStack.querySelectorAll(`input[data-match-group="${group}"]:checked`)
+        ).map((input) => ({
+          document_id: input.dataset.docId,
+          role: input.dataset.docRole,
+        }));
+      }
+
+      function reviewNoteValue() {
+        return document.getElementById("review-note-input")?.value?.trim() || "";
+      }
+
+      function expectedSupplierValue() {
+        return document.getElementById("expected-supplier-input")?.value?.trim() || "";
+      }
+
+      async function createLink(transactionId, match, role, note) {
+        await requestJson(`/api/transactions/${transactionId}/links`, {
+          method: "POST",
+          body: JSON.stringify({
+            document_id: match.document_id,
+            role,
+            status: "confirmed",
+            amount_applied: match.amount,
+            match_reason: match.reason,
+            note,
+          }),
+        });
+      }
+
+      async function confirmSuggestedSelection(confirmAll) {
+        if (!state.detail) return;
+        const matches = uniqueMatches(state.detail.suggested_matches);
+        const selected = confirmAll
+          ? matches
+          : matches.filter((match) => selectedDocumentIds("suggested").some((selectedItem) => selectedItem.document_id === match.document_id));
+        if (!selected.length) {
+          setBanner("error", "Select at least one suggested invoice first.");
+          return;
+        }
+
+        try {
+          for (const match of selected) {
+            await createLink(
+              state.detail.transaction.id,
+              match,
+              "invoice",
+              reviewNoteValue() || "confirmed from reconciliation workbench"
+            );
+          }
+          setBanner("success", `Confirmed ${selected.length} suggested invoice link(s).`);
+          await loadQueue();
+        } catch (error) {
+          setBanner("error", `Could not confirm suggestions: ${error.message}`);
+        }
+      }
+
+      async function attachSupportDocsAndResolve() {
+        if (!state.detail) return;
+        const matches = uniqueMatches(state.detail.supporting_matches);
+        const selectedIds = selectedDocumentIds("supporting");
+        const selected = matches.filter((match) =>
+          selectedIds.some((selectedItem) => selectedItem.document_id === match.document_id)
+        );
+        if (!selected.length) {
+          setBanner("error", "Select at least one supporting document first.");
+          return;
+        }
+
+        try {
+          for (const match of selected) {
+            await createLink(
+              state.detail.transaction.id,
+              match,
+              match.document_type || "supporting_doc",
+              reviewNoteValue() || "linked from supporting-doc review"
+            );
+          }
+          await updateReviewStatus("supporting_docs_only", {
+            silentSuccess: true,
+            customNote: reviewNoteValue() || "resolved through supporting supplier documents",
+          });
+          setBanner("success", `Linked ${selected.length} supporting document(s) and resolved the row.`);
+          await loadQueue();
+        } catch (error) {
+          setBanner("error", `Could not attach support docs: ${error.message}`);
+        }
+      }
+
+      async function updateReviewStatus(reviewStatus, options = {}) {
+        if (!state.detail) return;
+        try {
+          await requestJson(`/api/transactions/${state.detail.transaction.id}/review`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              review_status: reviewStatus,
+              review_note: options.customNote ?? (reviewNoteValue() || null),
+              expected_supplier: options.expectedSupplier ?? (expectedSupplierValue() || null),
+            }),
+          });
+          if (!options.silentSuccess) {
+            setBanner("success", `Review state updated to ${statusLabels[reviewStatus] || reviewStatus}.`);
+          }
+          await loadQueue();
+          return true;
+        } catch (error) {
+          setBanner("error", `Could not update review state: ${error.message}`);
+          return false;
+        }
+      }
+
+      async function saveExpectedSupplierHint() {
+        if (!state.detail) return;
+        const reviewStatus = state.detail.transaction.review_status || "pending";
+        const updated = await updateReviewStatus(reviewStatus, {
+          silentSuccess: true,
+          customNote: reviewNoteValue() || state.detail.transaction.review_note || null,
+          expectedSupplier: expectedSupplierValue() || null,
+        });
+        if (updated) {
+          setBanner("success", "Expected supplier hint saved. Queue refreshed against the new hint.");
+        }
+      }
+
+      async function rejectLink(linkId) {
+        try {
+          await requestJson(`/api/transactions/links/${linkId}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: "rejected",
+              note: reviewNoteValue() || "rejected from reconciliation workbench",
+            }),
+          });
+          setBanner("success", "Persisted link rejected.");
+          await loadQueue();
+        } catch (error) {
+          setBanner("error", `Could not reject link: ${error.message}`);
+        }
+      }
+
+      document.getElementById("login-button").addEventListener("click", login);
+      ["email-input", "password-input"].forEach((id) => {
+        document.getElementById(id).addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            login();
+          }
+        });
+      });
+      document.getElementById("reuse-token-button").addEventListener("click", initializeSession);
+      document.getElementById("logout-button").addEventListener("click", () => {
+        localStorage.removeItem("b_admin_token");
+        state.token = "";
+        state.queue = null;
+        state.detail = null;
+        state.selectedTransactionId = null;
+        setBanner("success", "Signed out.");
+        setSignedOut();
+      });
+      document.getElementById("refresh-button").addEventListener("click", loadQueue);
+      document.getElementById("apply-filters-button").addEventListener("click", async () => {
+        state.month = monthInput.value;
+        state.sourceType = sourceTypeSelect.value;
+        state.pub = pubSelect.value;
+        state.limit = Number(pageSizeSelect.value);
+        state.queueMode = queueModeSelect.value;
+        state.page = 1;
+        await loadQueue();
+      });
+      document.getElementById("prev-page-button").addEventListener("click", async () => {
+        if (state.page <= 1) return;
+        state.page -= 1;
+        await loadQueue();
+      });
+      document.getElementById("next-page-button").addEventListener("click", async () => {
+        if (!state.queue || state.page >= state.queue.pages) return;
+        state.page += 1;
+        await loadQueue();
+      });
+
+      monthInput.value = defaultMonthValue();
+      state.month = monthInput.value;
+      state.limit = Number(pageSizeSelect.value);
+      sourceTypeSelect.value = state.sourceType;
+      queueModeSelect.value = state.queueMode;
+
+      if (state.token) {
+        initializeSession();
+      } else {
+        setSignedOut();
+      }
+    </script>
+  </body>
+</html>

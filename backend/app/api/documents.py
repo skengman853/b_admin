@@ -1,7 +1,9 @@
 import uuid
 import math
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,10 +15,17 @@ from app.schemas import (
     DocumentDriveSyncRequest,
     DocumentDriveSyncResponse,
     DocumentExtractionCandidateResponse,
+    DocumentLedgerAnalysisResponse,
+    DocumentLedgerEntryResponse,
+    DocumentLedgerSettlementResponse,
+    DocumentStatementAnalysisResponse,
+    DocumentStatementEntryResponse,
     DocumentExtractionRequest,
     DocumentExtractionResponse,
     LocalDocumentImportRequest,
     LocalDocumentImportResponse,
+    StatementContextImportRequest,
+    StatementContextImportResponse,
     DocumentListResponse,
     DocumentResponse,
     DocumentSplitResponse,
@@ -24,11 +33,16 @@ from app.schemas import (
 )
 from app.services.document_candidates import extract_multi_invoice_candidates
 from app.services.document_extraction import extract_documents
-from app.services.local_document_import import import_documents_from_local_archive
+from app.services.document_ledger import build_document_ledger, build_statement_settlements
+from app.services.local_document_import import (
+    import_documents_from_local_archive,
+    import_statement_context_from_local_archive,
+)
 from app.services.document_relocation import refile_document_assets
 from app.services.document_split import split_document_into_children, sync_child_documents_from_parent
 from app.services.document_sync import sync_documents_to_drive
 from app.services.invoice_projection import sync_invoices_from_documents
+from app.services.supplier_statement_parser import parse_supplier_statement
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -48,16 +62,96 @@ def _build_document_detail_response(
         document_type=document.document_type,
         subject=document.source_email_subject or "",
     )
-    payload = DocumentDetailResponse.model_validate(document, from_attributes=True)
-    return payload.model_copy(
-        update={
-            "extraction_candidates": [
-                DocumentExtractionCandidateResponse.model_validate(candidate)
-                for candidate in candidates
-            ],
-            "parent_document": _build_document_response(parent_document) if parent_document else None,
-            "child_documents": [_build_document_response(child) for child in (child_documents or [])],
-        }
+    parsed_statement = parse_supplier_statement(document)
+    ledger = build_document_ledger(document)
+    base_payload = _build_document_response(document).model_dump()
+
+    def _build_ledger_entry_response(entry) -> DocumentLedgerEntryResponse:
+        return DocumentLedgerEntryResponse(
+            document_id=entry.document_id,
+            document_type=entry.document_type,
+            supplier=entry.supplier,
+            entry_kind=entry.entry_kind,
+            event_date=entry.event_date,
+            due_date=entry.due_date,
+            reference=entry.reference,
+            related_reference=entry.related_reference,
+            amount=entry.amount,
+            signed_amount=entry.signed_amount,
+            vat_amount=entry.vat_amount,
+            currency=entry.currency,
+            is_financial=entry.is_financial,
+            statement_kind=entry.statement_kind,
+            account_number=entry.account_number,
+            account_name=entry.account_name,
+            raw_text=entry.raw_text,
+        )
+
+    return DocumentDetailResponse(
+        **base_payload,
+        extracted_text=document.extracted_text,
+        extraction_candidates=[
+            DocumentExtractionCandidateResponse.model_validate(candidate)
+            for candidate in candidates
+        ],
+        statement_analysis=(
+            DocumentStatementAnalysisResponse(
+                statement_kind=parsed_statement.statement_kind,
+                is_financial=parsed_statement.is_financial,
+                account_number=parsed_statement.account_number,
+                account_name=parsed_statement.account_name,
+                period_start=parsed_statement.period_start,
+                period_end=parsed_statement.period_end,
+                total_due=parsed_statement.total_due,
+                settlement_discount_total=parsed_statement.settlement_discount_total,
+                closing_balance=parsed_statement.closing_balance,
+                invoice_references=list(parsed_statement.invoice_references),
+                payment_references=list(parsed_statement.payment_references),
+                note=parsed_statement.note,
+                entries=[
+                    DocumentStatementEntryResponse(
+                        event_date=entry.event_date,
+                        reference=entry.reference,
+                        transaction_type=entry.transaction_type,
+                        due_date=entry.due_date,
+                        clearing_reference=entry.clearing_reference,
+                        amount=entry.amount,
+                        raw_text=entry.raw_text,
+                    )
+                    for entry in parsed_statement.entries
+                ],
+            )
+            if parsed_statement
+            else None
+        ),
+        ledger_analysis=(
+            DocumentLedgerAnalysisResponse(
+                document_id=ledger.document_id,
+                supplier=ledger.supplier,
+                document_type=ledger.document_type,
+                is_financial=ledger.is_financial,
+                statement_kind=ledger.statement_kind,
+                account_number=ledger.account_number,
+                account_name=ledger.account_name,
+                note=ledger.note,
+                entries=[_build_ledger_entry_response(entry) for entry in ledger.entries],
+                settlements=[
+                    DocumentLedgerSettlementResponse(
+                        payment_entry=_build_ledger_entry_response(settlement.payment_entry),
+                        component_entries=[
+                            _build_ledger_entry_response(component)
+                            for component in settlement.component_entries
+                        ],
+                        net_amount=settlement.net_amount,
+                    )
+                    for settlement in build_statement_settlements(ledger)
+                ],
+            )
+            if ledger
+            else None
+        ),
+        parent_document=_build_document_response(parent_document) if parent_document else None,
+        child_documents=[_build_document_response(child) for child in (child_documents or [])],
     )
 
 
@@ -231,6 +325,27 @@ async def get_document(
         parent_document=parent_document,
         child_documents=child_documents,
     )
+
+
+@router.get("/{document_id}/file", include_in_schema=False)
+async def get_document_file(
+    document_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Document).where(Document.id == document_id, Document.user_id == user.id)
+    )
+    document = result.scalar_one_or_none()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_path = Path(document.local_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Document file not found")
+
+    media_type = "application/pdf" if file_path.suffix.lower() == ".pdf" else "application/octet-stream"
+    return FileResponse(file_path, media_type=media_type, filename=document.attachment_name)
 
 
 @router.patch("/{document_id}", response_model=DocumentDetailResponse)
@@ -418,3 +533,33 @@ async def import_local_documents(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return LocalDocumentImportResponse.model_validate(summary, from_attributes=True)
+
+
+@router.post("/import-statement-context", response_model=StatementContextImportResponse)
+async def import_statement_context_documents(
+    body: StatementContextImportRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        summary = await import_statement_context_from_local_archive(
+            user=user,
+            db=db,
+            source_path=body.source_path,
+            month=body.month,
+            source_type=body.source_type,
+            pub=body.pub,
+            supplier_filters=body.supplier_filters,
+            adjacent_months=body.adjacent_months,
+            limit=body.limit,
+            recurse=body.recurse,
+            extract_after_import=body.extract_after_import,
+        )
+    except FileNotFoundError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return StatementContextImportResponse.model_validate(summary, from_attributes=True)

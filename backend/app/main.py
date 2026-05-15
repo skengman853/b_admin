@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.api import auth, dashboard, documents, gmail, invoices, pipeline, transactions, webhooks
+from app.api import auth, dashboard, documents, gmail, invoices, pipeline, review_ui, transactions, webhooks
 
 app = FastAPI(title="Invoice Organizer")
 
@@ -22,6 +22,7 @@ app.include_router(transactions.router)
 app.include_router(invoices.router)
 app.include_router(dashboard.router)
 app.include_router(webhooks.router)
+app.include_router(review_ui.router)
 
 
 @app.get("/health")

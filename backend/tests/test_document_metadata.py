@@ -272,6 +272,62 @@ TOTAL
 """
 
 
+BULMERS_STATEMENT_TEXT = """Customer Statement,1001,,,,31/12/16,113480.60,,,,,,00060~CCCS_2017004_132705.TXT
+
+STATEMENT
+
+Issued by
+Bulmers Ireland
+
+CANAL TURN
+T/A THE CANAL TURN
+Main Street
+Ballymahon
+
+Statement Date
+
+30/04/26
+"""
+
+BULMERS_INVOICE_TEXT = """INVOICE,9890200,9890201,1466,60008348,12/12/16,2205.36,273263,15/12/16,60009694,,,00060~CCCI_2016347_225404.TXT
+
+Issued by
+Bulmers Ireland
+
+INVOICE
+
+Invoice Number
+
+4150707
+
+Delivery Date
+
+15/04/26
+
+VAT
+
+Invoice Date: 15/04/26
+
+Goods Value
+
+VAT Value
+
+0.00
+18.00
+
+0.00
+0.00
+
+18.00
+
+0.00
+
+Total €
+
+18.00
+"""
+
+
 class ExtractAmountTests(unittest.TestCase):
     def test_prefers_grand_total_over_order_total_header(self) -> None:
         self.assertEqual(extract_amount(CHRIS_LYNCH_INVOICE_TEXT, "invoice"), "1470.00")
@@ -299,6 +355,38 @@ class ExtractAmountTests(unittest.TestCase):
 
     def test_extracts_us_style_date_for_david_campbell_template(self) -> None:
         self.assertEqual(extract_document_date(DAVID_CAMPBELL_INVOICE_TEXT), "2026-04-23")
+
+    def test_prefers_labeled_statement_date_over_legacy_export_date(self) -> None:
+        self.assertEqual(
+            extract_document_date(
+                BULMERS_STATEMENT_TEXT,
+                "Bulmers Ireland/Statements/Careys Bar/Bulmers Ireland - Stmt 018 - Date 30-04-2026 - Linked.pdf",
+            ),
+            "2026-04-30",
+        )
+
+    def test_prefers_attachment_date_over_export_header_for_archive_invoice(self) -> None:
+        self.assertEqual(
+            extract_document_date(
+                BULMERS_INVOICE_TEXT,
+                "Bulmers Ireland/Invoices/Careys Bar/Bulmers Ireland - Inv 106 - 4150707 - Date 15-04-2026 - Linked.pdf",
+                "Careys Bar - Bulmers Ireland - Inv 106 - 4150707 - Date 15-04-2026.pdf",
+            ),
+            "2026-04-15",
+        )
+
+    def test_extracts_archive_invoice_reference_from_filename(self) -> None:
+        self.assertEqual(
+            extract_reference(
+                BULMERS_INVOICE_TEXT,
+                "Bulmers Ireland/Invoices/Careys Bar/Bulmers Ireland - Inv 106 - 4150707 - Date 15-04-2026 - Linked.pdf",
+                "Careys Bar - Bulmers Ireland - Inv 106 - 4150707 - Date 15-04-2026.pdf",
+            ),
+            "4150707",
+        )
+
+    def test_extracts_total_amount_from_archive_invoice_and_ignores_export_row(self) -> None:
+        self.assertEqual(extract_amount(BULMERS_INVOICE_TEXT, "invoice"), "18.00")
 
     def test_prefers_receipt_reference_for_receipts(self) -> None:
         self.assertEqual(

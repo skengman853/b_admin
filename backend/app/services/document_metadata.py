@@ -42,7 +42,7 @@ def _normalize_date(raw: str, *, preferred_numeric_order: str | None = None) -> 
     return None
 
 
-def extract_document_date(text: str, subject: str = "") -> str | None:
+def extract_document_date(text: str, subject: str = "", attachment_name: str = "") -> str | None:
     if all(token in (text or "") for token in ("Bill To:", "Balance Due", "Due Date:", "Invoice No:")):
         mdy_patterns = (
             r"Date[:\s]+(\d{2}/\d{2}/\d{4})",
@@ -56,12 +56,25 @@ def extract_document_date(text: str, subject: str = "") -> str | None:
                     return normalized
 
     patterns = (
+        r"Statement Date[:\s]+(\d{2}[/-]\d{2}[/-]\d{2,4})",
+        r"\bDate[:\s]+(\d{2}[/-]\d{2}[/-]\d{2,4})",
         r"Invoice Date[:\s]+(\d{2}[/-]\d{2}[/-]\d{2,4})",
         r"Date paid[:\s]+([A-Za-z]+ \d{1,2}, \d{4})",
         r"Service date[:\s]+(\d{2}[/-]\d{2}[/-]\d{2,4})",
         r"Statement\s+\((?:\d{2}\s+[A-Za-z]+\s+\d{4})\s*-\s*(\d{2}\s+[A-Za-z]+\s+\d{4})\)",
     )
-    haystacks = [text or "", subject or ""]
+    metadata_haystacks = [attachment_name or "", subject or ""]
+    for haystack in metadata_haystacks:
+        if not haystack:
+            continue
+        for pattern in patterns:
+            match = re.search(pattern, haystack, flags=re.IGNORECASE)
+            if match:
+                normalized = _normalize_date(match.group(1))
+                if normalized:
+                    return normalized
+
+    haystacks = [text or "", subject or "", attachment_name or ""]
     for haystack in haystacks:
         for pattern in patterns:
             match = re.search(pattern, haystack, flags=re.IGNORECASE)
@@ -98,9 +111,10 @@ def extract_reference(text: str, subject: str = "", attachment_name: str = "") -
         (
             "invoice",
             (
-                rf"Invoice No\.?[: \t]+{REFERENCE_TOKEN}",
-                rf"Invoice number[: \t]+{REFERENCE_TOKEN}",
+                rf"Invoice No\.?[:\s]+{REFERENCE_TOKEN}",
+                rf"Invoice number[:\s]+{REFERENCE_TOKEN}",
                 r"\bINVOICE\s+(\d{4,})\b",
+                rf"\bInv(?:oice)?\s+[A-Z0-9-]+\s*-\s*{REFERENCE_TOKEN}\b",
                 rf"(?:^|[\\/])Invoice[-_\s]+{REFERENCE_TOKEN}(?:\.[A-Za-z0-9]+)?$",
             ),
         ),
@@ -176,6 +190,8 @@ def _find_amounts_in_lines(
         window = lines[idx : idx + window_size]
         candidates: list[str] = []
         for candidate_line in window:
+            if _looks_like_delimited_export_row(candidate_line):
+                continue
             for raw in AMOUNT_PATTERN.findall(candidate_line):
                 normalized = _normalize_amount(raw)
                 if normalized:
@@ -205,6 +221,8 @@ def _find_total_like_amount(
         immediate_window = lines[idx : idx + immediate_window_size]
         immediate_candidates: list[float] = []
         for candidate_line in immediate_window:
+            if _looks_like_delimited_export_row(candidate_line):
+                continue
             for raw in AMOUNT_PATTERN.findall(candidate_line):
                 normalized = _normalize_amount(raw)
                 if normalized:
@@ -215,6 +233,8 @@ def _find_total_like_amount(
         fallback_window = lines[idx : idx + fallback_window_size]
         fallback_candidates: list[float] = []
         for candidate_line in fallback_window:
+            if _looks_like_delimited_export_row(candidate_line):
+                continue
             for raw in AMOUNT_PATTERN.findall(candidate_line):
                 normalized = _normalize_amount(raw)
                 if normalized:
@@ -258,6 +278,7 @@ def extract_amount(text: str, document_type: str = "unknown") -> str | None:
         (r"invoice total",),
         (r"total due", r"amount due"),
         (r"order total",),
+        (r"^total(?:\s*[€$£])?$",),
         (r"^total$",),
         (r"balance due",),
     )
@@ -268,6 +289,8 @@ def extract_amount(text: str, document_type: str = "unknown") -> str | None:
 
     all_amounts: list[float] = []
     for line in lines:
+        if _looks_like_delimited_export_row(line):
+            continue
         for raw in AMOUNT_PATTERN.findall(line):
             normalized = _normalize_amount(raw)
             if normalized:
@@ -276,3 +299,12 @@ def extract_amount(text: str, document_type: str = "unknown") -> str | None:
         return f"{max(all_amounts):.2f}"
 
     return None
+
+
+def _looks_like_delimited_export_row(line: str) -> bool:
+    stripped = (line or "").strip()
+    if stripped.count(",") < 5:
+        return False
+    if any(token in stripped.lower() for token in ("total", "invoice date", "payment method", "statement date")):
+        return False
+    return "/" in stripped or "~" in stripped

@@ -3,33 +3,10 @@ from __future__ import annotations
 import re
 from email.utils import parseaddr
 
-SUPPLIER_RULES = {
-    "automatic amusements": "Automatic Amusements",
-    "candcgroup": "Bulmers",
-    "bulmers": "Bulmers",
-    "ebilling": "BOC",
-    "boconline": "BOC",
-    "boc": "BOC",
-    "booker": "Booker",
-    "caterers cash & carry": "Caterers Cash & Carry",
-    "chris lynch": "Chris Lynch Skip Hire & Waste Management Services",
-    "connacht bottlers": "Connacht Bottlers",
-    "costco": "Costco",
-    "diageo": "Diageo",
-    "makro": "Makro",
-    "little luxuries": "Little Luxuries",
-    "moodmaster": "Automatic Amusements",
-    "m&j gleeson": "M&J Gleeson",
-    "m and j gleeson": "M&J Gleeson",
-    "railway corporation": "Railway Corporation",
-    "seery": "Caterers Cash & Carry",
-    "seerys": "Caterers Cash & Carry",
-    "c&c gleeson": "C&C Gleeson",
-    "c and c gleeson": "C&C Gleeson",
-    "travisperkins": "Travis Perkins",
-    "travis perkins": "Travis Perkins",
-    "tcc": "TCC",
-}
+from app.services.supplier_profiles import (
+    canonicalize_supplier_name as canonicalize_known_supplier_name,
+    match_known_supplier_in_text,
+)
 
 FREE_MAIL_DOMAINS = {
     "gmail.com",
@@ -74,18 +51,14 @@ def _clean_candidate(candidate: str) -> str:
 
 
 def _match_known_supplier(haystack: str) -> str | None:
-    for needle, supplier in SUPPLIER_RULES.items():
-        if needle.lower() in haystack:
-            return supplier
-    return None
+    return match_known_supplier_in_text(haystack)
 
 
 def canonicalize_supplier_name(candidate: str) -> str | None:
     cleaned = _clean_candidate(candidate)
     if not cleaned:
         return None
-    known = _match_known_supplier(cleaned.lower())
-    return known or cleaned
+    return canonicalize_known_supplier_name(cleaned) or cleaned
 
 
 def _extract_supplier_from_subject(subject: str) -> str | None:
@@ -226,4 +199,4 @@ def detect_supplier(
 def is_known_supplier(sender: str, subject: str) -> bool:
     sender_email = extract_sender_email(sender)
     haystack = " ".join([sender_email, subject or ""]).lower()
-    return any(needle.lower() in haystack for needle in SUPPLIER_RULES)
+    return match_known_supplier_in_text(haystack) is not None
