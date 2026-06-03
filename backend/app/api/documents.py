@@ -14,6 +14,8 @@ from app.schemas import (
     DocumentDetailResponse,
     DocumentDriveSyncRequest,
     DocumentDriveSyncResponse,
+    DocumentStorageSyncRequest,
+    DocumentStorageSyncResponse,
     DocumentExtractionCandidateResponse,
     DocumentLedgerAnalysisResponse,
     DocumentLedgerEntryResponse,
@@ -37,6 +39,11 @@ from app.services.document_ledger import build_document_ledger, build_statement_
 from app.services.local_document_import import (
     import_documents_from_local_archive,
     import_statement_context_from_local_archive,
+)
+from app.services.object_storage import (
+    ensure_local_document_file,
+    object_storage_enabled,
+    sync_documents_to_object_storage,
 )
 from app.services.document_relocation import refile_document_assets
 from app.services.document_split import split_document_into_children, sync_child_documents_from_parent
@@ -340,9 +347,10 @@ async def get_document_file(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    file_path = Path(document.local_path)
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Document file not found")
+    try:
+        file_path = ensure_local_document_file(document)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     media_type = "application/pdf" if file_path.suffix.lower() == ".pdf" else "application/octet-stream"
     return FileResponse(file_path, media_type=media_type, filename=document.attachment_name)
@@ -487,6 +495,28 @@ async def sync_drive_documents(
         force=body.force,
     )
     return DocumentDriveSyncResponse.model_validate(summary)
+
+
+@router.post("/sync-storage", response_model=DocumentStorageSyncResponse)
+async def sync_storage_documents(
+    body: DocumentStorageSyncRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not object_storage_enabled():
+        raise HTTPException(
+            status_code=400,
+            detail="Object storage is not configured. Set document_storage_backend=s3 and the S3 env vars first.",
+        )
+
+    summary = await sync_documents_to_object_storage(
+        user=user,
+        db=db,
+        limit=body.limit,
+        document_ids=body.document_ids,
+        force=body.force,
+    )
+    return DocumentStorageSyncResponse.model_validate(summary)
 
 
 @router.post("/extract", response_model=DocumentExtractionResponse)

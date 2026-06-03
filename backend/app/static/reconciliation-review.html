@@ -133,6 +133,38 @@
         border-color: rgba(93, 74, 135, 0.18);
       }
 
+      .tag[data-tone="hard_copy_available"] {
+        background: rgba(77, 115, 74, 0.12);
+        color: #425f3f;
+        border-color: rgba(66, 95, 63, 0.18);
+      }
+
+      .tag[data-tone="handled_by_rule"] {
+        background: rgba(94, 102, 54, 0.12);
+        color: #59632f;
+        border-color: rgba(89, 99, 47, 0.18);
+      }
+      .tag[data-tone="storage_r2_and_drive"] {
+        background: rgba(13, 107, 98, 0.12);
+        color: #0d6b62;
+        border-color: rgba(13, 107, 98, 0.18);
+      }
+      .tag[data-tone="storage_r2_only"] {
+        background: rgba(193, 124, 39, 0.12);
+        color: #8b5e1f;
+        border-color: rgba(193, 124, 39, 0.18);
+      }
+      .tag[data-tone="storage_drive_only"] {
+        background: rgba(56, 101, 171, 0.12);
+        color: #31578d;
+        border-color: rgba(56, 101, 171, 0.18);
+      }
+      .tag[data-tone="storage_local_only"] {
+        background: rgba(80, 72, 65, 0.08);
+        color: #5f574e;
+        border-color: rgba(80, 72, 65, 0.14);
+      }
+
       .auth-bar {
         display: flex;
         flex-wrap: wrap;
@@ -196,7 +228,20 @@
         transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
       }
 
-      button:hover:not(:disabled) {
+      .button-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        border: 1px solid transparent;
+        border-radius: 16px;
+        padding: 0.78rem 1rem;
+        font-weight: 700;
+        transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+      }
+
+      button:hover:not(:disabled),
+      .button-link:hover {
         transform: translateY(-1px);
       }
 
@@ -289,7 +334,7 @@
       .workspace {
         margin-top: 1rem;
         display: grid;
-        grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+        grid-template-columns: 1fr;
         gap: 1rem;
       }
 
@@ -301,6 +346,175 @@
         display: grid;
         gap: 0.75rem;
         margin-top: 0.9rem;
+      }
+
+      .register-legend {
+        margin-top: 0.9rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        align-items: center;
+      }
+
+      .register-inline-detail {
+        margin: -0.1rem 0 0.3rem;
+        padding: 0 0.35rem 0 0.85rem;
+      }
+
+      .register-inline-detail .detail-card {
+        border-radius: 18px;
+        box-shadow: 0 12px 30px rgba(39, 32, 24, 0.08);
+      }
+
+      .register-inline-detail .detail-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .register-inline-detail .flow-stage-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .register-table {
+        margin-top: 0.9rem;
+        display: grid;
+        gap: 0.5rem;
+      }
+
+      .register-head,
+      .register-row {
+        display: grid;
+        grid-template-columns: minmax(220px, 2.2fr) minmax(150px, 1.2fr) 0.8fr 0.8fr 0.8fr minmax(120px, 1fr) minmax(200px, 1.8fr) minmax(150px, 1.3fr);
+        gap: 0.7rem;
+        align-items: start;
+      }
+
+      .register-head {
+        padding: 0.2rem 0.8rem 0.45rem;
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border-bottom: 1px solid rgba(42, 51, 61, 0.08);
+      }
+
+      .register-row {
+        padding: 0.95rem 1rem 1rem;
+        border: 1px solid rgba(42, 51, 61, 0.08);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.64));
+        border-radius: 18px;
+        cursor: pointer;
+        transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
+      }
+
+      .register-row.is-active {
+        border-color: rgba(13, 107, 98, 0.26);
+        box-shadow: inset 0 0 0 1px rgba(13, 107, 98, 0.14);
+        background: rgba(243, 255, 252, 0.82);
+      }
+
+      .register-row:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 24px rgba(39, 32, 24, 0.08);
+      }
+
+      .register-row[data-bucket="confirm_match"] {
+        border-left: 4px solid rgba(13, 107, 98, 0.42);
+      }
+
+      .register-row[data-bucket="review_supporting_docs"] {
+        border-left: 4px solid rgba(40, 83, 122, 0.34);
+      }
+
+      .register-row[data-bucket="awaiting_document"] {
+        border-left: 4px solid rgba(154, 92, 22, 0.34);
+      }
+
+      .register-row[data-bucket="needs_matcher_improvement"] {
+        border-left: 4px solid rgba(141, 60, 51, 0.34);
+      }
+
+      .register-cell {
+        display: grid;
+        gap: 0.3rem;
+        min-width: 0;
+      }
+
+      .register-primary strong {
+        font-size: 0.98rem;
+        line-height: 1.28;
+      }
+
+      .register-row-number {
+        color: var(--muted);
+        font-size: 0.77rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+      }
+
+      .register-secondary {
+        color: var(--muted);
+        font-size: 0.87rem;
+      }
+
+      .register-status {
+        justify-items: start;
+      }
+
+      .register-amount {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum";
+        font-weight: 700;
+      }
+
+      .register-amount.is-empty {
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .evidence-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+      }
+
+      .evidence-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.38rem;
+        padding: 0.38rem 0.6rem;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.72);
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+
+      .evidence-pill strong {
+        font-size: 0.84rem;
+      }
+
+      .evidence-pill[data-level="ok"] {
+        background: var(--accent-soft);
+        color: var(--accent);
+        border-color: rgba(13, 107, 98, 0.18);
+      }
+
+      .evidence-pill[data-level="warn"] {
+        background: var(--warn-soft);
+        color: var(--warn);
+        border-color: rgba(154, 92, 22, 0.18);
+      }
+
+      .evidence-pill[data-level="empty"] {
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.62);
+      }
+
+      .status-stack {
+        display: grid;
+        gap: 0.45rem;
       }
 
       .queue-item {
@@ -377,8 +591,46 @@
         gap: 0.9rem;
       }
 
+      .detail-stack.is-inline-only {
+        display: none;
+      }
+
       .detail-card {
         padding: 1rem 1.05rem;
+      }
+
+      .detail-sticky-summary {
+        position: sticky;
+        top: 0.55rem;
+        z-index: 12;
+        padding: 0.72rem 0.85rem;
+        border-radius: 18px;
+        background: rgba(255, 251, 245, 0.94);
+        backdrop-filter: blur(14px);
+        border: 1px solid rgba(42, 51, 61, 0.1);
+        box-shadow: 0 12px 28px rgba(42, 33, 24, 0.1);
+      }
+
+      .sticky-summary-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        align-items: center;
+      }
+
+      .sticky-summary-title {
+        font-size: 0.95rem;
+        line-height: 1.2;
+        font-weight: 800;
+      }
+
+      .sticky-summary-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-top: 0.45rem;
+        color: var(--muted);
+        font-size: 0.83rem;
       }
 
       .detail-header {
@@ -447,6 +699,41 @@
         color: var(--muted);
         line-height: 1.45;
         font-size: 0.92rem;
+      }
+
+      .inline-more {
+        margin-top: 0.15rem;
+      }
+
+      .inline-more summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 0.84rem;
+        font-weight: 700;
+        list-style: none;
+      }
+
+      .inline-more summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .inline-more-body {
+        margin-top: 0.45rem;
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+
+      .related-match-list {
+        display: grid;
+        gap: 0.6rem;
+        margin-top: 0.7rem;
+      }
+
+      .match-card.is-related {
+        background: rgba(255, 255, 255, 0.5);
+        border-style: dashed;
       }
 
       .match-actions {
@@ -547,7 +834,13 @@
           grid-template-columns: repeat(3, minmax(0, 1fr));
         }
 
-        .workspace {
+        .register-head,
+        .register-row {
+          grid-template-columns: minmax(180px, 2fr) minmax(140px, 1.2fr) repeat(3, minmax(70px, 0.8fr)) minmax(110px, 1fr) minmax(190px, 1.6fr) minmax(140px, 1.2fr);
+        }
+
+        .register-inline-detail .detail-grid,
+        .register-inline-detail .flow-stage-grid {
           grid-template-columns: 1fr;
         }
       }
@@ -570,6 +863,24 @@
 
         .flow-stage-grid {
           grid-template-columns: 1fr;
+        }
+
+        .register-head {
+          display: none;
+        }
+
+        .register-row {
+          grid-template-columns: 1fr;
+          gap: 0.65rem;
+        }
+
+        .register-cell::before {
+          content: attr(data-label);
+          color: var(--muted);
+          font-size: 0.72rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
         }
 
         .hero-top,
@@ -610,6 +921,7 @@
           <div class="auth-actions hidden" id="session-panel">
             <div class="small-note" id="user-label">Signed in</div>
             <button class="button-secondary" id="refresh-button" type="button">Refresh Queue</button>
+            <a class="button-link button-secondary" href="/supplier-documents">Supplier Documents</a>
             <button class="button-ghost" id="logout-button" type="button">Log Out</button>
           </div>
         </div>
@@ -669,21 +981,26 @@
         <aside class="panel">
           <div class="queue-toolbar">
             <div>
-              <strong id="queue-title">Queue</strong>
-              <div class="small-note" id="queue-subtitle">Log in to load the review queue.</div>
+              <strong id="queue-title">Transaction Register</strong>
+              <div class="small-note" id="queue-subtitle">Log in to load the register.</div>
             </div>
             <div class="toolbar-spacer"></div>
             <button class="button-ghost" id="prev-page-button" type="button">Previous</button>
             <button class="button-ghost" id="next-page-button" type="button">Next</button>
           </div>
-          <div class="queue-list" id="queue-list">
-            <div class="queue-empty">No queue loaded yet.</div>
+          <div class="register-legend">
+            <span class="evidence-pill" data-level="ok"><strong>Green</strong><span>evidence present</span></span>
+            <span class="evidence-pill" data-level="warn"><strong>Yellow</strong><span>likely needs more</span></span>
+            <span class="evidence-pill" data-level="empty"><strong>Grey</strong><span>none / not needed</span></span>
+          </div>
+          <div class="register-table" id="queue-list">
+            <div class="queue-empty">No register loaded yet.</div>
           </div>
         </aside>
 
-        <main class="detail-stack" id="detail-stack">
+        <main class="detail-stack is-inline-only" id="detail-stack">
           <div class="detail-empty">
-            Pick a transaction from the queue to inspect the suggested invoices, supporting
+            Pick a transaction from the register to inspect the suggested invoices, supporting
             documents, persisted links, and recommended review action.
           </div>
         </main>
@@ -703,6 +1020,7 @@
         queue: null,
         selectedTransactionId: null,
         detail: null,
+        availableRules: [],
         previewDocument: null,
         documentCache: {},
       };
@@ -719,9 +1037,48 @@
       const statusLabels = {
         linked: "Linked",
         supporting_docs_only: "Supporting Docs Only",
+        hard_copy_available: "Hard Copy Available",
+        handled_by_rule: "Handled By Rule",
         awaiting_document: "Awaiting Document",
         no_document_expected: "No Document Expected",
         pending: "Pending",
+      };
+
+      const standardRuleCategories = [
+        "Wages",
+        "Contract",
+        "Hard Copy Available",
+        "No Document Expected",
+      ];
+
+      const standardRuleCategoryPresets = {
+        "Wages": {
+          reviewStatus: "handled_by_rule",
+          documentExpectation: "none",
+          defaultNote: "Wages / payroll",
+        },
+        "Contract": {
+          reviewStatus: "handled_by_rule",
+          documentExpectation: "annual_invoice",
+          defaultNote: "Charged monthly, invoiced annually",
+        },
+        "Hard Copy Available": {
+          reviewStatus: "hard_copy_available",
+          documentExpectation: "hard_copy",
+          defaultNote: "Hard copy available",
+        },
+        "No Document Expected": {
+          reviewStatus: "no_document_expected",
+          documentExpectation: "none",
+          defaultNote: "No supplier document expected",
+        },
+      };
+
+      const standardReviewCategories = {
+        linked: "Invoice Match",
+        supporting_docs_only: "Statement Settlement",
+        hard_copy_available: "Hard Copy Available",
+        no_document_expected: "No Document Expected",
       };
 
       const sourceTypeSelect = document.getElementById("source-type-select");
@@ -798,6 +1155,119 @@
 
       function buildTag(label, tone) {
         return `<span class="tag" data-tone="${escapeHtml(tone)}">${escapeHtml(label)}</span>`;
+      }
+
+      function storageStateLabel(state) {
+        return {
+          r2_and_drive: "R2 + Drive",
+          r2_only: "R2",
+          drive_only: "Drive",
+          local_only: "Local only",
+        }[state] || "Local only";
+      }
+
+      function resolveStorageState(document) {
+        if (!document) return "local_only";
+        if (document.storage_state) return document.storage_state;
+        const hasR2 = (document.storage_provider || "").toLowerCase() === "s3" && document.storage_key;
+        const hasDrive = Boolean(document.drive_file_id);
+        if (hasR2 && hasDrive) return "r2_and_drive";
+        if (hasR2) return "r2_only";
+        if (hasDrive) return "drive_only";
+        return "local_only";
+      }
+
+      function renderStorageTags(document) {
+        const state = resolveStorageState(document);
+        const tags = [buildTag(storageStateLabel(state), `storage_${state}`)];
+        if (document?.storage_bucket && (document.storage_provider || "").toLowerCase() === "s3") {
+          tags.push(buildTag(`Bucket ${document.storage_bucket}`, "storage_r2_only"));
+        }
+        if (document?.drive_file_id) {
+          tags.push(buildTag("Drive linked", "storage_drive_only"));
+        }
+        return tags.join("");
+      }
+
+      function cleanBankPayee(value) {
+        return String(value || "")
+          .replace(/^(?:\*?(?:inet|mobi|pos|visa|mc|card)\s+|(?:d\/d|dd|vdp|vdc)\s*[- ]*)/i, "")
+          .trim() || "—";
+      }
+
+      function deriveSupplierLabel(item) {
+        const transaction = item.transaction || {};
+        return (
+          transaction.expected_supplier ||
+          item.persisted_links?.[0]?.document?.supplier ||
+          item.exact_matches?.[0]?.supplier ||
+          item.suggested_matches?.[0]?.supplier ||
+          item.supporting_matches?.[0]?.supplier ||
+          cleanBankPayee(transaction.description1)
+        );
+      }
+
+      function uniqueDocumentCount(documents, matcher) {
+        const ids = new Set();
+        (documents || []).forEach((document) => {
+          if (matcher(document)) {
+            ids.add(document.document_id || document.id);
+          }
+        });
+        return ids.size;
+      }
+
+      function gatherEvidence(item) {
+        const matches = [
+          ...(item.exact_matches || []),
+          ...(item.suggested_matches || []),
+          ...(item.supporting_matches || []),
+        ];
+        const links = item.persisted_links || [];
+        const resolutionText = `${item.analysis_note || ""} ${item.resolution_reason || ""}`.toLowerCase();
+
+        const statementCount =
+          uniqueDocumentCount(matches, (match) => (match.document_type || "").toLowerCase() === "statement") +
+          uniqueDocumentCount(links, (link) => (link.document?.document_type || "").toLowerCase() === "statement");
+        const invoiceCount =
+          uniqueDocumentCount(matches, (match) => (match.document_type || "").toLowerCase() === "invoice") +
+          uniqueDocumentCount(links, (link) => (link.document?.document_type || "").toLowerCase() === "invoice");
+        const creditCount =
+          uniqueDocumentCount(matches, (match) => (match.document_type || "").toLowerCase() === "credit_note") +
+          uniqueDocumentCount(links, (link) => (link.document?.document_type || "").toLowerCase() === "credit_note");
+        const linkedCount = uniqueDocumentCount(links, () => true);
+
+        const statementNeeded =
+          item.resolution_bucket === "review_supporting_docs" || resolutionText.includes("statement");
+        const invoiceNeeded =
+          ["confirm_match", "complete_partial_match"].includes(item.resolution_bucket) ||
+          item.status === "matched" ||
+          item.status === "suggested";
+        const creditNeeded = resolutionText.includes("credit");
+
+        return [
+          { label: "Stmt", count: statementCount, level: statementCount ? "ok" : statementNeeded ? "warn" : "empty" },
+          { label: "Inv", count: invoiceCount, level: invoiceCount ? "ok" : invoiceNeeded ? "warn" : "empty" },
+          { label: "Cred", count: creditCount, level: creditCount ? "ok" : creditNeeded ? "warn" : "empty" },
+          { label: "Linked", count: linkedCount, level: linkedCount ? "ok" : "empty" },
+        ];
+      }
+
+      function renderEvidenceStrip(item) {
+        return `
+          <div class="evidence-strip">
+            ${gatherEvidence(item)
+              .map(
+                (entry) => `
+                  <span class="evidence-pill" data-level="${entry.level}">
+                    <strong>${entry.count}</strong>
+                    <span>${entry.label}</span>
+                  </span>
+                `
+              )
+              .join("")}
+          </div>
+        `;
       }
 
       function extractDocumentClues(text) {
@@ -888,7 +1358,7 @@
       function statementKindLabel(kind) {
         return {
           supplier_statement: "Supplier Statement",
-          trade_statement: "Trade Statement",
+          trade_statement: "Account Statement",
           sub_account_statement: "Sub-Account Statement",
           keg_flow_statement: "Keg Flow Statement",
           statement: "Statement",
@@ -909,6 +1379,84 @@
           return false;
         }
         return Math.abs(Number(left) - Number(right)) < 0.005;
+      }
+
+      function splitReasonClauses(text) {
+        return String(text || "")
+          .split(/;|\n+/)
+          .map((part) => part.trim())
+          .filter(Boolean);
+      }
+
+      function renderCompactReason(text, summaryLabel = "See more", maxClauses = 2) {
+        const raw = String(text || "").trim();
+        if (!raw) {
+          return "";
+        }
+        const clauses = splitReasonClauses(raw);
+        if (clauses.length <= maxClauses) {
+          return `<div class="match-reason">${escapeHtml(raw)}</div>`;
+        }
+        const lead = clauses.slice(0, maxClauses).join("; ");
+        const remainder = clauses.slice(maxClauses).join("; ");
+        return `
+          <div class="match-reason">${escapeHtml(lead)}</div>
+          <details class="inline-more">
+            <summary>${escapeHtml(`${summaryLabel} (${clauses.length - maxClauses} more)`)}</summary>
+            <div class="inline-more-body">${escapeHtml(remainder)}</div>
+          </details>
+        `;
+      }
+
+      function statementSupportGroupKey(match) {
+        if (!match || match.document_type !== "statement") {
+          return `doc:${match?.document_id || ""}`;
+        }
+        const amount = decimalValue(match.amount);
+        const roundedAmount = amount === null ? "" : amount.toFixed(2);
+        return [
+          String(match.supplier || "").trim().toLowerCase(),
+          String(match.document_type || "").trim().toLowerCase(),
+          String(match.document_date || "").trim(),
+          roundedAmount,
+        ].join("|");
+      }
+
+      function rankMatchForDisplay(match) {
+        let score = 0;
+        if (match.reference) score += 30;
+        if (match.document_id) score += 10;
+        if ((match.storage_provider || "").toLowerCase() === "s3" && match.storage_key) score += 4;
+        if (match.drive_file_id) score += 2;
+        if (match.score !== null && match.score !== undefined && !Number.isNaN(Number(match.score))) {
+          score += Number(match.score);
+        }
+        return score;
+      }
+
+      function groupMatchesForDisplay(matches, group) {
+        const unique = uniqueMatches(matches);
+        if (group !== "supporting") {
+          return unique.map((match) => ({ primary: match, related: [] }));
+        }
+
+        const buckets = new Map();
+        unique.forEach((match) => {
+          const key = statementSupportGroupKey(match);
+          const bucket = buckets.get(key) || [];
+          bucket.push(match);
+          buckets.set(key, bucket);
+        });
+
+        return Array.from(buckets.values())
+          .map((bucket) => {
+            const ordered = [...bucket].sort((left, right) => rankMatchForDisplay(right) - rankMatchForDisplay(left));
+            return {
+              primary: ordered[0],
+              related: ordered.slice(1),
+            };
+          })
+          .sort((left, right) => rankMatchForDisplay(right.primary) - rankMatchForDisplay(left.primary));
       }
 
       async function requestJson(path, options = {}) {
@@ -1011,7 +1559,7 @@
         authStatus.dataset.tone = "accent";
         loginForm.classList.remove("hidden");
         sessionPanel.classList.add("hidden");
-        queueList.innerHTML = '<div class="queue-empty">Log in to load the review queue.</div>';
+        queueList.innerHTML = '<div class="queue-empty">Log in to load the transaction register.</div>';
         detailStack.innerHTML =
           '<div class="detail-empty">Log in to start reviewing transactions.</div>';
         statsGrid.innerHTML = "";
@@ -1034,20 +1582,50 @@
         if (state.queueMode === "completed") {
           params.set(
             "review_status",
-            "linked,supporting_docs_only,no_document_expected"
+            "linked,supporting_docs_only,hard_copy_available,handled_by_rule,no_document_expected"
           );
         } else if (state.queueMode === "all") {
           params.set(
             "review_status",
-            "pending,linked,supporting_docs_only,awaiting_document,no_document_expected"
+            "pending,linked,supporting_docs_only,hard_copy_available,handled_by_rule,awaiting_document,no_document_expected"
           );
         }
         return params.toString();
       }
 
-      async function loadQueue() {
+      function captureQueueViewport() {
+        const selectedRow = state.selectedTransactionId
+          ? queueList.querySelector(`[data-id="${state.selectedTransactionId}"]`)
+          : null;
+        return {
+          scrollY: window.scrollY,
+          selectedId: state.selectedTransactionId,
+          selectedTop: selectedRow ? selectedRow.getBoundingClientRect().top : null,
+        };
+      }
+
+      function restoreQueueViewport(snapshot) {
+        if (!snapshot) return;
+        const selectedRow = snapshot.selectedId
+          ? queueList.querySelector(`[data-id="${snapshot.selectedId}"]`)
+          : null;
+        if (selectedRow && typeof snapshot.selectedTop === "number") {
+          const nextTop = selectedRow.getBoundingClientRect().top;
+          window.scrollBy({ top: nextTop - snapshot.selectedTop, behavior: "auto" });
+          return;
+        }
+        if (typeof snapshot.scrollY === "number") {
+          window.scrollTo({ top: snapshot.scrollY, behavior: "auto" });
+        }
+      }
+
+      async function loadQueue(options = {}) {
         if (!state.token) return;
-        queueList.innerHTML = '<div class="queue-empty">Loading queue…</div>';
+        const { preserveScroll = false, soft = false } = options;
+        const viewport = preserveScroll ? captureQueueViewport() : null;
+        if (!soft) {
+          queueList.innerHTML = '<div class="queue-empty">Loading queue…</div>';
+        }
         try {
           const payload = await requestJson(`/api/transactions/review-queue?${buildQueueQuery()}`);
           state.queue = payload;
@@ -1056,21 +1634,30 @@
           renderQueue(payload);
 
           const currentIds = new Set(payload.transactions.map((item) => item.transaction.id));
-          if (!state.selectedTransactionId || !currentIds.has(state.selectedTransactionId)) {
-            state.selectedTransactionId = payload.transactions[0]?.transaction.id || null;
+          if (state.selectedTransactionId && !currentIds.has(state.selectedTransactionId)) {
+            state.selectedTransactionId = null;
           }
 
           if (state.selectedTransactionId) {
             await loadTransactionDetail(state.selectedTransactionId);
           } else {
             detailStack.innerHTML =
-              '<div class="detail-empty">No transactions in this bucket for the selected month.</div>';
+              '<div class="detail-empty">Select a transaction to open its statement, invoice, and review details.</div>';
           }
+          restoreQueueViewport(viewport);
         } catch (error) {
-          queueList.innerHTML = `<div class="error-banner">Queue load failed: ${escapeHtml(error.message)}</div>`;
-          detailStack.innerHTML =
-            '<div class="detail-empty">The detail panel is waiting for a queue result.</div>';
+          if (!soft) {
+            queueList.innerHTML = `<div class="error-banner">Queue load failed: ${escapeHtml(error.message)}</div>`;
+            detailStack.innerHTML =
+              '<div class="detail-empty">The detail panel is waiting for a queue result.</div>';
+            return;
+          }
+          throw error;
         }
+      }
+
+      async function refreshQueueInPlace() {
+        await loadQueue({ preserveScroll: true, soft: true });
       }
 
       function renderStats(payload) {
@@ -1131,7 +1718,7 @@
       }
 
       function renderQueue(payload) {
-        queueTitle.textContent = `${payload.month} · ${state.sourceType.replaceAll("_", " ")}`;
+        queueTitle.textContent = "Transaction Register";
         const modeLabel = {
           actionable: "actionable",
           completed: "completed",
@@ -1139,58 +1726,136 @@
         }[state.queueMode] || "actionable";
         queueSubtitle.textContent =
           state.bucket
-            ? `${bucketLabels[state.bucket] || state.bucket} · ${payload.total} row(s)`
-            : `${payload.total} ${modeLabel} row(s)`;
+            ? `${payload.month} · ${bucketLabels[state.bucket] || state.bucket} · ${payload.total} row(s)`
+            : `${payload.month} · ${payload.total} ${modeLabel} row(s)`;
 
         if (!payload.transactions.length) {
-          queueList.innerHTML = '<div class="queue-empty">No rows matched the current filters.</div>';
+          queueList.innerHTML = '<div class="queue-empty">No transactions matched the current filters.</div>';
           return;
         }
 
-        queueList.innerHTML = payload.transactions
+        const header = `
+          <div class="register-head">
+            <div>Transaction</div>
+            <div>Supplier</div>
+            <div>Date</div>
+            <div>Debit</div>
+            <div>Credit</div>
+            <div>Category</div>
+            <div>Docs</div>
+            <div>Status</div>
+          </div>
+        `;
+
+        queueList.innerHTML =
+          header +
+          payload.transactions
           .map((item) => {
             const transaction = item.transaction;
-            const amount = transaction.debit_amount || transaction.credit_amount || "—";
+            const supplierLabel = deriveSupplierLabel(item);
+            const supplierDocsUrl = supplierDocumentsUrl({
+              supplier: supplierLabel,
+              pub: transaction.pub || state.pub || "",
+              month: state.month,
+            });
+            const isSelected = state.selectedTransactionId === transaction.id;
+            const showInlineDetail =
+              isSelected &&
+              state.detail &&
+              state.detail.transaction &&
+              state.detail.transaction.id === transaction.id;
             return `
-              <article class="queue-item ${state.selectedTransactionId === transaction.id ? "is-active" : ""}" data-id="${transaction.id}">
-                <div class="queue-item-top">
+              <article class="register-row ${isSelected ? "is-active" : ""}" data-id="${transaction.id}" data-bucket="${item.resolution_bucket}">
+                <div class="register-cell register-primary" data-label="Transaction">
+                  <div class="register-row-number">#${transaction.row_number}</div>
                   <div>
-                    <h3>#${transaction.row_number} · ${escapeHtml(transaction.description1 || "Untitled transaction")}</h3>
-                    <div class="queue-meta">
-                      <span>${escapeHtml(transaction.transaction_date || "—")}</span>
-                      <span>${escapeHtml(transaction.pub || "—")}</span>
-                      <span>${escapeHtml(transaction.transaction_type || "—")}</span>
-                      <span>${escapeHtml(formatCurrency(amount))}</span>
+                    <strong>${escapeHtml(transaction.description1 || "Untitled transaction")}</strong>
+                    <div class="register-secondary">
+                      ${escapeHtml(transaction.pub || "—")} · ${escapeHtml(transaction.transaction_type || "—")}
                     </div>
                   </div>
-                  <div style="display:grid;gap:0.4rem;justify-items:end">
-                    ${buildTag(item.status, item.status)}
-                    ${buildTag(bucketLabels[item.resolution_bucket] || item.resolution_bucket, item.resolution_bucket)}
-                  </div>
                 </div>
-                <div class="small-note">${escapeHtml(item.resolution_reason || item.analysis_note || "No guidance yet.")}</div>
+                <div class="register-cell" data-label="Supplier">
+                  <div><a href="${escapeHtml(supplierDocsUrl)}" data-supplier-docs-url="${escapeHtml(supplierDocsUrl)}">${escapeHtml(supplierLabel || "—")}</a></div>
+                  <div class="register-secondary">Payee ${escapeHtml(cleanBankPayee(transaction.description1))}</div>
+                </div>
+                <div class="register-cell" data-label="Date">
+                  <div class="register-amount ${transaction.transaction_date ? "" : "is-empty"}">${escapeHtml(transaction.transaction_date || "—")}</div>
+                </div>
+                <div class="register-cell" data-label="Debit">
+                  <div class="register-amount ${transaction.debit_amount ? "" : "is-empty"}">${escapeHtml(formatCurrency(transaction.debit_amount))}</div>
+                </div>
+                <div class="register-cell" data-label="Credit">
+                  <div class="register-amount ${transaction.credit_amount ? "" : "is-empty"}">${escapeHtml(formatCurrency(transaction.credit_amount))}</div>
+                </div>
+                <div class="register-cell" data-label="Category">
+                  <div>${escapeHtml(transaction.category || "—")}</div>
+                  <div class="register-secondary">Review ${escapeHtml(statusLabels[transaction.review_status] || transaction.review_status)}</div>
+                </div>
+                <div class="register-cell" data-label="Docs">
+                  ${renderEvidenceStrip(item)}
+                </div>
+                <div class="register-cell register-status" data-label="Status">
+                  <div class="status-stack">
+                    ${buildTag(bucketLabels[item.resolution_bucket] || item.resolution_bucket, item.resolution_bucket)}
+                    ${transaction.review_status !== "pending" ? buildTag(statusLabels[transaction.review_status] || transaction.review_status, transaction.review_status) : ""}
+                  </div>
+                  <div class="register-secondary">${escapeHtml(item.resolution_reason || item.analysis_note || "Open for review")}</div>
+                </div>
               </article>
+              ${showInlineDetail ? `<div class="register-inline-detail" data-inline-detail-for="${transaction.id}"></div>` : ""}
             `;
           })
           .join("");
 
-        queueList.querySelectorAll(".queue-item").forEach((node) => {
+        queueList.querySelectorAll(".register-row").forEach((node) => {
           node.addEventListener("click", async () => {
+            if (state.selectedTransactionId === node.dataset.id) {
+              state.selectedTransactionId = null;
+              state.detail = null;
+              renderQueue(payload);
+              return;
+            }
+
             state.selectedTransactionId = node.dataset.id;
             renderQueue(payload);
             await loadTransactionDetail(node.dataset.id);
           });
         });
+
+        queueList.querySelectorAll("[data-supplier-docs-url]").forEach((link) => {
+          link.addEventListener("click", (event) => {
+            event.stopPropagation();
+          });
+        });
+
+        if (
+          state.selectedTransactionId &&
+          state.detail &&
+          state.detail.transaction &&
+          state.detail.transaction.id === state.selectedTransactionId
+        ) {
+          const mount = queueList.querySelector(`[data-inline-detail-for="${state.selectedTransactionId}"]`);
+          if (mount) {
+            renderDetailInto(mount, state.detail);
+          }
+        }
       }
 
       async function loadTransactionDetail(transactionId) {
-        detailStack.innerHTML = '<div class="detail-empty">Loading transaction detail…</div>';
+        state.detail = null;
+        if (state.queue) {
+          renderQueue(state.queue);
+        }
         try {
           const payload = await requestJson(`/api/transactions/${transactionId}/detail`);
           state.detail = payload;
-          renderDetail(payload);
+          await loadAvailableRules(payload.transaction);
+          if (state.queue) {
+            renderQueue(state.queue);
+          }
         } catch (error) {
-          detailStack.innerHTML = `<div class="error-banner">Detail load failed: ${escapeHtml(error.message)}</div>`;
+          setBanner("error", `Detail load failed: ${error.message}`);
         }
       }
 
@@ -1203,47 +1868,95 @@
         });
       }
 
+      function renderSingleMatchCard(match, { group, selectable, tone, transactionAmount, transactionDate, checked = false, related = false }) {
+        return `
+          <article class="match-card ${related ? "is-related" : ""}">
+            <div class="match-top">
+              <div>
+                <div class="match-check">
+                  ${
+                    selectable
+                      ? `<input type="checkbox" data-match-group="${group}" data-doc-id="${match.document_id}" data-doc-role="${match.document_type}" ${checked ? "checked" : ""} />`
+                      : ""
+                  }
+                  <strong>${escapeHtml(match.supplier || "Unknown supplier")}</strong>
+                </div>
+                <div class="queue-meta" style="margin-top:0.45rem">
+                  <span>${escapeHtml(match.document_type)}</span>
+                  <span>${escapeHtml(match.reference || "No reference")}</span>
+                  <span>${escapeHtml(formatDate(match.document_date))}</span>
+                  <span>${escapeHtml(formatCurrency(match.amount))}</span>
+                  <span>Score ${escapeHtml(match.score ?? "—")}</span>
+                </div>
+              </div>
+              ${buildTag(match.document_type.replaceAll("_", " "), tone || match.document_type)}
+            </div>
+            <div class="queue-meta" style="margin-top:0.7rem">
+              ${renderMatchContextTags(match, transactionDate)}
+            </div>
+            <div class="queue-meta" style="margin-top:0.55rem">
+              ${renderStorageTags(match)}
+            </div>
+            ${renderCompactReason(match.reason || "", "Why suggested")}
+            ${renderAmountMath(match, transactionAmount)}
+            <div class="match-actions">
+              <button class="button-ghost" data-inspect-document-id="${match.document_id}" type="button">Inspect</button>
+              <button class="button-secondary" data-open-document-id="${match.document_id}" type="button">Open PDF</button>
+              <button class="button-ghost" data-ignore-document-id="${match.document_id}" type="button">Not this transaction</button>
+            </div>
+          </article>
+        `;
+      }
+
       function renderMatchCards(matches, { group, selectable, tone, transactionAmount, transactionDate }) {
-        const unique = uniqueMatches(matches);
-        if (!unique.length) {
+        const displayGroups = groupMatchesForDisplay(matches, group);
+        if (!displayGroups.length) {
           return '<div class="small-note">None.</div>';
         }
+        const collapsedRelatedCount = displayGroups.reduce((total, item) => total + item.related.length, 0);
         return `
           <div class="match-list">
-            ${unique
+            ${
+              collapsedRelatedCount
+                ? `<div class="small-note">${escapeHtml(String(collapsedRelatedCount))} similar support document${collapsedRelatedCount === 1 ? "" : "s"} collapsed under the best matching card.</div>`
+                : ""
+            }
+            ${displayGroups
               .map(
-                (match, index) => `
-                  <article class="match-card">
-                    <div class="match-top">
-                      <div>
-                        <div class="match-check">
-                          ${
-                            selectable
-                              ? `<input type="checkbox" data-match-group="${group}" data-doc-id="${match.document_id}" data-doc-role="${match.document_type}" ${index < 3 ? "checked" : ""} />`
-                              : ""
-                          }
-                          <strong>${escapeHtml(match.supplier || "Unknown supplier")}</strong>
-                        </div>
-                        <div class="queue-meta" style="margin-top:0.45rem">
-                          <span>${escapeHtml(match.document_type)}</span>
-                          <span>${escapeHtml(match.reference || "No reference")}</span>
-                          <span>${escapeHtml(formatDate(match.document_date))}</span>
-                          <span>${escapeHtml(formatCurrency(match.amount))}</span>
-                          <span>Score ${escapeHtml(match.score ?? "—")}</span>
-                        </div>
-                      </div>
-                      ${buildTag(match.document_type.replaceAll("_", " "), tone || match.document_type)}
-                    </div>
-                    <div class="queue-meta" style="margin-top:0.7rem">
-                      ${renderMatchContextTags(match, transactionDate)}
-                    </div>
-                    <div class="match-reason">${escapeHtml(match.reason || "")}</div>
-                    ${renderAmountMath(match, transactionAmount)}
-                    <div class="match-actions">
-                      <button class="button-ghost" data-inspect-document-id="${match.document_id}" type="button">Inspect</button>
-                      <button class="button-secondary" data-open-document-id="${match.document_id}" type="button">Open PDF</button>
-                    </div>
-                  </article>
+                (item, index) => `
+                  ${renderSingleMatchCard(item.primary, {
+                    group,
+                    selectable,
+                    tone,
+                    transactionAmount,
+                    transactionDate,
+                    checked: index < 3,
+                    related: false,
+                  })}
+                  ${
+                    item.related.length
+                      ? `
+                        <details class="inline-more">
+                          <summary>${escapeHtml(`${item.related.length} related document${item.related.length === 1 ? "" : "s"}`)}</summary>
+                          <div class="related-match-list">
+                            ${item.related
+                              .map((relatedMatch) =>
+                                renderSingleMatchCard(relatedMatch, {
+                                  group,
+                                  selectable,
+                                  tone,
+                                  transactionAmount,
+                                  transactionDate,
+                                  checked: false,
+                                  related: true,
+                                })
+                              )
+                              .join("")}
+                          </div>
+                        </details>
+                      `
+                      : ""
+                  }
                 `
               )
               .join("")}
@@ -1283,7 +1996,10 @@
                         transactionDate
                       )}
                     </div>
-                    <div class="match-reason">${escapeHtml(link.match_reason || link.note || "Persisted transaction link.")}</div>
+                    <div class="queue-meta" style="margin-top:0.55rem">
+                      ${renderStorageTags(link.document)}
+                    </div>
+                    ${renderCompactReason(link.match_reason || link.note || "Persisted transaction link.", "See link detail", 1)}
                     ${renderAmountMath(
                       {
                         amount: link.amount_applied || link.document.amount,
@@ -1294,7 +2010,11 @@
                     <div class="match-actions">
                       <button class="button-secondary" data-inspect-document-id="${link.document_id}" type="button">Inspect</button>
                       <button class="button-ghost" data-open-document-id="${link.document_id}" type="button">Open PDF</button>
-                      <button class="button-ghost" data-reject-link-id="${link.id}" type="button">Reject Link</button>
+                      ${
+                        link.role === "ignore" && link.status === "rejected"
+                          ? `<button class="button-ghost" data-restore-link-id="${link.id}" type="button">Restore Hidden Doc</button>`
+                          : `<button class="button-ghost" data-reject-link-id="${link.id}" type="button">Reject Link</button>`
+                      }
                     </div>
                   </article>
                 `
@@ -1304,8 +2024,18 @@
         `;
       }
 
+      function activeDetailRoot() {
+        if (state.selectedTransactionId) {
+          const inlineRoot = document.querySelector(`[data-inline-detail-for="${state.selectedTransactionId}"]`);
+          if (inlineRoot) {
+            return inlineRoot;
+          }
+        }
+        return detailStack;
+      }
+
       function renderDocumentInspector(documentDetail) {
-        const inspector = document.getElementById("document-inspector");
+        const inspector = activeDetailRoot()?.querySelector('[data-role="document-inspector"]');
         if (!inspector) return;
 
         if (!documentDetail) {
@@ -1482,12 +2212,19 @@
               <label>Date</label>
               <div>${escapeHtml(formatDate(documentDetail.document_date))}</div>
             </div>
+            <div class="meta-block">
+              <label>Storage</label>
+              <div>${escapeHtml(storageStateLabel(resolveStorageState(documentDetail)))}</div>
+            </div>
           </div>
           <div class="small-note" style="margin-top:0.85rem">
             ${escapeHtml(documentDetail.source_email_subject || "No subject metadata.")}
           </div>
+          <div class="queue-meta" style="margin-top:0.75rem">
+            ${renderStorageTags(documentDetail)}
+          </div>
           <div class="match-actions" style="margin-top:0.85rem">
-            <button class="button-secondary" id="open-preview-document-button" type="button">Open PDF</button>
+            <button class="button-secondary" data-role="open-preview-document-button" type="button">Open PDF</button>
           </div>
           ${ledgerSummary}
           ${statementSummary}
@@ -1499,7 +2236,7 @@
           </div>
         `;
 
-        document.getElementById("open-preview-document-button")?.addEventListener("click", () => {
+        inspector.querySelector('[data-role="open-preview-document-button"]')?.addEventListener("click", () => {
           openDocumentFile(documentDetail.id);
         });
       }
@@ -1746,13 +2483,60 @@
                 flowStageTone(document.is_financial === false ? "partial" : "ready")
               )}
             </div>
-            ${document.reason ? `<div class="match-reason">${escapeHtml(document.reason)}</div>` : ""}
+            ${renderCompactReason(document.reason || "", "Why this document", 1)}
             ${statementBits.length ? `<div class="small-note">${escapeHtml(statementBits.join(" · "))}</div>` : ""}
+            <div class="queue-meta" style="margin-top:0.55rem">
+              ${renderStorageTags(document)}
+            </div>
             <div class="match-actions">
               <button class="button-ghost" data-inspect-document-id="${document.document_id}" type="button">Inspect</button>
               <button class="button-secondary" data-open-document-id="${document.document_id}" type="button">Open PDF</button>
+              <button class="button-ghost" data-ignore-document-id="${document.document_id}" type="button">Not this transaction</button>
             </div>
           </article>
+        `;
+      }
+
+      function flowDocumentPriority(document) {
+        const reason = String(document?.reason || "").toLowerCase();
+        let score = 0;
+        if (reason.includes("amount matches exactly")) score += 100;
+        if (reason.includes("invoice candidate")) score += 80;
+        if (reason.includes("gross matches bank amount")) score += 70;
+        if (reason.includes("referenced by a supplier statement")) score += 20;
+        if (reason.includes("statement reference")) score += 15;
+        if (document?.reference) score += 3;
+        if (document?.document_type === "invoice") score += 2;
+        return score;
+      }
+
+      function renderFlowDocumentList(documents, visibleCount = 1, summaryLabel = "See alternatives", stageTitle = "") {
+        const items = [...(documents || [])].sort((left, right) => flowDocumentPriority(right) - flowDocumentPriority(left));
+        if (!items.length) {
+          return "";
+        }
+        const invoiceStage = /invoice|credit/i.test(stageTitle || "");
+        const hasDirectCandidate = invoiceStage && items.some((document) => flowDocumentPriority(document) >= 80);
+        const effectiveVisibleCount = hasDirectCandidate ? 1 : visibleCount;
+        const effectiveSummaryLabel = hasDirectCandidate ? "See other supplier-period docs" : summaryLabel;
+        const primary = items.slice(0, effectiveVisibleCount);
+        const related = items.slice(effectiveVisibleCount);
+        return `
+          <div class="flow-document-list">
+            ${primary.map((document) => renderFlowDocument(document)).join("")}
+            ${
+              related.length
+                ? `
+                  <details class="inline-more">
+                    <summary>${escapeHtml(`${effectiveSummaryLabel} (${related.length})`)}</summary>
+                    <div class="related-match-list">
+                      ${related.map((document) => renderFlowDocument(document)).join("")}
+                    </div>
+                  </details>
+                `
+                : ""
+            }
+          </div>
         `;
       }
 
@@ -1830,15 +2614,34 @@
                     <strong>${escapeHtml(stage.title || "Stage")}</strong>
                     ${buildTag(stage.status || "partial", flowStageTone(stage.status || "partial"))}
                   </div>
-                  <div class="match-reason">${escapeHtml(stage.summary || "No summary available.")}</div>
+                  ${renderCompactReason(stage.summary || "No summary available.", "More stage detail", 1)}
                   ${
                     stage.items && stage.items.length
-                      ? `<ul class="flow-list">${stage.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+                      ? `
+                        ${
+                          stage.items.length > 4
+                            ? `
+                              <ul class="flow-list">${stage.items.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+                              <details class="inline-more">
+                                <summary>${escapeHtml(`${stage.items.length - 4} more detail item${stage.items.length - 4 === 1 ? "" : "s"}`)}</summary>
+                                <div class="inline-more-body">
+                                  ${escapeHtml(stage.items.slice(4).join("\n"))}
+                                </div>
+                              </details>
+                            `
+                            : `<ul class="flow-list">${stage.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+                        }
+                      `
                       : ""
                   }
                   ${
                     stage.documents && stage.documents.length
-                      ? `<div class="flow-document-list">${stage.documents.map((document) => renderFlowDocument(document)).join("")}</div>`
+                      ? renderFlowDocumentList(
+                          stage.documents,
+                          /statement/i.test(stage.title || "") ? 1 : /invoice|credit/i.test(stage.title || "") ? 3 : 2,
+                          /statement/i.test(stage.title || "") ? "See other statement options" : "See other related docs",
+                          stage.title || ""
+                        )
                       : ""
                   }
                 </article>
@@ -1919,16 +2722,38 @@
         }
       }
 
-      function renderDetail(payload) {
+      function buildDetailMarkup(payload) {
         const transaction = payload.transaction;
         const suggestedMatches = uniqueMatches(payload.suggested_matches);
         const supportingMatches = uniqueMatches(payload.supporting_matches);
         const transactionAmount = transaction.debit_amount || transaction.credit_amount;
         const showInvoiceCandidates = suggestedMatches.length > 0;
         const showSupportDocs = supportingMatches.length > 0;
-        state.previewDocument = null;
+        const supplierLabel = payload.reconciliation_flow?.supplier_label || deriveSupplierLabel({ transaction });
+        const supplierDocsUrl = supplierDocumentsUrl({
+          supplier: supplierLabel,
+          pub: transaction.pub || state.pub || "",
+          month: state.month,
+        });
+        return `
+          <section class="detail-card detail-sticky-summary">
+            <div class="sticky-summary-top">
+              <div class="sticky-summary-title">#${transaction.row_number} · ${escapeHtml(transaction.description1 || "Untitled transaction")}</div>
+              <div style="display:flex;gap:0.45rem;flex-wrap:wrap;justify-content:flex-end">
+                ${buildTag(payload.status, payload.status)}
+                ${buildTag(bucketLabels[payload.resolution_bucket] || payload.resolution_bucket, payload.resolution_bucket)}
+              </div>
+            </div>
+            <div class="sticky-summary-meta">
+              <span>${escapeHtml(formatDate(transaction.transaction_date || "—"))}</span>
+              <span>${escapeHtml(transaction.pub || "—")}</span>
+              <span>${escapeHtml(transaction.transaction_type || "—")}</span>
+              <span>${escapeHtml(formatCurrency(transaction.debit_amount || transaction.credit_amount))}</span>
+              <span>${escapeHtml(statusLabels[transaction.review_status] || transaction.review_status)}</span>
+              <span>${escapeHtml(supplierLabel || "Unknown supplier")}</span>
+            </div>
+          </section>
 
-        detailStack.innerHTML = `
           <section class="detail-card">
             <div class="detail-header">
               <div>
@@ -1945,6 +2770,10 @@
                 ${buildTag(payload.status, payload.status)}
                 ${buildTag(bucketLabels[payload.resolution_bucket] || payload.resolution_bucket, payload.resolution_bucket)}
               </div>
+            </div>
+
+            <div class="match-actions" style="margin-top:0.85rem">
+              <a class="button-secondary" href="${escapeHtml(supplierDocsUrl)}" data-supplier-docs-url="${escapeHtml(supplierDocsUrl)}">View supplier documents</a>
             </div>
 
             <div class="detail-grid">
@@ -1970,7 +2799,11 @@
               </div>
             </div>
 
-            <div class="small-note" style="margin-top:0.9rem">${escapeHtml(payload.analysis_note || "No extra analysis note.")}</div>
+            ${
+              payload.analysis_note
+                ? `<div style="margin-top:0.9rem">${renderCompactReason(payload.analysis_note, "More analysis", 1)}</div>`
+                : ""
+            }
           </section>
 
           <section class="detail-card">
@@ -1983,7 +2816,7 @@
             </div>
           </section>
 
-          <details class="detail-card detail-expander" ${showInvoiceCandidates ? "open" : ""}>
+          <details class="detail-card detail-expander" ${payload.resolution_bucket === "confirm_match" && showInvoiceCandidates ? "open" : ""}>
             <summary>Invoice candidates (${suggestedMatches.length})</summary>
             <div class="expander-body">
             <div class="detail-actions" style="margin:0 0 1rem">
@@ -2004,8 +2837,8 @@
             </div>
           </details>
 
-          <details class="detail-card detail-expander" ${payload.resolution_bucket === "review_supporting_docs" && showSupportDocs ? "open" : ""}>
-            <summary>Statement / support docs (${supportingMatches.length})</summary>
+          <details class="detail-card detail-expander">
+            <summary>Raw statement / support docs (${supportingMatches.length})</summary>
             <div class="expander-body">
             <div class="detail-actions" style="margin:0 0 1rem">
               <button class="button-secondary" id="attach-support-button" type="button" ${supportingMatches.length ? "" : "disabled"}>
@@ -2031,7 +2864,7 @@
 
           <details class="detail-card detail-expander">
             <summary>Document inspector</summary>
-            <div class="expander-body" id="document-inspector">
+            <div class="expander-body" data-role="document-inspector">
               <div class="detail-empty">Pick a suggested or linked document and click Inspect to see venue, account, and other invoice clues here.</div>
             </div>
           </details>
@@ -2040,45 +2873,127 @@
             <h4>Manual review action</h4>
             <div class="field" style="margin-top:0.8rem">
               <label for="expected-supplier-input">Expected supplier / statement name</label>
-              <input id="expected-supplier-input" type="text" placeholder="e.g. Bulmers, Heineken, Connacht Bottlers" value="${escapeHtml(transaction.expected_supplier || "")}" />
+              <input data-role="expected-supplier-input" id="expected-supplier-input" type="text" placeholder="e.g. Bulmers, Heineken, Connacht Bottlers" value="${escapeHtml(transaction.expected_supplier || "")}" />
             </div>
             <div class="field" style="margin-top:0.8rem">
               <label for="review-note-input">Review note</label>
-              <textarea id="review-note-input" placeholder="Why you are resolving this row in this way..."></textarea>
+              <textarea data-role="review-note-input" id="review-note-input" placeholder="Why you are resolving this row in this way...">${escapeHtml(transaction.review_note || "")}</textarea>
             </div>
+            <div class="small-note" style="margin-top:0.55rem">
+              Save a reusable rule when the same payee should always be treated as wages, contract, or another owner-handled charge.
+            </div>
+            <div class="field" style="margin-top:0.8rem">
+              <label for="saved-rule-select">Saved rules</label>
+              <select data-role="saved-rule-select" id="saved-rule-select">
+                ${renderSavedRuleOptions()}
+              </select>
+            </div>
+            <div class="detail-actions" style="margin-top:0.8rem">
+              <button class="button-secondary" id="apply-saved-rule-button" type="button">Apply Selected Rule</button>
+            </div>
+            <details class="detail-expander" style="margin-top:0.8rem">
+              <summary>Create custom rule</summary>
+              <div class="expander-body" style="padding-top:0.9rem">
+                <div class="field">
+                  <label for="custom-rule-category-select">Category</label>
+                  <select data-role="custom-rule-category-select" id="custom-rule-category-select">
+                    ${renderCustomRuleCategoryOptions(transaction.category)}
+                  </select>
+                </div>
+                <div class="field" data-role="custom-rule-custom-category-field" style="margin-top:0.8rem; display:none;">
+                  <label for="custom-rule-custom-category-input">Custom category</label>
+                  <input data-role="custom-rule-custom-category-input" id="custom-rule-custom-category-input" type="text" placeholder="e.g. Utilities, Owner Drawings" value="${escapeHtml(customRuleInitialValue(transaction.category))}" />
+                </div>
+                <div class="field" style="margin-top:0.8rem">
+                  <label for="custom-rule-status-select">Rule outcome</label>
+                  <select data-role="custom-rule-status-select" id="custom-rule-status-select">
+                    <option value="handled_by_rule">Handled by rule</option>
+                    <option value="hard_copy_available">Hard copy available</option>
+                    <option value="no_document_expected">No document expected</option>
+                  </select>
+                </div>
+                <div class="field" style="margin-top:0.8rem">
+                  <label for="custom-rule-expectation-select">Document expectation</label>
+                  <select data-role="custom-rule-expectation-select" id="custom-rule-expectation-select">
+                    <option value="unknown">Unknown</option>
+                    <option value="none">No document expected</option>
+                    <option value="hard_copy">Hard copy only</option>
+                    <option value="annual_invoice">Annual invoice</option>
+                    <option value="monthly_invoice">Monthly invoice</option>
+                    <option value="statement">Statement</option>
+                  </select>
+                </div>
+                <div class="detail-actions" style="margin-top:0.9rem">
+                  <button class="button-secondary" id="save-custom-rule-button" type="button">Save Custom Rule</button>
+                  <button class="button-secondary" id="save-wages-rule-button" type="button">Save Wage Rule</button>
+                  <button class="button-secondary" id="save-contract-rule-button" type="button">Save Contract Rule</button>
+                  <button class="button-secondary" id="save-hard-copy-rule-button" type="button">Save Hard Copy Rule</button>
+                  <button class="button-secondary" id="save-no-doc-rule-button" type="button">Save No Document Rule</button>
+                </div>
+              </div>
+            </details>
             <div class="detail-actions" style="margin-top:1rem">
               <button class="button-secondary" id="save-hint-button" type="button">Save Hint + Refresh</button>
               <button class="button-primary" id="mark-supporting-button" type="button">Mark Supporting Docs Only</button>
+              <button class="button-secondary" id="mark-hard-copy-button" type="button">Mark Hard Copy Available</button>
               <button class="button-warn" id="mark-awaiting-button" type="button">Mark Awaiting Document</button>
               <button class="button-secondary" id="mark-no-doc-button" type="button">Mark No Document Expected</button>
               <button class="button-ghost" id="mark-pending-button" type="button">Reset To Pending</button>
             </div>
           </section>
         `;
+      }
 
-        document.getElementById("confirm-selected-button")?.addEventListener("click", () => confirmSuggestedSelection(false));
-        document.getElementById("confirm-all-button")?.addEventListener("click", () => confirmSuggestedSelection(true));
-        document.getElementById("attach-support-button")?.addEventListener("click", attachSupportDocsAndResolve);
-        document.getElementById("save-hint-button")?.addEventListener("click", saveExpectedSupplierHint);
-        document.getElementById("mark-supporting-button")?.addEventListener("click", () => updateReviewStatus("supporting_docs_only"));
-        document.getElementById("mark-awaiting-button")?.addEventListener("click", () => updateReviewStatus("awaiting_document"));
-        document.getElementById("mark-no-doc-button")?.addEventListener("click", () => updateReviewStatus("no_document_expected"));
-        document.getElementById("mark-pending-button")?.addEventListener("click", () => updateReviewStatus("pending"));
-        detailStack.querySelectorAll("[data-reject-link-id]").forEach((button) => {
+      function renderDetailInto(root, payload) {
+        state.previewDocument = null;
+        root.innerHTML = buildDetailMarkup(payload);
+        root.querySelector("#confirm-selected-button")?.addEventListener("click", () => confirmSuggestedSelection(false));
+        root.querySelector("#confirm-all-button")?.addEventListener("click", () => confirmSuggestedSelection(true));
+        root.querySelector("#attach-support-button")?.addEventListener("click", attachSupportDocsAndResolve);
+        root.querySelector("#save-hint-button")?.addEventListener("click", saveExpectedSupplierHint);
+        root.querySelector("#apply-saved-rule-button")?.addEventListener("click", applySelectedRule);
+        root.querySelector("#save-custom-rule-button")?.addEventListener("click", saveCustomRule);
+        root.querySelector("#mark-supporting-button")?.addEventListener("click", () => updateReviewStatus("supporting_docs_only"));
+        root.querySelector("#mark-hard-copy-button")?.addEventListener("click", markHardCopyAvailable);
+        root.querySelector("#save-wages-rule-button")?.addEventListener("click", saveWagesRule);
+        root.querySelector("#save-contract-rule-button")?.addEventListener("click", saveContractRule);
+        root.querySelector("#save-hard-copy-rule-button")?.addEventListener("click", saveHardCopyRule);
+        root.querySelector("#save-no-doc-rule-button")?.addEventListener("click", saveNoDocumentRule);
+        root.querySelector("#mark-awaiting-button")?.addEventListener("click", () => updateReviewStatus("awaiting_document"));
+        root.querySelector("#mark-no-doc-button")?.addEventListener("click", () => updateReviewStatus("no_document_expected"));
+        root.querySelector("#mark-pending-button")?.addEventListener("click", () => updateReviewStatus("pending"));
+        root.querySelector('[data-role="custom-rule-category-select"]')?.addEventListener("change", syncCustomRuleCategoryControls);
+        root.querySelectorAll("[data-reject-link-id]").forEach((button) => {
           button.addEventListener("click", () => rejectLink(button.dataset.rejectLinkId));
         });
-        detailStack.querySelectorAll("[data-inspect-document-id]").forEach((button) => {
+        root.querySelectorAll("[data-restore-link-id]").forEach((button) => {
+          button.addEventListener("click", () => restoreHiddenLink(button.dataset.restoreLinkId));
+        });
+        root.querySelectorAll("[data-ignore-document-id]").forEach((button) => {
+          button.addEventListener("click", () => ignoreDocumentForTransaction(button.dataset.ignoreDocumentId));
+        });
+        root.querySelectorAll("[data-inspect-document-id]").forEach((button) => {
           button.addEventListener("click", () => inspectDocument(button.dataset.inspectDocumentId));
         });
-        detailStack.querySelectorAll("[data-open-document-id]").forEach((button) => {
+        root.querySelectorAll("[data-open-document-id]").forEach((button) => {
           button.addEventListener("click", () => openDocumentFile(button.dataset.openDocumentId));
         });
+        root.querySelectorAll("[data-supplier-docs-url]").forEach((link) => {
+          link.addEventListener("click", (event) => {
+            event.stopPropagation();
+          });
+        });
+        syncCustomRuleCategoryControls();
         renderDocumentInspector(null);
+      }
+
+      function renderDetail(payload) {
+        renderDetailInto(detailStack, payload);
       }
 
       function selectedDocumentIds(group) {
         return Array.from(
-          detailStack.querySelectorAll(`input[data-match-group="${group}"]:checked`)
+          activeDetailRoot().querySelectorAll(`input[data-match-group="${group}"]:checked`)
         ).map((input) => ({
           document_id: input.dataset.docId,
           role: input.dataset.docRole,
@@ -2086,11 +3001,118 @@
       }
 
       function reviewNoteValue() {
-        return document.getElementById("review-note-input")?.value?.trim() || "";
+        return activeDetailRoot()?.querySelector('[data-role="review-note-input"]')?.value?.trim() || "";
       }
 
       function expectedSupplierValue() {
-        return document.getElementById("expected-supplier-input")?.value?.trim() || "";
+        return activeDetailRoot()?.querySelector('[data-role="expected-supplier-input"]')?.value?.trim() || "";
+      }
+
+      function defaultSupplierHint() {
+        return expectedSupplierValue() || deriveSupplierLabel(state.detail?.transaction || {}) || null;
+      }
+
+      function selectedRuleIdValue() {
+        return activeDetailRoot()?.querySelector('[data-role="saved-rule-select"]')?.value?.trim() || "";
+      }
+
+      function normalizeCategoryLabel(value) {
+        const cleaned = String(value || "").trim();
+        if (!cleaned) return "";
+        const matched = standardRuleCategories.find((category) => category.toLowerCase() === cleaned.toLowerCase());
+        return matched || cleaned;
+      }
+
+      function customRuleInitialValue(category) {
+        const normalized = normalizeCategoryLabel(category);
+        if (!normalized || standardRuleCategories.includes(normalized)) {
+          return "";
+        }
+        return normalized;
+      }
+
+      function renderCustomRuleCategoryOptions(category) {
+        const normalized = normalizeCategoryLabel(category);
+        const selectedValue = normalized && standardRuleCategories.includes(normalized) ? normalized : "__custom__";
+        return [
+          ...standardRuleCategories.map(
+            (value) => `<option value="${escapeHtml(value)}" ${selectedValue === value ? "selected" : ""}>${escapeHtml(value)}</option>`
+          ),
+          `<option value="__custom__" ${selectedValue === "__custom__" ? "selected" : ""}>Custom…</option>`,
+        ].join("");
+      }
+
+      function standardRulePresetForCategory(category) {
+        const normalized = normalizeCategoryLabel(category);
+        return standardRuleCategoryPresets[normalized] || null;
+      }
+
+      function standardReviewCategoryForStatus(reviewStatus) {
+        return standardReviewCategories[reviewStatus] || null;
+      }
+
+      function customRuleCategoryValue() {
+        const selected = activeDetailRoot()?.querySelector('[data-role="custom-rule-category-select"]')?.value?.trim() || "";
+        if (selected && selected !== "__custom__") {
+          return selected;
+        }
+        return activeDetailRoot()?.querySelector('[data-role="custom-rule-custom-category-input"]')?.value?.trim() || "";
+      }
+
+      function customRuleStatusValue() {
+        return activeDetailRoot()?.querySelector('[data-role="custom-rule-status-select"]')?.value?.trim() || "handled_by_rule";
+      }
+
+      function customRuleExpectationValue() {
+        return activeDetailRoot()?.querySelector('[data-role="custom-rule-expectation-select"]')?.value?.trim() || "unknown";
+      }
+
+      function syncCustomRuleCategoryControls() {
+        const root = activeDetailRoot();
+        if (!root) return;
+        const select = root.querySelector('[data-role="custom-rule-category-select"]');
+        const customField = root.querySelector('[data-role="custom-rule-custom-category-field"]');
+        const customInput = root.querySelector('[data-role="custom-rule-custom-category-input"]');
+        const statusSelect = root.querySelector('[data-role="custom-rule-status-select"]');
+        const expectationSelect = root.querySelector('[data-role="custom-rule-expectation-select"]');
+        if (!select || !customField || !statusSelect || !expectationSelect) return;
+
+        const selected = select.value?.trim() || "";
+        const showCustom = selected === "__custom__";
+        customField.style.display = showCustom ? "block" : "none";
+        if (!showCustom && customInput) {
+          customInput.value = "";
+        }
+
+        const preset = standardRulePresetForCategory(selected);
+        if (preset) {
+          statusSelect.value = preset.reviewStatus;
+          expectationSelect.value = preset.documentExpectation;
+        }
+      }
+
+      function renderSavedRuleOptions() {
+        if (!state.availableRules?.length) {
+          return '<option value="">No saved rules for this source/pub yet</option>';
+        }
+        return [
+          '<option value="">Choose saved rule…</option>',
+          ...state.availableRules.map((rule) => {
+            const bits = [
+              rule.category_override || "Rule",
+              rule.expected_supplier || rule.display_label || rule.match_value,
+            ].filter(Boolean);
+            return `<option value="${escapeHtml(rule.id)}">${escapeHtml(bits.join(" · "))}</option>`;
+          }),
+        ].join("");
+      }
+
+      function supplierDocumentsUrl({ supplier, pub, month }) {
+        const params = new URLSearchParams();
+        if (supplier) params.set("supplier", supplier);
+        if (pub) params.set("pub", pub);
+        if (month) params.set("month", month);
+        return `/supplier-documents?${params.toString()}`;
       }
 
       async function createLink(transactionId, match, role, note) {
@@ -2128,7 +3150,7 @@
             );
           }
           setBanner("success", `Confirmed ${selected.length} suggested invoice link(s).`);
-          await loadQueue();
+          await refreshQueueInPlace();
         } catch (error) {
           setBanner("error", `Could not confirm suggestions: ${error.message}`);
         }
@@ -2160,7 +3182,7 @@
             customNote: reviewNoteValue() || "resolved through supporting supplier documents",
           });
           setBanner("success", `Linked ${selected.length} supporting document(s) and resolved the row.`);
-          await loadQueue();
+          await refreshQueueInPlace();
         } catch (error) {
           setBanner("error", `Could not attach support docs: ${error.message}`);
         }
@@ -2169,10 +3191,12 @@
       async function updateReviewStatus(reviewStatus, options = {}) {
         if (!state.detail) return;
         try {
+          const category = options.category !== undefined ? options.category : standardReviewCategoryForStatus(reviewStatus);
           await requestJson(`/api/transactions/${state.detail.transaction.id}/review`, {
             method: "PATCH",
             body: JSON.stringify({
               review_status: reviewStatus,
+              category: category || null,
               review_note: options.customNote ?? (reviewNoteValue() || null),
               expected_supplier: options.expectedSupplier ?? (expectedSupplierValue() || null),
             }),
@@ -2180,7 +3204,7 @@
           if (!options.silentSuccess) {
             setBanner("success", `Review state updated to ${statusLabels[reviewStatus] || reviewStatus}.`);
           }
-          await loadQueue();
+          await refreshQueueInPlace();
           return true;
         } catch (error) {
           setBanner("error", `Could not update review state: ${error.message}`);
@@ -2201,6 +3225,144 @@
         }
       }
 
+      async function markHardCopyAvailable() {
+        if (!state.detail) return;
+        await updateReviewStatus("hard_copy_available", {
+          customNote: reviewNoteValue() || "Hard copy available",
+          expectedSupplier: defaultSupplierHint(),
+        });
+      }
+
+      async function loadAvailableRules(transaction) {
+        if (!transaction) {
+          state.availableRules = [];
+          return;
+        }
+
+        const params = new URLSearchParams({
+          source_type: transaction.source_type,
+          transaction_id: transaction.id,
+        });
+        if (transaction.pub) {
+          params.set("pub", transaction.pub);
+        }
+
+        const payload = await requestJson(`/api/transactions/rules?${params.toString()}`);
+        state.availableRules = payload.rules || [];
+      }
+
+      async function createSavedRule(options) {
+        if (!state.detail) return false;
+        const preset = standardRulePresetForCategory(options.category);
+        try {
+          const payload = await requestJson(`/api/transactions/${state.detail.transaction.id}/rule`, {
+            method: "POST",
+            body: JSON.stringify({
+              category_override: options.category,
+              review_status: options.reviewStatus || preset?.reviewStatus || "handled_by_rule",
+              document_expectation: options.documentExpectation || preset?.documentExpectation || "unknown",
+              owner_note: options.note || preset?.defaultNote || null,
+              expected_supplier: options.expectedSupplier,
+              apply_same_pub_only: true,
+              apply_to_existing: options.applyToExisting ?? true,
+            }),
+          });
+          setBanner(
+            "success",
+            `${options.category} rule saved. ${payload.updated_transactions} matching transaction(s) updated.`
+          );
+          await refreshQueueInPlace();
+          return true;
+        } catch (error) {
+          setBanner("error", `Could not save rule: ${error.message}`);
+          return false;
+        }
+      }
+
+      async function applySelectedRule() {
+        if (!state.detail) return;
+        const ruleId = selectedRuleIdValue();
+        if (!ruleId) {
+          setBanner("error", "Choose a saved rule first.");
+          return;
+        }
+
+        try {
+          const payload = await requestJson(`/api/transactions/${state.detail.transaction.id}/apply-rule`, {
+            method: "POST",
+            body: JSON.stringify({
+              rule_id: ruleId,
+            }),
+          });
+          setBanner(
+            "success",
+            `${payload.rule.category_override || "Rule"} applied to this transaction.`
+          );
+          await refreshQueueInPlace();
+        } catch (error) {
+          setBanner("error", `Could not apply rule: ${error.message}`);
+        }
+      }
+
+      async function saveCustomRule() {
+        const category = customRuleCategoryValue();
+        if (!category) {
+          setBanner("error", "Enter a category for the custom rule.");
+          return;
+        }
+
+        const preset = standardRulePresetForCategory(category);
+
+        await createSavedRule({
+          category,
+          reviewStatus: preset?.reviewStatus || customRuleStatusValue(),
+          documentExpectation: preset?.documentExpectation || customRuleExpectationValue(),
+          note: reviewNoteValue() || preset?.defaultNote || null,
+          expectedSupplier: defaultSupplierHint(),
+          applyToExisting: true,
+        });
+      }
+
+      async function saveWagesRule() {
+        await createSavedRule({
+          category: "Wages",
+          reviewStatus: "handled_by_rule",
+          documentExpectation: "none",
+          note: reviewNoteValue() || "Wages / payroll",
+          expectedSupplier: defaultSupplierHint(),
+        });
+      }
+
+      async function saveContractRule() {
+        await createSavedRule({
+          category: "Contract",
+          reviewStatus: "handled_by_rule",
+          documentExpectation: "annual_invoice",
+          note: reviewNoteValue() || "Charged monthly, invoiced annually",
+          expectedSupplier: defaultSupplierHint(),
+        });
+      }
+
+      async function saveHardCopyRule() {
+        await createSavedRule({
+          category: "Hard Copy Available",
+          reviewStatus: "hard_copy_available",
+          documentExpectation: "hard_copy",
+          note: reviewNoteValue() || "Hard copy available",
+          expectedSupplier: defaultSupplierHint(),
+        });
+      }
+
+      async function saveNoDocumentRule() {
+        await createSavedRule({
+          category: "No Document Expected",
+          reviewStatus: "no_document_expected",
+          documentExpectation: "none",
+          note: reviewNoteValue() || "No supplier document expected",
+          expectedSupplier: defaultSupplierHint(),
+        });
+      }
+
       async function rejectLink(linkId) {
         try {
           await requestJson(`/api/transactions/links/${linkId}`, {
@@ -2211,9 +3373,44 @@
             }),
           });
           setBanner("success", "Persisted link rejected.");
-          await loadQueue();
+          await refreshQueueInPlace();
         } catch (error) {
           setBanner("error", `Could not reject link: ${error.message}`);
+        }
+      }
+
+      async function ignoreDocumentForTransaction(documentId) {
+        if (!state.detail?.transaction?.id || !documentId) return;
+        try {
+          await requestJson(`/api/transactions/${state.detail.transaction.id}/links`, {
+            method: "POST",
+            body: JSON.stringify({
+              document_id: documentId,
+              role: "ignore",
+              status: "rejected",
+              note: reviewNoteValue() || "hidden for this transaction",
+            }),
+          });
+          setBanner("success", "Document hidden for this transaction.");
+          await refreshQueueInPlace();
+        } catch (error) {
+          setBanner("error", `Could not hide document: ${error.message}`);
+        }
+      }
+
+      async function restoreHiddenLink(linkId) {
+        try {
+          await requestJson(`/api/transactions/links/${linkId}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: "pending",
+              note: reviewNoteValue() || "restored for transaction review",
+            }),
+          });
+          setBanner("success", "Hidden document restored to this transaction.");
+          await refreshQueueInPlace();
+        } catch (error) {
+          setBanner("error", `Could not restore hidden document: ${error.message}`);
         }
       }
 

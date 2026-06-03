@@ -68,6 +68,64 @@ class DashboardSummary(BaseModel):
     currency: str = "GBP"
 
 
+class SupplierDocumentInventoryItemResponse(BaseModel):
+    id: uuid.UUID
+    supplier: str
+    canonical_supplier: str | None = None
+    document_type: str
+    document_date: date | None
+    reference: str | None
+    amount: Decimal | None
+    extraction_status: str
+    needs_review: bool
+    attachment_name: str
+    storage_state: str = "local_only"
+    storage_provider: str | None = None
+    storage_bucket: str | None = None
+    storage_key: str | None = None
+    local_path: str
+    drive_file_id: str | None = None
+    drive_web_link: str | None = None
+    drive_folder_path: str | None = None
+    source_email_subject: str | None = None
+    pub_hint: str | None = None
+
+
+class SupplierDocumentInventoryResponse(BaseModel):
+    supplier_query: str
+    canonical_supplier: str | None = None
+    month: str | None = None
+    selected_months: list[str] = Field(default_factory=list)
+    window_months: int = 1
+    total_documents: int = 0
+    counts_by_type: dict[str, int] = Field(default_factory=dict)
+    counts_by_storage: dict[str, int] = Field(default_factory=dict)
+    available_months: list[str] = Field(default_factory=list)
+    documents: list[SupplierDocumentInventoryItemResponse] = Field(default_factory=list)
+
+
+class SupplierOptionResponse(BaseModel):
+    supplier: str
+    canonical_supplier: str | None = None
+    document_count: int = 0
+
+
+class SupplierOptionsResponse(BaseModel):
+    suppliers: list[SupplierOptionResponse] = Field(default_factory=list)
+
+
+class DocumentStorageSummaryResponse(BaseModel):
+    month: str | None = None
+    selected_months: list[str] = Field(default_factory=list)
+    window_months: int = 1
+    pub: str | None = None
+    total_documents: int = 0
+    local_only: int = 0
+    r2_only: int = 0
+    drive_only: int = 0
+    r2_and_drive: int = 0
+
+
 # Pipeline
 class PipelineScanRequest(BaseModel):
     days: int = Field(default=30, ge=1, le=365)
@@ -164,6 +222,10 @@ class DocumentResponse(BaseModel):
     confidence_score: float | None
     extraction_status: str
     extracted_at: datetime | None
+    storage_provider: str | None = None
+    storage_bucket: str | None = None
+    storage_key: str | None = None
+    storage_synced_at: datetime | None = None
     local_path: str
     needs_review: bool
     review_reasons: list[str] = Field(default_factory=list)
@@ -302,6 +364,29 @@ class DocumentDriveSyncResponse(BaseModel):
     skipped: int
     deduped: int = 0
     results: list[DocumentDriveSyncItem] = Field(default_factory=list)
+
+
+class DocumentStorageSyncRequest(BaseModel):
+    limit: int = Field(default=100, ge=1, le=1000)
+    document_ids: list[uuid.UUID] = Field(default_factory=list)
+    force: bool = False
+
+
+class DocumentStorageSyncItem(BaseModel):
+    document_id: uuid.UUID
+    local_path: str
+    storage_provider: str | None = None
+    storage_bucket: str | None = None
+    storage_key: str | None = None
+    status: str
+    reason: str | None = None
+
+
+class DocumentStorageSyncResponse(BaseModel):
+    requested: int
+    synced: int
+    skipped: int
+    results: list[DocumentStorageSyncItem] = Field(default_factory=list)
 
 
 class DocumentExtractionRequest(BaseModel):
@@ -471,6 +556,12 @@ class TransactionDocumentMatchResponse(BaseModel):
     document_date: date | None
     amount: Decimal | None
     vat_amount: Decimal | None
+    storage_state: str = "local_only"
+    storage_provider: str | None = None
+    storage_bucket: str | None = None
+    storage_key: str | None = None
+    drive_file_id: str | None = None
+    drive_web_link: str | None = None
     score: float | None
     reason: str
 
@@ -486,6 +577,12 @@ class TransactionFlowDocumentResponse(BaseModel):
     score: float | None = None
     role: str | None = None
     reason: str | None = None
+    storage_state: str = "local_only"
+    storage_provider: str | None = None
+    storage_bucket: str | None = None
+    storage_key: str | None = None
+    drive_file_id: str | None = None
+    drive_web_link: str | None = None
     statement_kind: str | None = None
     is_financial: bool | None = None
     invoice_reference_count: int = 0
@@ -575,6 +672,12 @@ class TransactionLinkedDocumentResponse(BaseModel):
     document_date: date | None
     amount: Decimal | None
     vat_amount: Decimal | None
+    storage_state: str = "local_only"
+    storage_provider: str | None = None
+    storage_bucket: str | None = None
+    storage_key: str | None = None
+    drive_file_id: str | None = None
+    drive_web_link: str | None = None
     local_path: str
     needs_review: bool
 
@@ -676,11 +779,70 @@ class TransactionReviewUpdateRequest(BaseModel):
         "pending",
         "linked",
         "supporting_docs_only",
+        "hard_copy_available",
         "awaiting_document",
         "no_document_expected",
     ]
+    category: str | None = None
     review_note: str | None = None
     expected_supplier: str | None = None
+
+
+class TransactionRuleResponse(BaseModel):
+    id: uuid.UUID
+    source_type: str
+    pub: str | None
+    match_field: str
+    match_value: str
+    display_label: str | None
+    category_override: str | None
+    review_status: str
+    expected_supplier: str | None
+    document_expectation: str | None
+    owner_note: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class TransactionRuleCreateRequest(BaseModel):
+    category_override: str
+    review_status: Literal[
+        "handled_by_rule",
+        "no_document_expected",
+        "hard_copy_available",
+    ] = "handled_by_rule"
+    document_expectation: Literal[
+        "none",
+        "hard_copy",
+        "annual_invoice",
+        "monthly_invoice",
+        "statement",
+        "unknown",
+    ] = "unknown"
+    owner_note: str | None = None
+    expected_supplier: str | None = None
+    apply_same_pub_only: bool = True
+    apply_to_existing: bool = True
+
+
+class TransactionRuleCreateResponse(BaseModel):
+    transaction: TransactionResponse
+    rule: TransactionRuleResponse
+    updated_transactions: int
+
+
+class TransactionRuleListResponse(BaseModel):
+    rules: list[TransactionRuleResponse] = Field(default_factory=list)
+
+
+class TransactionRuleApplyRequest(BaseModel):
+    rule_id: uuid.UUID
+
+
+class TransactionRuleApplyResponse(BaseModel):
+    transaction: TransactionResponse
+    rule: TransactionRuleResponse
 
 
 class TransactionLinkCreateRequest(BaseModel):

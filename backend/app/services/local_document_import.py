@@ -15,6 +15,7 @@ from app.services.document_extraction import extract_documents
 from app.services.document_metadata import extract_document_date, extract_reference
 from app.services.document_registry import upsert_document_record
 from app.services.local_storage import copy_to_final_storage
+from app.services.object_storage import sync_document_to_object_storage
 from app.services.supplier_profiles import match_supplier_profile
 from app.services.supplier_rules import canonicalize_supplier_name, detect_supplier
 from app.services.vatbook_import import backend_root
@@ -296,6 +297,10 @@ async def import_documents_from_local_archive(
             source_received_at=datetime.fromtimestamp(file_path.stat().st_mtime),
             stored_file=stored_file,
         )
+        try:
+            sync_document_to_object_storage(document=document, source_path=stored_path)
+        except Exception:
+            pass
         is_duplicate_import = document.id in imported_document_id_set
         if not is_duplicate_import:
             imported_document_ids.append(document.id)

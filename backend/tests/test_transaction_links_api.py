@@ -176,6 +176,7 @@ else:
                     db=session,
                 )
                 self.assertEqual(after_confirm.transaction.review_status, "linked")
+                self.assertEqual(after_confirm.transaction.category, "Invoice Match")
 
                 updated = await update_transaction_link(
                     link_id=created.id,
@@ -203,6 +204,7 @@ else:
 
             self.assertEqual(len(refreshed.persisted_links), 2)
             self.assertEqual(refreshed.transaction.review_status, "pending")
+            self.assertIsNone(refreshed.transaction.category)
             self.assertEqual(
                 [link.status for link in refreshed.persisted_links],
                 ["confirmed", "rejected"],

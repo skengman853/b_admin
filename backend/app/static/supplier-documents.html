@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Supplier Documents</title>
+    <style>
+      :root {
+        --bg: #efe6d8;
+        --bg-deep: #d8c8b1;
+        --panel: rgba(255, 251, 244, 0.9);
+        --ink: #1d2a33;
+        --muted: #6d6b64;
+        --line: rgba(42, 51, 61, 0.14);
+        --accent: #0d6b62;
+        --accent-soft: rgba(13, 107, 98, 0.12);
+        --shadow: 0 20px 60px rgba(39, 32, 24, 0.12);
+        --radius: 22px;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(255,255,255,0.72), transparent 30%),
+          linear-gradient(160deg, var(--bg) 0%, #f7f0e5 42%, var(--bg-deep) 100%);
+      }
+
+      .shell {
+        width: min(1320px, calc(100% - 2rem));
+        margin: 0 auto;
+        padding: 1.4rem 0 2rem;
+        display: grid;
+        gap: 1rem;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
+      }
+
+      .hero { padding: 1.25rem 1.4rem; display: grid; gap: 0.8rem; }
+      .hero-top { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+      .hero h1 {
+        margin: 0;
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+        font-size: clamp(1.9rem, 4vw, 3rem);
+        line-height: 0.96;
+        letter-spacing: -0.03em;
+      }
+      .hero p { margin: 0.35rem 0 0; color: var(--muted); max-width: 64ch; }
+
+      .toolbar, .filters, .actions, .doc-meta, .summary-grid, .summary-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.7rem;
+        align-items: center;
+      }
+
+      .filters { padding: 1rem 1.4rem 1.2rem; }
+      .field { display: grid; gap: 0.32rem; min-width: 150px; }
+      .field label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      input, select, button, textarea { font: inherit; }
+      input, select {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 0.72rem 0.85rem;
+        background: rgba(255,255,255,0.8);
+        color: var(--ink);
+      }
+
+      button, .link-button {
+        border: 1px solid transparent;
+        border-radius: 16px;
+        padding: 0.78rem 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+      }
+      button:hover, .link-button:hover { transform: translateY(-1px); }
+      .button-primary { background: var(--accent); color: #f6f8f7; }
+      .button-secondary {
+        background: rgba(255,255,255,0.75);
+        color: var(--ink);
+        border-color: var(--line);
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.72rem;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,0.72);
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+      .tag[data-tone="r2_and_drive"] { background: rgba(13,107,98,0.15); border-color: rgba(13,107,98,0.22); color: #0d6b62; }
+      .tag[data-tone="r2_only"] { background: rgba(193,124,39,0.12); border-color: rgba(193,124,39,0.2); color: #8b5e1f; }
+      .tag[data-tone="drive_only"] { background: rgba(56,101,171,0.12); border-color: rgba(56,101,171,0.2); color: #31578d; }
+      .tag[data-tone="local_only"] { background: rgba(80,72,65,0.08); border-color: rgba(80,72,65,0.14); color: #5f574e; }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.85rem;
+        padding: 0 1.4rem 1.2rem;
+      }
+
+      .meta-card, .doc-card, .inspector {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255,255,255,0.72);
+      }
+      .meta-card { padding: 0.9rem 1rem; }
+      .meta-card label {
+        display: block;
+        font-size: 0.73rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        font-weight: 700;
+        margin-bottom: 0.3rem;
+      }
+
+      .doc-list {
+        display: grid;
+        gap: 0.85rem;
+        padding: 1rem 1.4rem 1.4rem;
+      }
+
+      .doc-card {
+        padding: 0.95rem 1rem;
+        display: grid;
+        gap: 0.6rem;
+      }
+
+      .doc-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: start;
+      }
+
+      .small-note { color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+      .month-picks {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        gap: 0.45rem;
+        padding: 0.8rem;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.62);
+        max-height: 190px;
+        overflow: auto;
+      }
+      .month-pick {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.92rem;
+      }
+      .month-pick input { margin: 0; }
+      .empty, .banner {
+        padding: 1rem 1.2rem;
+        border-radius: 18px;
+        margin: 0 1.4rem 1.4rem;
+      }
+      .empty {
+        border: 1px dashed var(--line);
+        color: var(--muted);
+        background: rgba(255,255,255,0.45);
+      }
+      .banner.error { background: rgba(141,60,51,0.12); color: #8d3c33; border: 1px solid rgba(141,60,51,0.18); }
+      .banner.success { background: rgba(13,107,98,0.12); color: var(--accent); border: 1px solid rgba(13,107,98,0.18); }
+
+      .inspector-wrap { padding: 0 1.4rem 1.4rem; }
+      .inspector { padding: 1rem; }
+
+      @media (max-width: 880px) {
+        .hero-top, .doc-top { flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="panel hero">
+        <div class="hero-top">
+          <div>
+            <h1>Supplier Documents</h1>
+            <p>See the actual invoices, statements, and credits the database has for a supplier around a review month.</p>
+          </div>
+          <div class="actions">
+            <a class="link-button button-secondary" href="/review">Back to review</a>
+          </div>
+        </div>
+        <div id="auth-banner" class="small-note">Using your saved local session.</div>
+      </section>
+
+      <section class="panel">
+        <div class="filters">
+          <div class="field" style="min-width:220px">
+            <label for="supplier-input">Supplier</label>
+            <select id="supplier-input">
+              <option value="">Choose supplier…</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="month-input">Month</label>
+            <input id="month-input" type="month" />
+          </div>
+          <div class="field">
+            <label for="pub-select">Pub</label>
+            <select id="pub-select">
+              <option value="">All pubs</option>
+              <option value="Careys">Careys</option>
+              <option value="Canal">Canal</option>
+              <option value="Corrcross">Corrcross</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="window-select">Month window</label>
+            <select id="window-select">
+              <option value="0">Current month only</option>
+              <option value="1" selected>Prev / current / next</option>
+              <option value="2">Two months each side</option>
+            </select>
+          </div>
+          <div class="field" style="min-width:320px; flex: 1 1 320px;">
+            <label>Specific months</label>
+            <div id="months-checkboxes" class="month-picks"></div>
+            <div class="small-note">Pick one or more months here to override the month window.</div>
+          </div>
+          <div class="actions" style="align-self:end">
+            <button class="button-primary" id="load-button" type="button">Load documents</button>
+          </div>
+        </div>
+        <div id="message-banner"></div>
+        <div class="summary-grid" id="storage-summary-grid"></div>
+        <div class="summary-tags" id="storage-summary-tags" style="padding:0 1.4rem 1rem"></div>
+        <div class="summary-grid" id="summary-grid"></div>
+        <div class="summary-tags" id="summary-tags" style="padding:0 1.4rem 1rem"></div>
+        <div class="doc-list" id="doc-list"></div>
+        <div class="inspector-wrap">
+          <div class="inspector" id="inspector">
+            <div class="small-note">Click Inspect on a document to see extracted detail and clue lines here.</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const state = {
+        token: localStorage.getItem("b_admin_token") || "",
+        inventory: null,
+        storageSummary: null,
+        suppliers: [],
+        previewDocument: null,
+      };
+
+      const supplierInput = document.getElementById("supplier-input");
+      const monthInput = document.getElementById("month-input");
+      const pubSelect = document.getElementById("pub-select");
+      const windowSelect = document.getElementById("window-select");
+      const monthsCheckboxes = document.getElementById("months-checkboxes");
+      const storageSummaryGrid = document.getElementById("storage-summary-grid");
+      const storageSummaryTags = document.getElementById("storage-summary-tags");
+      const summaryGrid = document.getElementById("summary-grid");
+      const summaryTags = document.getElementById("summary-tags");
+      const docList = document.getElementById("doc-list");
+      const inspector = document.getElementById("inspector");
+      const messageBanner = document.getElementById("message-banner");
+      const authBanner = document.getElementById("auth-banner");
+
+      function defaultMonthValue() {
+        const now = new Date();
+        now.setMonth(now.getMonth() - 1);
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        return `${year}-${month}`;
+      }
+
+      function shiftMonth(month, offset) {
+        const [yearRaw, monthRaw] = String(month || defaultMonthValue()).split("-");
+        const year = Number(yearRaw);
+        const m = Number(monthRaw);
+        const total = year * 12 + (m - 1) + offset;
+        const shiftedYear = Math.floor(total / 12);
+        const shiftedMonth = (total % 12) + 1;
+        return `${shiftedYear}-${String(shiftedMonth).padStart(2, "0")}`;
+      }
+
+      function monthLabel(month) {
+        const [year, m] = String(month).split("-");
+        const date = new Date(Number(year), Number(m) - 1, 1);
+        return date.toLocaleString("en-IE", { month: "short", year: "numeric" });
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function formatDate(value) { return value || "—"; }
+      function formatCurrency(value) {
+        if (value === null || value === undefined || value === "") return "—";
+        const amount = Number(value);
+        if (Number.isNaN(amount)) return String(value);
+        return new Intl.NumberFormat("en-IE", {
+          style: "currency",
+          currency: "EUR",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(amount);
+      }
+
+      function buildTag(label, tone) {
+        return `<span class="tag" data-tone="${escapeHtml(tone || "local_only")}">${escapeHtml(label)}</span>`;
+      }
+
+      function storageStateLabel(state) {
+        return {
+          r2_and_drive: "R2 + Drive",
+          r2_only: "R2",
+          drive_only: "Drive",
+          local_only: "Local only",
+        }[state] || "Local only";
+      }
+
+      function renderStorageTags(document) {
+        const state = document.storage_state || "local_only";
+        const tags = [buildTag(storageStateLabel(state), state)];
+        if (document.storage_bucket && (document.storage_provider || "").toLowerCase() === "s3") {
+          tags.push(buildTag(`Bucket ${document.storage_bucket}`, "r2_only"));
+        }
+        if (document.drive_file_id) {
+          tags.push(buildTag("Drive linked", "drive_only"));
+        }
+        return tags.join("");
+      }
+
+      function setBanner(type, message) {
+        if (!message) {
+          messageBanner.innerHTML = "";
+          return;
+        }
+        messageBanner.innerHTML = `<div class="banner ${type}">${escapeHtml(message)}</div>`;
+      }
+
+      function inventoryQueryParams(includeSupplier = true) {
+        const params = new URLSearchParams({
+          month: monthInput.value || defaultMonthValue(),
+          window_months: windowSelect.value || "1",
+        });
+        const selectedMonths = selectedMonthsValues();
+        if (selectedMonths.length) {
+          params.set("months", selectedMonths.join(","));
+        }
+        if (pubSelect.value) params.set("pub", pubSelect.value);
+        if (includeSupplier) {
+          const supplier = supplierInput.value.trim();
+          if (supplier) params.set("supplier", supplier);
+        }
+        return params;
+      }
+
+      function renderSupplierOptions(selectedValue = "") {
+        const selectedNormalized = String(selectedValue || "").trim().toLowerCase();
+        const options = [
+          '<option value="">Choose supplier…</option>',
+          ...state.suppliers.map((item) => {
+            const label = item.document_count
+              ? `${item.supplier}${item.canonical_supplier && item.canonical_supplier !== item.supplier ? ` · ${item.canonical_supplier}` : ""} (${item.document_count})`
+              : item.supplier;
+            const isSelected =
+              item.supplier.toLowerCase() === selectedNormalized ||
+              (item.canonical_supplier || "").toLowerCase() === selectedNormalized;
+            return `<option value="${escapeHtml(item.supplier)}" ${isSelected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+          }),
+        ];
+
+        const currentValue = String(selectedValue || "").trim();
+        if (
+          currentValue &&
+          !state.suppliers.some(
+            (item) =>
+              item.supplier.toLowerCase() === currentValue.toLowerCase() ||
+              (item.canonical_supplier || "").toLowerCase() === currentValue.toLowerCase()
+          )
+        ) {
+          options.splice(1, 0, `<option value="${escapeHtml(currentValue)}" selected>${escapeHtml(currentValue)} (from link)</option>`);
+        }
+        supplierInput.innerHTML = options.join("");
+      }
+
+      function selectedMonthsValues() {
+        return Array.from(monthsCheckboxes.querySelectorAll('input[type="checkbox"]:checked'))
+          .map((input) => input.value)
+          .filter(Boolean);
+      }
+
+      function renderMonthCheckboxes(anchorMonth, selectedMonths = []) {
+        const selected = new Set((selectedMonths || []).filter(Boolean));
+        const months = [];
+        for (let offset = -6; offset <= 5; offset += 1) {
+          months.push(shiftMonth(anchorMonth, offset));
+        }
+        monthsCheckboxes.innerHTML = months
+          .map(
+            (month) => `
+              <label class="month-pick">
+                <input type="checkbox" value="${escapeHtml(month)}" ${selected.has(month) ? "checked" : ""} />
+                <span>${escapeHtml(monthLabel(month))}</span>
+              </label>
+            `
+          )
+          .join("");
+      }
+
+      async function requestJson(url, options = {}) {
+        const headers = new Headers(options.headers || {});
+        headers.set("Accept", "application/json");
+        if (state.token) headers.set("Authorization", `Bearer ${state.token}`);
+        if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+        const response = await fetch(url, { ...options, headers });
+        if (!response.ok) {
+          let detail = response.statusText || "Request failed";
+          try {
+            const payload = await response.json();
+            detail = payload.detail || payload.message || detail;
+          } catch {}
+          throw new Error(detail);
+        }
+        return response.json();
+      }
+
+      function renderSummary() {
+        const inventory = state.inventory;
+        if (!inventory) {
+          summaryGrid.innerHTML = "";
+          summaryTags.innerHTML = "";
+          return;
+        }
+        summaryGrid.innerHTML = `
+          <div class="meta-card">
+            <label>Supplier query</label>
+            <div>${escapeHtml(inventory.supplier_query || "—")}</div>
+          </div>
+          <div class="meta-card">
+            <label>Canonical supplier</label>
+            <div>${escapeHtml(inventory.canonical_supplier || "—")}</div>
+          </div>
+          <div class="meta-card">
+            <label>Total documents</label>
+            <div>${escapeHtml(String(inventory.total_documents || 0))}</div>
+          </div>
+          <div class="meta-card">
+            <label>Months covered</label>
+            <div>${escapeHtml((inventory.available_months || []).join(", ") || "—")}</div>
+          </div>
+          <div class="meta-card">
+            <label>Months selected</label>
+            <div>${escapeHtml((inventory.selected_months || []).join(", ") || "Window mode")}</div>
+          </div>
+          <div class="meta-card">
+            <label>R2 synced</label>
+            <div>${escapeHtml(String((inventory.counts_by_storage || {}).r2_only || 0))}</div>
+          </div>
+          <div class="meta-card">
+            <label>R2 + Drive</label>
+            <div>${escapeHtml(String((inventory.counts_by_storage || {}).r2_and_drive || 0))}</div>
+          </div>
+          <div class="meta-card">
+            <label>Local only</label>
+            <div>${escapeHtml(String((inventory.counts_by_storage || {}).local_only || 0))}</div>
+          </div>
+          <div class="meta-card">
+            <label>Drive only</label>
+            <div>${escapeHtml(String((inventory.counts_by_storage || {}).drive_only || 0))}</div>
+          </div>
+        `;
+        summaryTags.innerHTML = Object.entries(inventory.counts_by_type || {})
+          .map(([documentType, count]) => `<span class="tag">${escapeHtml(documentType.replaceAll("_", " "))} ${escapeHtml(String(count))}</span>`)
+          .join("") + Object.entries(inventory.counts_by_storage || {})
+          .map(([state, count]) => `<span class="tag" data-tone="${escapeHtml(state)}">${escapeHtml(storageStateLabel(state))} ${escapeHtml(String(count))}</span>`)
+          .join("");
+      }
+
+      function renderStorageSummary() {
+        const summary = state.storageSummary;
+        if (!summary) {
+          storageSummaryGrid.innerHTML = "";
+          storageSummaryTags.innerHTML = "";
+          return;
+        }
+        storageSummaryGrid.innerHTML = `
+          <div class="meta-card">
+            <label>Storage view</label>
+            <div>${escapeHtml(summary.selected_months?.length ? "Specific months" : "Month window")}</div>
+          </div>
+          <div class="meta-card">
+            <label>Month anchor</label>
+            <div>${escapeHtml(summary.month || "—")}</div>
+          </div>
+          <div class="meta-card">
+            <label>Pub filter</label>
+            <div>${escapeHtml(summary.pub || "All pubs")}</div>
+          </div>
+          <div class="meta-card">
+            <label>Total documents</label>
+            <div>${escapeHtml(String(summary.total_documents || 0))}</div>
+          </div>
+          <div class="meta-card">
+            <label>R2 synced</label>
+            <div>${escapeHtml(String(summary.r2_only || 0))}</div>
+          </div>
+          <div class="meta-card">
+            <label>R2 + Drive</label>
+            <div>${escapeHtml(String(summary.r2_and_drive || 0))}</div>
+          </div>
+          <div class="meta-card">
+            <label>Local only</label>
+            <div>${escapeHtml(String(summary.local_only || 0))}</div>
+          </div>
+          <div class="meta-card">
+            <label>Drive only</label>
+            <div>${escapeHtml(String(summary.drive_only || 0))}</div>
+          </div>
+        `;
+        const monthsLabel = summary.selected_months?.length
+          ? `Specific months: ${summary.selected_months.join(", ")}`
+          : `Window: ${Number(summary.window_months || 0) === 0 ? "current month only" : `${summary.window_months} month(s) each side`}`;
+        storageSummaryTags.innerHTML = [
+          buildTag(monthsLabel, "local_only"),
+          buildTag(`R2 ${summary.r2_only || 0}`, "r2_only"),
+          buildTag(`R2 + Drive ${summary.r2_and_drive || 0}`, "r2_and_drive"),
+          buildTag(`Local ${summary.local_only || 0}`, "local_only"),
+          buildTag(`Drive ${summary.drive_only || 0}`, "drive_only"),
+        ].join("");
+      }
+
+      function renderDocuments() {
+        const inventory = state.inventory;
+        if (!inventory) {
+          docList.innerHTML = "";
+          return;
+        }
+        if (!inventory.documents?.length) {
+          docList.innerHTML = '<div class="empty">No documents found for this supplier in the selected month window.</div>';
+          return;
+        }
+        docList.innerHTML = inventory.documents.map((document) => `
+          <article class="doc-card">
+            <div class="doc-top">
+              <div>
+                <strong>${escapeHtml(document.supplier || "Unknown supplier")}</strong>
+                <div class="small-note">${escapeHtml(document.document_type || "document")} · ${escapeHtml(document.reference || "No reference")}</div>
+              </div>
+              <div style="text-align:right">
+                <div>${escapeHtml(formatDate(document.document_date))}</div>
+                <div class="small-note">${escapeHtml(formatCurrency(document.amount))}</div>
+              </div>
+            </div>
+            <div class="doc-meta small-note">
+              <span>${escapeHtml(document.pub_hint || "No pub hint")}</span>
+              <span>${escapeHtml(document.extraction_status || "unknown status")}</span>
+              <span>${escapeHtml(document.attachment_name || "")}</span>
+            </div>
+            <div class="summary-tags">
+              ${renderStorageTags(document)}
+            </div>
+            <div class="actions">
+              <button class="button-secondary" data-inspect-document-id="${escapeHtml(document.id)}" type="button">Inspect</button>
+              <button class="button-secondary" data-open-document-id="${escapeHtml(document.id)}" type="button">Open PDF</button>
+            </div>
+          </article>
+        `).join("");
+
+        docList.querySelectorAll("[data-inspect-document-id]").forEach((button) => {
+          button.addEventListener("click", () => inspectDocument(button.dataset.inspectDocumentId));
+        });
+        docList.querySelectorAll("[data-open-document-id]").forEach((button) => {
+          button.addEventListener("click", () => openDocumentFile(button.dataset.openDocumentId));
+        });
+      }
+
+      async function inspectDocument(documentId) {
+        try {
+          const detail = await requestJson(`/api/documents/${documentId}`);
+          const clueLines = String(detail.extracted_text || "")
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .filter((line) => /careys|canal|statement|invoice|account|ref|due|vat|payment/i.test(line))
+            .slice(0, 14);
+
+          inspector.innerHTML = `
+            <div class="summary-grid" style="padding:0;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+              <div class="meta-card"><label>Supplier</label><div>${escapeHtml(detail.supplier || "—")}</div></div>
+              <div class="meta-card"><label>Type</label><div>${escapeHtml(detail.document_type || "—")}</div></div>
+              <div class="meta-card"><label>Reference</label><div>${escapeHtml(detail.reference || "—")}</div></div>
+              <div class="meta-card"><label>Date</label><div>${escapeHtml(formatDate(detail.document_date))}</div></div>
+              <div class="meta-card"><label>Storage</label><div>${escapeHtml(storageStateLabel(detail.storage_provider === "s3" && detail.drive_file_id ? "r2_and_drive" : detail.storage_provider === "s3" ? "r2_only" : detail.drive_file_id ? "drive_only" : "local_only"))}</div></div>
+            </div>
+            <div class="small-note" style="margin-top:0.9rem">${escapeHtml(detail.source_email_subject || detail.attachment_name || "No subject metadata.")}</div>
+            <div class="small-note" style="margin-top:0.6rem">${escapeHtml(detail.local_path || "")}</div>
+            <div class="summary-tags" style="margin-top:0.8rem">
+              ${renderStorageTags(detail)}
+            </div>
+            <div class="actions" style="margin-top:0.8rem">
+              <button class="button-secondary" data-open-preview-document-button type="button">Open PDF</button>
+            </div>
+            <div class="meta-card" style="margin-top:0.9rem">
+              <label>Clue lines</label>
+              <div style="white-space:pre-wrap;line-height:1.45">${escapeHtml(clueLines.join("\n") || "No extracted clue lines available.")}</div>
+            </div>
+          `;
+          inspector.querySelector("[data-open-preview-document-button]")?.addEventListener("click", () => openDocumentFile(documentId));
+        } catch (error) {
+          setBanner("error", `Could not inspect document: ${error.message}`);
+        }
+      }
+
+      async function openDocumentFile(documentId) {
+        try {
+          const headers = new Headers();
+          if (state.token) headers.set("Authorization", `Bearer ${state.token}`);
+          const response = await fetch(`/api/documents/${documentId}/file`, { headers });
+          if (!response.ok) throw new Error(response.statusText || "Document open failed");
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          window.open(url, "_blank", "noopener,noreferrer");
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        } catch (error) {
+          setBanner("error", `Could not open document: ${error.message}`);
+        }
+      }
+
+      async function loadInventory() {
+        const supplier = supplierInput.value.trim();
+        if (!supplier) {
+          setBanner("error", "Enter a supplier first.");
+          return;
+        }
+        try {
+          setBanner("", "");
+          const params = inventoryQueryParams(true);
+          params.set("supplier", supplier);
+          params.set("limit", "80");
+          const payload = await requestJson(`/api/dashboard/document-inventory?${params.toString()}`);
+          state.inventory = payload;
+          renderSummary();
+          renderDocuments();
+        } catch (error) {
+          state.inventory = null;
+          renderSummary();
+          renderDocuments();
+          setBanner("error", `Could not load supplier documents: ${error.message}`);
+        }
+      }
+
+      async function loadStorageSummary() {
+        try {
+          const params = inventoryQueryParams(false);
+          const payload = await requestJson(`/api/dashboard/storage-summary?${params.toString()}`);
+          state.storageSummary = payload;
+          renderStorageSummary();
+        } catch (error) {
+          state.storageSummary = null;
+          renderStorageSummary();
+          setBanner("error", `Could not load storage summary: ${error.message}`);
+        }
+      }
+
+      async function loadSuppliers() {
+        try {
+          const params = new URLSearchParams();
+          if (pubSelect.value) params.set("pub", pubSelect.value);
+          const payload = await requestJson(`/api/dashboard/suppliers${params.toString() ? `?${params.toString()}` : ""}`);
+          state.suppliers = payload.suppliers || [];
+          renderSupplierOptions(supplierInput.dataset.pendingValue || supplierInput.value || "");
+          delete supplierInput.dataset.pendingValue;
+        } catch (error) {
+          setBanner("error", `Could not load suppliers: ${error.message}`);
+        }
+      }
+
+      function hydrateFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        supplierInput.dataset.pendingValue = params.get("supplier") || "";
+        monthInput.value = params.get("month") || defaultMonthValue();
+        pubSelect.value = params.get("pub") || "";
+        windowSelect.value = params.get("window_months") || "1";
+        const queryMonths = (params.get("months") || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        renderMonthCheckboxes(
+          monthInput.value || defaultMonthValue(),
+          queryMonths.length ? queryMonths : [monthInput.value || defaultMonthValue()]
+        );
+      }
+
+      document.getElementById("load-button").addEventListener("click", async () => {
+        await loadStorageSummary();
+        if (supplierInput.value.trim()) {
+          await loadInventory();
+        } else {
+          state.inventory = null;
+          renderSummary();
+          renderDocuments();
+          setBanner("success", "Storage summary refreshed. Pick a supplier to load document detail.");
+        }
+      });
+      pubSelect.addEventListener("change", () => {
+        loadSuppliers();
+        loadStorageSummary();
+      });
+      monthInput.addEventListener("change", () => {
+        renderMonthCheckboxes(monthInput.value || defaultMonthValue(), selectedMonthsValues());
+        loadStorageSummary();
+      });
+      windowSelect.addEventListener("change", () => {
+        loadStorageSummary();
+      });
+      monthsCheckboxes.addEventListener("change", () => {
+        loadStorageSummary();
+      });
+
+      hydrateFromQuery();
+      if (!state.token) {
+        authBanner.textContent = "No saved session token found. Sign in on /review first, then come back here.";
+      } else {
+        authBanner.textContent = "Using your saved local session.";
+        Promise.all([loadSuppliers(), loadStorageSummary()]).then(() => {
+          if (supplierInput.value) {
+            loadInventory();
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

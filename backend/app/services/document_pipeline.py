@@ -17,6 +17,7 @@ from app.services.email_filter import should_process_email
 from app.services.file_namer import build_document_filename
 from app.services.gmail_client import fetch_message_with_pdfs, get_gmail_service, list_recent_message_ids
 from app.services.local_storage import move_to_final_storage, save_temp_pdf
+from app.services.object_storage import sync_document_to_object_storage
 from app.services.pdf_text import extract_pdf_text
 from app.services.supplier_rules import detect_supplier, is_known_supplier
 from app.services.tracking import has_processed_message, record_processed_message, tracking_file_path
@@ -192,6 +193,10 @@ async def scan_recent_documents(
                 stored_file=stored_files[-1],
                 extraction_fields=extraction_fields,
             )
+            try:
+                sync_document_to_object_storage(document=document, source_path=final_path)
+            except Exception:
+                pass
             if document.id is not None:
                 document_ids_touched.append(document.id)
 

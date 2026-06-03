@@ -14,7 +14,14 @@ class Settings(BaseSettings):
     ai_document_extraction_enabled: bool = True
     ai_document_extraction_model: str = "gpt-4.1-mini"
     ai_document_extraction_min_confidence: float = 0.7
+    document_storage_backend: str = "local"
     s3_bucket: str = ""
+    s3_region: str = ""
+    s3_endpoint_url: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_prefix: str = "documents"
+    s3_force_path_style: bool = True
     sentry_dsn: str = ""
     frontend_url: str = "http://localhost:3000"
     documents_root: str = "Documents"

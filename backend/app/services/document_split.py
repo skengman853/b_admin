@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Document
 from app.services.document_candidates import extract_multi_invoice_candidates
 from app.services.document_extraction_rules import build_extraction_fields
+from app.services.object_storage import ensure_local_document_file
 from app.services.pdf_text import extract_pdf_text
 
 
@@ -24,6 +23,10 @@ async def sync_child_documents_from_parent(*, parent_document: Document, db: Asy
     children = list(result.scalars().all())
     for child in children:
         child.local_path = parent_document.local_path
+        child.storage_provider = parent_document.storage_provider
+        child.storage_bucket = parent_document.storage_bucket
+        child.storage_key = parent_document.storage_key
+        child.storage_synced_at = parent_document.storage_synced_at
         child.drive_file_id = parent_document.drive_file_id
         child.drive_web_link = parent_document.drive_web_link
         child.drive_folder_path = parent_document.drive_folder_path
@@ -40,8 +43,9 @@ async def split_document_into_children(
 
     extracted_text = document.extracted_text or ""
     if not extracted_text.strip():
-        local_path = Path(document.local_path)
-        if not local_path.exists():
+        try:
+            local_path = ensure_local_document_file(document)
+        except FileNotFoundError:
             raise ValueError("Source file is missing")
         extracted_text = extract_pdf_text(local_path.read_bytes())
         if not extracted_text.strip():
@@ -103,6 +107,10 @@ async def split_document_into_children(
                 supplier=document.supplier,
                 document_type=document.document_type,
                 local_path=document.local_path,
+                storage_provider=document.storage_provider,
+                storage_bucket=document.storage_bucket,
+                storage_key=document.storage_key,
+                storage_synced_at=document.storage_synced_at,
                 source_email_sender=document.source_email_sender,
                 source_email_subject=document.source_email_subject,
                 source_received_at=document.source_received_at,
@@ -137,6 +145,10 @@ async def split_document_into_children(
         child.extraction_status = extraction_fields.get("extraction_status")
         child.extracted_at = extraction_fields.get("extracted_at")
         child.local_path = document.local_path
+        child.storage_provider = document.storage_provider
+        child.storage_bucket = document.storage_bucket
+        child.storage_key = document.storage_key
+        child.storage_synced_at = document.storage_synced_at
         child.needs_review = extraction_fields.get("needs_review", False)
         child.review_reasons = extraction_fields.get("review_reasons", [])
         child.source_email_sender = document.source_email_sender

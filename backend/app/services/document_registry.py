@@ -73,6 +73,11 @@ async def upsert_document_record(
                     document.drive_web_link = duplicate.drive_web_link
                     document.drive_folder_path = duplicate.drive_folder_path
                     document.synced_at = duplicate.synced_at
+                if document.storage_key is None and duplicate.storage_key is not None:
+                    document.storage_provider = duplicate.storage_provider
+                    document.storage_bucket = duplicate.storage_bucket
+                    document.storage_key = duplicate.storage_key
+                    document.storage_synced_at = duplicate.storage_synced_at
                 if document.extracted_text is None and duplicate.extracted_text is not None:
                     document.extracted_text = duplicate.extracted_text
                     document.vat_amount = duplicate.vat_amount
@@ -138,6 +143,11 @@ async def dedupe_documents_for_user(
                 canonical.drive_web_link = duplicate.drive_web_link
                 canonical.drive_folder_path = duplicate.drive_folder_path
                 canonical.synced_at = duplicate.synced_at
+            if canonical.storage_key is None and duplicate.storage_key is not None:
+                canonical.storage_provider = duplicate.storage_provider
+                canonical.storage_bucket = duplicate.storage_bucket
+                canonical.storage_key = duplicate.storage_key
+                canonical.storage_synced_at = duplicate.storage_synced_at
             if canonical.extracted_text is None and duplicate.extracted_text is not None:
                 canonical.extracted_text = duplicate.extracted_text
                 canonical.vat_amount = duplicate.vat_amount

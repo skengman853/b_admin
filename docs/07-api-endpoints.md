@@ -427,6 +427,9 @@ These still exist in the repo:
 #### `PATCH /api/invoices/{id}`
 #### `POST /api/invoices/{id}/reject`
 #### `GET /api/dashboard/summary`
+#### `GET /api/dashboard/document-inventory`
+#### `GET /api/dashboard/storage-summary`
+#### `GET /api/dashboard/suppliers`
 #### `POST /api/webhooks/gmail`
 
 The invoice endpoints now project from `documents` rows so the invoice/dashboard layer can consume the document workflow directly.
@@ -438,6 +441,15 @@ Current behavior:
 - derived child invoices created by `POST /api/documents/{document_id}/split` are included
 - `GET /api/invoices` refreshes that projection before listing rows
 - `GET /api/dashboard/summary` refreshes that projection before calculating totals
+- `GET /api/dashboard/document-inventory` exposes the supplier document set currently in the DB for a supplier/month window
+  - accepts `month=YYYY-MM` with `window_months`
+  - or `months=YYYY-MM,YYYY-MM,...` to show an explicit multi-month set instead
+- `GET /api/dashboard/storage-summary` exposes the month/window storage mix currently in the DB
+  - returns counts for `local_only`, `r2_only`, `drive_only`, and `r2_and_drive`
+  - accepts the same `month`, `months`, `pub`, and `window_months` filtering shape as the supplier inventory endpoint
+- `GET /api/dashboard/suppliers` returns the distinct supplier list currently represented in documents
+  - supports an optional `pub` filter
+- `POST /api/documents/sync-storage` uploads existing document files into the configured S3-compatible bucket and stores `storage_provider`, `storage_bucket`, and `storage_key` on the document record
 
 This means the invoice and dashboard views now pick up split child invoices automatically.
 
@@ -511,6 +523,8 @@ By default this excludes transactions whose persistent `review_status` is alread
 
 - `linked`
 - `supporting_docs_only`
+- `hard_copy_available`
+- `handled_by_rule`
 - `no_document_expected`
 
 Useful filters:
@@ -615,13 +629,23 @@ Allowed `review_status` values:
 - `pending`
 - `linked`
 - `supporting_docs_only`
+- `hard_copy_available`
+- `handled_by_rule`
 - `awaiting_document`
 - `no_document_expected`
 
 This endpoint also accepts:
 
+- `category`
 - `review_note`
 - `expected_supplier`
+
+Canonical review categories now used by the UI/backend are:
+
+- `Invoice Match`
+- `Statement Settlement`
+- `Hard Copy Available`
+- `No Document Expected`
 
 Each update now records a review-history event.
 
@@ -636,6 +660,59 @@ curl -s -X PATCH "http://localhost:8000/api/transactions/TRANSACTION_ID/review" 
     "review_note": "supplier invoice not received yet"
   }'
 ```
+
+#### `POST /api/transactions/{transaction_id}/rule`
+
+Save a reusable transaction-handling rule from a real row.
+
+This is intended for recurring patterns such as:
+
+- wages / payroll
+- contract charges billed on a different cadence
+- owner-handled rows that should stop surfacing as missing-document work
+
+The saved rule currently matches on the cleaned transaction counterparty for the same source type and, by default, the same pub. When saved, it:
+
+- updates the current transaction
+- bulk-applies to similar existing transactions
+- auto-applies to future imports
+
+Useful fields:
+
+- `category_override`
+- `review_status`
+- `document_expectation`
+- `owner_note`
+- `expected_supplier`
+
+The standard rule categories are:
+
+- `Wages`
+- `Contract`
+- `Hard Copy Available`
+- `No Document Expected`
+
+#### `GET /api/transactions/rules`
+
+List saved transaction-handling rules for the current user.
+
+Useful filters:
+
+- `source_type=bank_statement`
+- `pub=Careys`
+
+This is intended for admin/operator UI use when the user wants to pick an existing rule for a transaction instead of creating another one.
+
+#### `POST /api/transactions/{transaction_id}/apply-rule`
+
+Apply one existing saved rule to one transaction.
+
+This is the lightweight operator action used by the review UI when:
+
+- the admin already created a rule earlier
+- the current transaction should reuse that rule immediately
+
+If the selected rule does not already match the current payee, it is now treated as a template and stamped into a payee-specific rule for that transaction.
 
 #### `POST /api/transactions/{transaction_id}/links`
 

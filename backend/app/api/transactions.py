@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import Document, Transaction, TransactionDocumentLink, TransactionReviewEvent, User
+from app.models import Document, Transaction, TransactionDocumentLink, TransactionReviewEvent, TransactionRule, User
 from app.schemas import (
     TransactionDetailResponse,
     TransactionDocumentMatchResponse,
@@ -25,6 +25,12 @@ from app.schemas import (
     TransactionLinkedDocumentResponse,
     TransactionLinkResponse,
     TransactionLinksResponse,
+    TransactionRuleCreateRequest,
+    TransactionRuleApplyRequest,
+    TransactionRuleApplyResponse,
+    TransactionRuleListResponse,
+    TransactionRuleCreateResponse,
+    TransactionRuleResponse,
     TransactionReviewEventResponse,
     TransactionReviewUpdateRequest,
     TransactionLinkUpdateRequest,
@@ -47,6 +53,22 @@ from app.services.transaction_reconciliation import (
     sync_exact_transaction_document_links,
 )
 from app.services.document_ledger import build_document_ledgers
+from app.services.transaction_rules import (
+    RULE_MATCH_FIELD_COUNTERPARTY,
+    RULE_REVIEW_STATUS_HANDLED,
+    STANDARD_REVIEW_STATUS_CATEGORIES,
+    VALID_DOCUMENT_EXPECTATIONS,
+    VALID_RULE_REVIEW_STATUSES,
+    apply_transaction_rule,
+    copy_transaction_rule_fields,
+    default_rule_preset,
+    compact_rule_match_value,
+    find_matching_transaction_rule,
+    load_transaction_rules,
+    matching_transaction_rules,
+    normalize_transaction_category,
+    standard_category_for_review_status,
+)
 from app.services.vatbook_import import import_transactions_from_vatbook
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
@@ -55,14 +77,37 @@ VALID_TRANSACTION_REVIEW_STATUSES = {
     "pending",
     "linked",
     "supporting_docs_only",
+    "hard_copy_available",
+    "handled_by_rule",
     "awaiting_document",
     "no_document_expected",
 }
 RESOLVED_TRANSACTION_REVIEW_STATUSES = {
     "linked",
     "supporting_docs_only",
+    "hard_copy_available",
+    "handled_by_rule",
     "no_document_expected",
 }
+
+HARD_COPY_AVAILABLE_REASON = "A hard-copy supplier document is available for this row, even though no imported PDF is linked yet"
+
+
+def _effective_review_outcome(
+    *,
+    review_status: str,
+    category: str | None,
+    review_note: str | None,
+    recommended_review_status: str | None,
+    resolution_reason: str | None,
+) -> tuple[str | None, str | None]:
+    if review_status == "hard_copy_available":
+        return "hard_copy_available", HARD_COPY_AVAILABLE_REASON
+    if review_status == RULE_REVIEW_STATUS_HANDLED:
+        label = category or "saved rule"
+        note_suffix = f" {review_note}" if review_note else ""
+        return RULE_REVIEW_STATUS_HANDLED, f"A saved transaction rule classifies this row as {label}.{note_suffix}".strip()
+    return recommended_review_status, resolution_reason
 
 
 def _parse_month(month: str) -> tuple[date, date]:
@@ -114,6 +159,44 @@ def _build_transaction_review_event_response(
     )
 
 
+def _build_transaction_rule_response(rule: TransactionRule) -> TransactionRuleResponse:
+    return TransactionRuleResponse(
+        id=rule.id,
+        source_type=rule.source_type,
+        pub=rule.pub,
+        match_field=rule.match_field,
+        match_value=rule.match_value,
+        display_label=rule.display_label,
+        category_override=rule.category_override,
+        review_status=rule.review_status,
+        expected_supplier=rule.expected_supplier,
+        document_expectation=rule.document_expectation,
+        owner_note=rule.owner_note,
+        is_active=rule.is_active,
+        created_at=rule.created_at,
+        updated_at=rule.updated_at,
+    )
+
+
+def _build_transaction_rule_event_payload(rule: TransactionRule) -> dict:
+    return {
+        "rule_id": str(rule.id),
+        "category_override": rule.category_override,
+        "document_expectation": rule.document_expectation,
+        "expected_supplier": rule.expected_supplier,
+        "owner_note": rule.owner_note,
+        "match_value": rule.match_value,
+    }
+
+
+def _ignored_document_ids(persisted_links: list[TransactionDocumentLink]) -> set[uuid.UUID]:
+    return {
+        link.document_id
+        for link in persisted_links
+        if link.role == "ignore" and link.status == "rejected"
+    }
+
+
 def _parse_review_statuses(review_status: str | None) -> list[str] | None:
     if review_status is None:
         return None
@@ -144,6 +227,26 @@ def _parse_resolution_buckets(resolution_bucket: str | None) -> list[str] | None
     return values
 
 
+def _apply_standard_review_category(
+    *,
+    transaction: Transaction,
+    review_status: str,
+    explicit_category: str | None = None,
+) -> None:
+    normalized_category = normalize_transaction_category(explicit_category)
+    if normalized_category is not None:
+        transaction.category = normalized_category
+        return
+
+    standard_category = standard_category_for_review_status(review_status)
+    if standard_category is not None:
+        transaction.category = standard_category
+        return
+
+    if review_status in {"pending", "awaiting_document"} and transaction.category in STANDARD_REVIEW_STATUS_CATEGORIES.values():
+        transaction.category = None
+
+
 async def _synchronize_transaction_review_state_for_link(
     *,
     db: AsyncSession,
@@ -156,6 +259,10 @@ async def _synchronize_transaction_review_state_for_link(
     previous_review_status = transaction.review_status
     if document.document_type == "invoice" and link_status == "confirmed":
         transaction.review_status = "linked"
+        _apply_standard_review_category(
+            transaction=transaction,
+            review_status=transaction.review_status,
+        )
         transaction.reviewed_at = datetime.utcnow()
         if transaction.review_note is None:
             transaction.review_note = None
@@ -193,6 +300,10 @@ async def _synchronize_transaction_review_state_for_link(
     )
     if confirmed_invoice_link_result.first() is None:
         transaction.review_status = "pending"
+        _apply_standard_review_category(
+            transaction=transaction,
+            review_status=transaction.review_status,
+        )
         transaction.reviewed_at = datetime.utcnow()
         if previous_review_status != transaction.review_status:
             _append_transaction_review_event(
@@ -248,6 +359,12 @@ def _build_match_response(match) -> TransactionDocumentMatchResponse:
         document_date=match.document_date,
         amount=match.amount,
         vat_amount=match.vat_amount,
+        storage_state=match.storage_state,
+        storage_provider=match.storage_provider,
+        storage_bucket=match.storage_bucket,
+        storage_key=match.storage_key,
+        drive_file_id=match.drive_file_id,
+        drive_web_link=match.drive_web_link,
         score=match.score,
         reason=match.reason,
     )
@@ -292,6 +409,12 @@ def _build_flow_document_response(document) -> TransactionFlowDocumentResponse:
         score=document.score,
         role=document.role,
         reason=document.reason,
+        storage_state=document.storage_state,
+        storage_provider=document.storage_provider,
+        storage_bucket=document.storage_bucket,
+        storage_key=document.storage_key,
+        drive_file_id=document.drive_file_id,
+        drive_web_link=document.drive_web_link,
         statement_kind=document.statement_kind,
         is_financial=document.is_financial,
         invoice_reference_count=document.invoice_reference_count,
@@ -384,6 +507,20 @@ def _build_transaction_link_response(link: TransactionDocumentLink) -> Transacti
             document_date=link.document.document_date,
             amount=link.document.amount,
             vat_amount=link.document.vat_amount,
+            storage_state=(
+                "r2_and_drive"
+                if link.document.storage_key and link.document.drive_file_id
+                else "r2_only"
+                if link.document.storage_key
+                else "drive_only"
+                if link.document.drive_file_id
+                else "local_only"
+            ),
+            storage_provider=link.document.storage_provider,
+            storage_bucket=link.document.storage_bucket,
+            storage_key=link.document.storage_key,
+            drive_file_id=link.document.drive_file_id,
+            drive_web_link=link.document.drive_web_link,
             local_path=link.document.local_path,
             needs_review=link.document.needs_review,
         ),
@@ -414,6 +551,18 @@ async def _build_transaction_detail_response(
     transaction: Transaction,
     persist_exact_matches: bool,
 ) -> TransactionDetailResponse:
+    link_result = await db.execute(
+        select(TransactionDocumentLink)
+        .options(selectinload(TransactionDocumentLink.document))
+        .where(
+            TransactionDocumentLink.transaction_id == transaction.id,
+            TransactionDocumentLink.user_id == user.id,
+        )
+        .order_by(TransactionDocumentLink.status.asc(), TransactionDocumentLink.created_at.asc())
+    )
+    persisted_links = list(link_result.scalars().all())
+    ignored_document_ids = _ignored_document_ids(persisted_links)
+
     candidate_documents = await load_candidate_documents_for_transaction(
         db=db,
         user_id=user.id,
@@ -424,6 +573,13 @@ async def _build_transaction_detail_response(
         user_id=user.id,
         transaction=transaction,
     )
+    if ignored_document_ids:
+        candidate_documents = [
+            document for document in candidate_documents if document.id not in ignored_document_ids
+        ]
+        supporting_documents = [
+            document for document in supporting_documents if document.id not in ignored_document_ids
+        ]
     candidate_ledgers = build_document_ledgers(candidate_documents)
     supporting_ledgers = build_document_ledgers(supporting_documents)
     analysis = build_transaction_reconciliation_item(
@@ -441,17 +597,16 @@ async def _build_transaction_detail_response(
             exact_matches_by_transaction={transaction.id: analysis.exact_matches},
         )
         await db.commit()
-
-    link_result = await db.execute(
-        select(TransactionDocumentLink)
-        .options(selectinload(TransactionDocumentLink.document))
-        .where(
-            TransactionDocumentLink.transaction_id == transaction.id,
-            TransactionDocumentLink.user_id == user.id,
+        link_result = await db.execute(
+            select(TransactionDocumentLink)
+            .options(selectinload(TransactionDocumentLink.document))
+            .where(
+                TransactionDocumentLink.transaction_id == transaction.id,
+                TransactionDocumentLink.user_id == user.id,
+            )
+            .order_by(TransactionDocumentLink.status.asc(), TransactionDocumentLink.created_at.asc())
         )
-        .order_by(TransactionDocumentLink.status.asc(), TransactionDocumentLink.created_at.asc())
-    )
-    persisted_links = list(link_result.scalars().all())
+        persisted_links = list(link_result.scalars().all())
     flow = build_transaction_reconciliation_flow(
         transaction=transaction,
         analysis=analysis,
@@ -467,14 +622,21 @@ async def _build_transaction_detail_response(
             TransactionReviewEvent.user_id == user.id,
         )
     )
+    effective_review_status, effective_resolution_reason = _effective_review_outcome(
+        review_status=transaction.review_status,
+        category=transaction.category,
+        review_note=transaction.review_note,
+        recommended_review_status=analysis.recommended_review_status,
+        resolution_reason=analysis.resolution_reason,
+    )
 
     return TransactionDetailResponse(
         transaction=_build_transaction_response(transaction),
         status=analysis.status,
         analysis_note=analysis.analysis_note,
         resolution_bucket=analysis.resolution_bucket,
-        recommended_review_status=analysis.recommended_review_status,
-        resolution_reason=analysis.resolution_reason,
+        recommended_review_status=effective_review_status,
+        resolution_reason=effective_resolution_reason,
         reconciliation_flow=_build_flow_response(flow),
         history_count=history_count or 0,
         persisted_links=[_build_transaction_link_response(link) for link in persisted_links],
@@ -685,6 +847,13 @@ async def get_transaction_review_queue(
     for item in queue.transactions:
         transaction = transactions_by_id[item.transaction_id]
         persisted_links = links_by_transaction.get(item.transaction_id, [])
+        effective_review_status, effective_resolution_reason = _effective_review_outcome(
+            review_status=transaction.review_status,
+            category=transaction.category,
+            review_note=transaction.review_note,
+            recommended_review_status=item.recommended_review_status,
+            resolution_reason=item.resolution_reason,
+        )
         items.append(
             TransactionReviewQueueItemResponse(
                 transaction=_build_transaction_response(transaction),
@@ -695,8 +864,8 @@ async def get_transaction_review_queue(
                 ),
                 analysis_note=item.analysis_note,
                 resolution_bucket=item.resolution_bucket,
-                recommended_review_status=item.recommended_review_status,
-                resolution_reason=item.resolution_reason,
+                recommended_review_status=effective_review_status,
+                resolution_reason=effective_resolution_reason,
                 persisted_links=[_build_transaction_link_response(link) for link in persisted_links],
                 exact_matches=[_build_match_response(match) for match in item.exact_matches],
                 suggested_matches=[_build_match_response(match) for match in item.suggested_matches],
@@ -718,6 +887,49 @@ async def get_transaction_review_queue(
         unmatched_transactions=queue.unmatched_transactions,
         resolution_bucket_counts=queue.resolution_bucket_counts,
         transactions=items,
+    )
+
+
+@router.get("/rules", response_model=TransactionRuleListResponse)
+async def list_transaction_rules(
+    source_type: str | None = None,
+    pub: str | None = None,
+    transaction_id: uuid.UUID | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    normalized_source_type = _parse_source_type(source_type)
+    rules = await load_transaction_rules(
+        db=db,
+        user_id=user.id,
+        source_type=normalized_source_type,
+    )
+    if pub:
+        rules = [rule for rule in rules if rule.pub is None or rule.pub == pub]
+    if transaction_id is not None:
+        transaction_result = await db.execute(
+            select(Transaction).where(Transaction.id == transaction_id, Transaction.user_id == user.id)
+        )
+        transaction = transaction_result.scalar_one_or_none()
+        if transaction is None:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        matching_rule_ids = {
+            rule.id
+            for rule in matching_transaction_rules(
+                transaction=transaction,
+                rules=rules,
+            )
+        }
+        rules = sorted(
+            rules,
+            key=lambda rule: (
+                0 if rule.id in matching_rule_ids else 1,
+                0 if rule.pub == transaction.pub and transaction.pub else 1,
+                0 if rule.display_label else 1,
+            ),
+        )
+    return TransactionRuleListResponse(
+        rules=[_build_transaction_rule_response(rule) for rule in rules]
     )
 
 
@@ -814,7 +1026,13 @@ async def update_transaction_review(
     previous_review_status = transaction.review_status
     previous_review_note = transaction.review_note
     previous_expected_supplier = transaction.expected_supplier
+    previous_category = transaction.category
     transaction.review_status = body.review_status
+    _apply_standard_review_category(
+        transaction=transaction,
+        review_status=body.review_status,
+        explicit_category=body.category,
+    )
     transaction.review_note = body.review_note
     transaction.expected_supplier = (body.expected_supplier or "").strip() or None
     transaction.reviewed_at = datetime.utcnow()
@@ -826,6 +1044,8 @@ async def update_transaction_review(
         previous_review_status=previous_review_status,
         current_review_status=transaction.review_status,
         payload={
+            "previous_category": previous_category,
+            "current_category": transaction.category,
             "previous_review_note": previous_review_note,
             "current_review_note": transaction.review_note,
             "previous_expected_supplier": previous_expected_supplier,
@@ -836,6 +1056,254 @@ async def update_transaction_review(
     await db.commit()
     await db.refresh(transaction)
     return _build_transaction_response(transaction)
+
+
+@router.post("/{transaction_id}/apply-rule", response_model=TransactionRuleApplyResponse)
+async def apply_existing_transaction_rule(
+    transaction_id: uuid.UUID,
+    body: TransactionRuleApplyRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    transaction_result = await db.execute(
+        select(Transaction).where(Transaction.id == transaction_id, Transaction.user_id == user.id)
+    )
+    transaction = transaction_result.scalar_one_or_none()
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    rule_result = await db.execute(
+        select(TransactionRule).where(
+            TransactionRule.id == body.rule_id,
+            TransactionRule.user_id == user.id,
+            TransactionRule.is_active.is_(True),
+        )
+    )
+    rule = rule_result.scalar_one_or_none()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Transaction rule not found")
+
+    if rule.source_type != transaction.source_type:
+        raise HTTPException(status_code=422, detail="Transaction rule source_type does not match this transaction")
+    if rule.pub is not None and rule.pub != transaction.pub:
+        raise HTTPException(status_code=422, detail="Transaction rule pub does not match this transaction")
+
+    matching_rule = find_matching_transaction_rule(transaction=transaction, rules=[rule])
+    applied_rule = matching_rule
+    template_rule_id: uuid.UUID | None = None
+    if applied_rule is None:
+        match_value = compact_rule_match_value(transaction.source_type, transaction.description1)
+        if not match_value:
+            raise HTTPException(status_code=422, detail="This transaction does not have a reusable bank payee pattern")
+
+        target_pub = rule.pub if rule.pub is None else transaction.pub
+        applied_rule_result = await db.execute(
+            select(TransactionRule).where(
+                TransactionRule.user_id == user.id,
+                TransactionRule.source_type == transaction.source_type,
+                TransactionRule.pub == target_pub,
+                TransactionRule.match_field == RULE_MATCH_FIELD_COUNTERPARTY,
+                TransactionRule.match_value == match_value,
+            )
+        )
+        applied_rule = applied_rule_result.scalar_one_or_none()
+        if applied_rule is None:
+            applied_rule = TransactionRule(
+                user_id=user.id,
+                source_type=transaction.source_type,
+                pub=target_pub,
+                match_field=RULE_MATCH_FIELD_COUNTERPARTY,
+                match_value=match_value,
+            )
+            db.add(applied_rule)
+        copy_transaction_rule_fields(
+            source_rule=rule,
+            target_rule=applied_rule,
+            display_label=transaction.description1,
+        )
+        template_rule_id = rule.id
+
+    previous_review_status = transaction.review_status
+    applied = apply_transaction_rule(
+        transaction=transaction,
+        rule=applied_rule,
+        force=True,
+    )
+    transaction.reviewed_at = datetime.utcnow()
+    payload = _build_transaction_rule_event_payload(applied_rule)
+    if template_rule_id is not None:
+        payload["template_rule_id"] = str(template_rule_id)
+    _append_transaction_review_event(
+        db=db,
+        transaction=transaction,
+        user=user,
+        event_type="rule_applied",
+        previous_review_status=previous_review_status,
+        current_review_status=transaction.review_status,
+        payload=payload,
+    )
+
+    rule_scope_query = select(Transaction).where(
+        Transaction.user_id == user.id,
+        Transaction.source_type == transaction.source_type,
+    )
+    if applied_rule.pub is not None:
+        rule_scope_query = rule_scope_query.where(Transaction.pub == applied_rule.pub)
+    rule_scope_result = await db.execute(rule_scope_query)
+    scoped_transactions = list(rule_scope_result.scalars().all())
+    for scoped_transaction in scoped_transactions:
+        if scoped_transaction.id == transaction.id:
+            continue
+        if compact_rule_match_value(scoped_transaction.source_type, scoped_transaction.description1) != applied_rule.match_value:
+            continue
+        scoped_previous_review_status = scoped_transaction.review_status
+        scoped_applied = apply_transaction_rule(
+            transaction=scoped_transaction,
+            rule=applied_rule,
+            force=False,
+        )
+        if scoped_applied is None:
+            continue
+        scoped_transaction.reviewed_at = datetime.utcnow()
+        _append_transaction_review_event(
+            db=db,
+            transaction=scoped_transaction,
+            user=user,
+            event_type="rule_applied",
+            previous_review_status=scoped_previous_review_status,
+            current_review_status=scoped_transaction.review_status,
+            payload=payload,
+        )
+
+    await db.commit()
+    await db.refresh(transaction)
+    await db.refresh(applied_rule)
+    return TransactionRuleApplyResponse(
+        transaction=_build_transaction_response(transaction),
+        rule=_build_transaction_rule_response(applied_rule),
+    )
+
+
+@router.post("/{transaction_id}/rule", response_model=TransactionRuleCreateResponse)
+async def create_transaction_rule(
+    transaction_id: uuid.UUID,
+    body: TransactionRuleCreateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    transaction_result = await db.execute(
+        select(Transaction).where(Transaction.id == transaction_id, Transaction.user_id == user.id)
+    )
+    transaction = transaction_result.scalar_one_or_none()
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    if body.review_status not in VALID_RULE_REVIEW_STATUSES:
+        allowed = ", ".join(sorted(VALID_RULE_REVIEW_STATUSES))
+        raise HTTPException(status_code=422, detail=f"review_status must be one of: {allowed}")
+    if body.document_expectation not in VALID_DOCUMENT_EXPECTATIONS:
+        allowed = ", ".join(sorted(VALID_DOCUMENT_EXPECTATIONS))
+        raise HTTPException(status_code=422, detail=f"document_expectation must be one of: {allowed}")
+
+    match_value = compact_rule_match_value(transaction.source_type, transaction.description1)
+    if not match_value:
+        raise HTTPException(status_code=422, detail="This transaction does not have a reusable bank payee pattern")
+
+    rule_query = select(TransactionRule).where(
+        TransactionRule.user_id == user.id,
+        TransactionRule.source_type == transaction.source_type,
+        TransactionRule.pub == (transaction.pub if body.apply_same_pub_only else None),
+        TransactionRule.match_field == RULE_MATCH_FIELD_COUNTERPARTY,
+        TransactionRule.match_value == match_value,
+    )
+    rule_result = await db.execute(rule_query)
+    rule = rule_result.scalar_one_or_none()
+
+    if rule is None:
+        rule = TransactionRule(
+            user_id=user.id,
+            source_type=transaction.source_type,
+            pub=transaction.pub if body.apply_same_pub_only else None,
+            match_field=RULE_MATCH_FIELD_COUNTERPARTY,
+            match_value=match_value,
+        )
+        db.add(rule)
+
+    category_override = normalize_transaction_category(body.category_override)
+    category_preset = default_rule_preset(category_override)
+    expected_supplier = (body.expected_supplier or "").strip() or None
+    owner_note = (body.owner_note or "").strip() or None
+    effective_review_status = body.review_status
+    effective_document_expectation = body.document_expectation
+    if category_preset:
+        effective_review_status = category_preset["review_status"]
+        effective_document_expectation = category_preset["document_expectation"]
+        if owner_note is None:
+            owner_note = category_preset["default_note"]
+
+    template_rule = TransactionRule(
+        source_type=transaction.source_type,
+        pub=rule.pub,
+        match_field=RULE_MATCH_FIELD_COUNTERPARTY,
+        match_value=rule.match_value,
+        display_label=transaction.description1,
+        category_override=category_override,
+        review_status=effective_review_status,
+        expected_supplier=expected_supplier,
+        document_expectation=effective_document_expectation,
+        owner_note=owner_note,
+        is_active=True,
+    )
+    copy_transaction_rule_fields(
+        source_rule=template_rule,
+        target_rule=rule,
+        display_label=transaction.description1,
+    )
+
+    updated_transactions = 0
+    if body.apply_to_existing:
+        rule_scope_query = select(Transaction).where(
+            Transaction.user_id == user.id,
+            Transaction.source_type == transaction.source_type,
+        )
+        if rule.pub is not None:
+            rule_scope_query = rule_scope_query.where(Transaction.pub == rule.pub)
+        rule_scope_result = await db.execute(rule_scope_query)
+        scoped_transactions = list(rule_scope_result.scalars().all())
+    else:
+        scoped_transactions = [transaction]
+
+    for scoped_transaction in scoped_transactions:
+        if compact_rule_match_value(scoped_transaction.source_type, scoped_transaction.description1) != match_value:
+            continue
+        previous_review_status = scoped_transaction.review_status
+        applied = apply_transaction_rule(
+            transaction=scoped_transaction,
+            rule=rule,
+            force=scoped_transaction.id == transaction.id,
+        )
+        if applied is None:
+            continue
+        scoped_transaction.reviewed_at = datetime.utcnow()
+        updated_transactions += 1
+        _append_transaction_review_event(
+            db=db,
+            transaction=scoped_transaction,
+            user=user,
+            event_type="rule_applied",
+            previous_review_status=previous_review_status,
+            current_review_status=scoped_transaction.review_status,
+            payload=_build_transaction_rule_event_payload(rule),
+        )
+
+    await db.commit()
+    await db.refresh(rule)
+    await db.refresh(transaction)
+    return TransactionRuleCreateResponse(
+        transaction=_build_transaction_response(transaction),
+        rule=_build_transaction_rule_response(rule),
+        updated_transactions=updated_transactions,
+    )
 
 
 @router.post("/{transaction_id}/links", response_model=TransactionLinkResponse)

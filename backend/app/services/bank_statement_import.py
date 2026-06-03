@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from sqlalchemy import delete, select
@@ -11,6 +11,11 @@ from app.models import Transaction
 from app.services.bank_statement_parser import (
     ParsedBankStatement,
     parse_aib_bank_statement_pdf,
+)
+from app.services.transaction_rules import (
+    apply_transaction_rule,
+    find_matching_transaction_rule,
+    load_transaction_rules,
 )
 from app.services.vatbook_import import backend_root
 
@@ -101,6 +106,7 @@ async def import_transactions_from_bank_statement(
     skipped_transactions = 0
     transaction_dates = []
     pubs: set[str] = set()
+    rules = await load_transaction_rules(db=db, user_id=user_id, source_type="bank_statement")
 
     for parsed_transaction in parsed_statement.transactions:
         if parsed_transaction.row_number in existing_row_numbers:
@@ -136,6 +142,9 @@ async def import_transactions_from_bank_statement(
             has_linked_annotation=False,
             raw_row_json=_serialize_raw_transaction(parsed_statement, parsed_transaction),
         )
+        matched_rule = find_matching_transaction_rule(transaction=transaction, rules=rules)
+        if matched_rule is not None and apply_transaction_rule(transaction=transaction, rule=matched_rule) is not None:
+            transaction.reviewed_at = datetime.utcnow()
         db.add(transaction)
         imported_transactions += 1
 

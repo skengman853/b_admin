@@ -200,6 +200,27 @@ else:
                         review_note="bank fee / no supplier doc",
                         raw_row_json={},
                     ),
+                    Transaction(
+                        user_id=self.user.id,
+                        source_file="vatbook/sample.xlsx",
+                        source_sheet="VAT BOOK MAR - APR",
+                        row_number=15,
+                        posted_account="ACC-1",
+                        pub="Careys",
+                        transaction_date=date(2026, 4, 15),
+                        description1="Athlone Furnit",
+                        description2="hard copy",
+                        debit_amount=Decimal("2000.00"),
+                        transaction_type="Debit",
+                        category="Furniture",
+                        annotation_types=["invoice"],
+                        annotation_notes=["Invoice - Hard copy available"],
+                        has_linked_annotation=False,
+                        review_status="hard_copy_available",
+                        review_note="hard copy filed in office",
+                        expected_supplier="Athlone Furnit",
+                        raw_row_json={},
+                    ),
                 ]
                 session.add_all(transactions)
                 await session.commit()
@@ -246,6 +267,19 @@ else:
                     db=session,
                 )
 
+                hard_copy_queue = await get_transaction_review_queue(
+                    month="2026-04",
+                    pub=None,
+                    status=None,
+                    review_status="hard_copy_available",
+                    annotated_only=True,
+                    persist_exact_matches=False,
+                    page=1,
+                    limit=20,
+                    user=self.user,
+                    db=session,
+                )
+
             self.assertEqual(queue.total, 3)
             self.assertEqual(queue.matched_transactions, 1)
             self.assertEqual(queue.partial_transactions, 1)
@@ -283,6 +317,13 @@ else:
                 [12],
             )
             self.assertEqual(bucket_filtered_queue.transactions[0].resolution_bucket, "confirm_match")
+            self.assertEqual(hard_copy_queue.total, 1)
+            self.assertEqual(hard_copy_queue.transactions[0].transaction.row_number, 15)
+            self.assertFalse(hard_copy_queue.transactions[0].needs_action)
+            self.assertEqual(
+                hard_copy_queue.transactions[0].recommended_review_status,
+                "hard_copy_available",
+            )
 
 
 if __name__ == "__main__":

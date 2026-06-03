@@ -1729,6 +1729,230 @@ To Pay Directly into Bank Name: Connacht Bottlers. Account: 43232127 Bank: BANK 
             statement_stage = next(stage for stage in flow.stages if stage.key == "statement")
             self.assertEqual(statement_stage.documents, [])
 
+        async def test_confirm_match_flow_keeps_closest_statement_as_context_when_unparsed(self) -> None:
+            async with self.session_factory() as session:
+                transaction = Transaction(
+                    user_id=self.user.id,
+                    source_type="bank_statement",
+                    source_file="bankstatements/sample.pdf",
+                    source_sheet="53747-031",
+                    row_number=403,
+                    posted_account="93-22-64 - 53747-031",
+                    pub="Careys",
+                    transaction_date=date(2026, 4, 1),
+                    description1="D/D M AND J GLEESO",
+                    description2="IE26040145489598",
+                    debit_amount=Decimal("876.10"),
+                    transaction_type="Debit",
+                    category=None,
+                    annotation_types=[],
+                    annotation_notes=[],
+                    has_linked_annotation=False,
+                    raw_row_json={},
+                    expected_supplier="Bulmers ireland",
+                )
+                session.add_all(
+                    [
+                        Document(
+                            user_id=self.user.id,
+                            gmail_message_id="doc-bulmers-context-statement",
+                            attachment_index=0,
+                            attachment_name="bulmers_stmt_017.pdf",
+                            supplier="Bulmers",
+                            document_type="statement",
+                            document_date=date(2026, 3, 31),
+                            reference="Stmt 017",
+                            confidence_score=0.99,
+                            extraction_status="extracted",
+                            local_path="Documents/Bulmers/careys_stmt_017.pdf",
+                            needs_review=False,
+                            review_reasons=[],
+                            source_email_subject="Bulmers Ireland/Statements/Careys Bar/Bulmers Ireland - Stmt 017 - Date 31-03-2026 - Linked.pdf",
+                            source_email_sender="local-archive",
+                            extracted_text="Statement of account\nCareys Bar\n31/03/2026\n",
+                        ),
+                        Document(
+                            user_id=self.user.id,
+                            gmail_message_id="doc-bulmers-context-invoice",
+                            attachment_index=0,
+                            attachment_name="bulmers_4100706.pdf",
+                            supplier="Bulmers",
+                            document_type="invoice",
+                            document_date=date(2026, 3, 25),
+                            reference="4100706",
+                            amount=Decimal("876.10"),
+                            confidence_score=0.99,
+                            extraction_status="extracted",
+                            local_path="Documents/Bulmers/Careys/bulmers_4100706.pdf",
+                            needs_review=False,
+                            review_reasons=[],
+                            source_email_subject="Bulmers/Careys/bulmers_4100706.pdf",
+                            source_email_sender="local-archive",
+                            extracted_text="Invoice Number 4100706 Total € 876.10",
+                        ),
+                        transaction,
+                    ]
+                )
+                await session.commit()
+
+                candidate_documents = await load_candidate_documents_for_transaction(
+                    db=session,
+                    user_id=self.user.id,
+                    transaction=transaction,
+                )
+                supporting_documents = await load_supporting_documents_for_transaction(
+                    db=session,
+                    user_id=self.user.id,
+                    transaction=transaction,
+                )
+                candidate_ledgers = build_document_ledgers(candidate_documents)
+                supporting_ledgers = build_document_ledgers(supporting_documents)
+                analysis = build_transaction_reconciliation_item(
+                    transaction=transaction,
+                    documents=candidate_documents,
+                    supporting_documents=supporting_documents,
+                    document_ledgers=candidate_ledgers,
+                    supporting_document_ledgers=supporting_ledgers,
+                )
+                flow = build_transaction_reconciliation_flow(
+                    transaction=transaction,
+                    analysis=analysis,
+                    invoice_documents=candidate_documents,
+                    supporting_documents=supporting_documents,
+                    invoice_ledgers=candidate_ledgers,
+                    supporting_ledgers=supporting_ledgers,
+                    persisted_links=[],
+                )
+
+            self.assertEqual(analysis.resolution_bucket, "confirm_match")
+            self.assertEqual([match.reference for match in analysis.suggested_matches], ["4100706"])
+            statement_stage = next(stage for stage in flow.stages if stage.key == "statement")
+            self.assertEqual(len(statement_stage.documents), 1)
+            self.assertEqual(statement_stage.documents[0].reference, "Stmt 017")
+
+        async def test_flow_components_include_persisted_invoice_link_when_statement_ref_has_leading_zero(self) -> None:
+            async with self.session_factory() as session:
+                transaction = Transaction(
+                    user_id=self.user.id,
+                    source_type="bank_statement",
+                    source_file="bankstatements/sample.pdf",
+                    source_sheet="53747-031",
+                    row_number=404,
+                    posted_account="93-22-64 - 53747-031",
+                    pub="Careys",
+                    transaction_date=date(2026, 4, 2),
+                    description1="D/D HEINEKEN IRELA",
+                    description2="IE26040200000000",
+                    debit_amount=Decimal("4196.91"),
+                    transaction_type="Debit",
+                    category=None,
+                    annotation_types=[],
+                    annotation_notes=[],
+                    has_linked_annotation=False,
+                    raw_row_json={},
+                )
+                statement = Document(
+                    user_id=self.user.id,
+                    gmail_message_id="doc-heineken-april-statement-leading-zero",
+                    attachment_index=0,
+                    attachment_name="heineken_april_statement.pdf",
+                    supplier="Heineken",
+                    document_type="statement",
+                    document_date=date(2026, 5, 5),
+                    reference="Summary",
+                    confidence_score=0.99,
+                    extraction_status="extracted",
+                    local_path="Documents/Heineken/april_statement.pdf",
+                    needs_review=False,
+                    review_reasons=[],
+                    source_email_subject="Heineken Statement April",
+                    source_email_sender="Heineken <accounts@heineken.ie>",
+                    extracted_text=(
+                        "STATEMENT OF ACCOUNT\n\n"
+                        "Careys Bar Limited\n"
+                        "Date: 05.05.2026\n"
+                        "Please find below your account statement with all items between 01.04.2026 To 30.04.2026:\n"
+                        "Reference\nNumber\nDocument\nNumber\nDocument\nType\nDocument\nDate\nDue\nDate\nOriginal\nAmount\nResidual\nB/F\nAdjusted\nAmount\nBalance\n"
+                        "1800067344\n\n"
+                        "0194141091 Invoice\n\n"
+                        "01.04.2026\n\n"
+                        "01.04.2026\n\n"
+                        "4,196.91\n\n"
+                        "0.00\n\n"
+                        "-4,196.91\n\n"
+                        "0.00\n\n"
+                        "2000030001\n\n"
+                        "Payment\n\n"
+                        "02.04.2026\n\n"
+                        "02.04.2026\n\n"
+                        "-4,196.91\n\n"
+                        "0.00\n\n"
+                        "4,196.91\n\n"
+                        "0.00\n\n"
+                        "Closing Balance as on 30.04.2026\n\n"
+                        "0.00\n"
+                    ),
+                )
+                invoice = Document(
+                    user_id=self.user.id,
+                    gmail_message_id="doc-heineken-april-invoice-persisted",
+                    attachment_index=0,
+                    attachment_name="heineken_194141091.pdf",
+                    supplier="Heineken",
+                    document_type="invoice",
+                    document_date=date(2026, 4, 1),
+                    reference="194141091",
+                    amount=Decimal("4196.91"),
+                    vat_amount=Decimal("0.00"),
+                    confidence_score=0.99,
+                    extraction_status="extracted",
+                    local_path="Documents/Heineken/Careys/heineken_194141091.pdf",
+                    needs_review=False,
+                    review_reasons=[],
+                    source_email_subject="Heineken/Careys/heineken_194141091.pdf",
+                    source_email_sender="local-archive",
+                    extracted_text="Invoice Number 194141091 Total € 4196.91",
+                )
+                session.add_all([statement, invoice, transaction])
+                await session.commit()
+
+                supporting_ledgers = build_document_ledgers([statement])
+                analysis = build_transaction_reconciliation_item(
+                    transaction=transaction,
+                    documents=[],
+                    supporting_documents=[statement],
+                    document_ledgers=[],
+                    supporting_document_ledgers=supporting_ledgers,
+                )
+                persisted_link = TransactionDocumentLink(
+                    user_id=self.user.id,
+                    transaction_id=transaction.id,
+                    document_id=invoice.id,
+                    role="invoice",
+                    status="confirmed",
+                    score=1.0,
+                    match_reason="confirmed invoice link",
+                    amount_applied=Decimal("4196.91"),
+                    document=invoice,
+                )
+                flow = build_transaction_reconciliation_flow(
+                    transaction=transaction,
+                    analysis=analysis,
+                    invoice_documents=[],
+                    supporting_documents=[statement],
+                    invoice_ledgers=[],
+                    supporting_ledgers=supporting_ledgers,
+                    persisted_links=[persisted_link],
+                )
+
+            component_stage = next(stage for stage in flow.stages if stage.key == "components")
+            self.assertEqual(component_stage.status, "ready")
+            self.assertEqual([document.reference for document in component_stage.documents], ["194141091"])
+            self.assertEqual(component_stage.summary, "The imported invoices and credit notes line up with the statement settlement.")
+            self.assertFalse(
+                any(item.startswith("Missing imported invoice refs:") for item in component_stage.items)
+            )
+
         async def test_connacht_fuzzy_statement_amount_context_can_drive_support_analysis(self) -> None:
             async with self.session_factory() as session:
                 session.add_all(

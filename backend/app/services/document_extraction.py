@@ -13,6 +13,7 @@ from app.services.ai_document_extraction import (
 )
 from app.services.document_extraction_rules import build_extraction_fields
 from app.services.invoice_projection import sync_invoices_from_documents
+from app.services.object_storage import ensure_local_document_file
 from app.services.pdf_text import extract_pdf_text
 
 
@@ -76,15 +77,16 @@ async def extract_documents(
             )
             continue
 
-        local_path = Path(document.local_path)
-        if not local_path.exists():
+        try:
+            local_path = ensure_local_document_file(document)
+        except FileNotFoundError:
             document.extraction_status = "failed"
             skipped += 1
             response_results.append(
                 {
                     "document_id": document.id,
                     "status": "skipped",
-                    "reason": "local_file_missing",
+                    "reason": "document_file_missing",
                     "document_type": document.document_type,
                     "supplier": document.supplier,
                     "amount": str(document.amount) if document.amount is not None else None,

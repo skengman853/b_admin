@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Transaction
+from app.services.transaction_rules import (
+    apply_transaction_rule,
+    find_matching_transaction_rule,
+    load_transaction_rules,
+)
 from app.services.vatbook_parser import ParsedVatbookWorkbook, parse_vatbook_workbook
 
 
@@ -100,6 +105,7 @@ async def import_transactions_from_vatbook(
     annotation_count = 0
     transaction_dates = []
     pubs: set[str] = set()
+    rules = await load_transaction_rules(db=db, user_id=user_id, source_type="vatbook")
 
     for parsed_transaction in workbook.transactions:
         if parsed_transaction.row_number in existing_row_numbers:
@@ -152,6 +158,9 @@ async def import_transactions_from_vatbook(
                 ],
             },
         )
+        matched_rule = find_matching_transaction_rule(transaction=transaction, rules=rules)
+        if matched_rule is not None and apply_transaction_rule(transaction=transaction, rule=matched_rule) is not None:
+            transaction.reviewed_at = datetime.utcnow()
         db.add(transaction)
         imported_transactions += 1
 

@@ -38,7 +38,13 @@ AUTO_EXACT_LINK_NOTE = "auto_exact_reference_note_match"
 EXACT_REFERENCE_REASON = "Reference found in VAT-book annotation notes"
 VALID_RECONCILIATION_STATUSES = {"matched", "partial", "suggested", "unmatched"}
 DEFAULT_REVIEW_QUEUE_STATUSES = ("partial", "suggested", "unmatched")
-RESOLVED_TRANSACTION_REVIEW_STATUSES = {"linked", "supporting_docs_only", "no_document_expected"}
+RESOLVED_TRANSACTION_REVIEW_STATUSES = {
+    "linked",
+    "supporting_docs_only",
+    "hard_copy_available",
+    "handled_by_rule",
+    "no_document_expected",
+}
 VALID_RESOLUTION_BUCKETS = {
     "confirm_match",
     "complete_partial_match",
@@ -94,6 +100,18 @@ NO_DOCUMENT_EXPECTED_PATTERNS = (
 INDIVIDUAL_PAYMENT_PREFIX_PATTERN = re.compile(r"^\*(?:INET|MOBI)\b", re.IGNORECASE)
 
 
+def _normalize_reference_token(reference: str | None) -> str | None:
+    if reference is None:
+        return None
+    value = reference.strip()
+    if not value:
+        return None
+    normalized = re.sub(r"\s+", " ", value).upper()
+    if normalized.isdigit():
+        return normalized.lstrip("0") or "0"
+    return normalized
+
+
 @dataclass(slots=True)
 class ReconciliationDocumentMatch:
     document_id: uuid.UUID
@@ -105,6 +123,12 @@ class ReconciliationDocumentMatch:
     vat_amount: Decimal | None
     score: float | None
     reason: str
+    storage_state: str = "local_only"
+    storage_provider: str | None = None
+    storage_bucket: str | None = None
+    storage_key: str | None = None
+    drive_file_id: str | None = None
+    drive_web_link: str | None = None
 
 
 @dataclass(slots=True)
@@ -181,6 +205,12 @@ class ReconciliationFlowDocument:
     score: float | None = None
     role: str | None = None
     reason: str | None = None
+    storage_state: str = "local_only"
+    storage_provider: str | None = None
+    storage_bucket: str | None = None
+    storage_key: str | None = None
+    drive_file_id: str | None = None
+    drive_web_link: str | None = None
     statement_kind: str | None = None
     is_financial: bool | None = None
     invoice_reference_count: int = 0
@@ -220,6 +250,18 @@ class ReconciliationFlow:
     next_step: str
     stages: list[ReconciliationFlowStage] = field(default_factory=list)
     settlements: list[ReconciliationFlowSettlement] = field(default_factory=list)
+
+
+def _document_storage_state(document: Document) -> str:
+    has_r2 = bool(document.storage_provider == "s3" and document.storage_key)
+    has_drive = bool(document.drive_file_id)
+    if has_r2 and has_drive:
+        return "r2_and_drive"
+    if has_r2:
+        return "r2_only"
+    if has_drive:
+        return "drive_only"
+    return "local_only"
 
 
 def month_bounds(month: str) -> tuple[date, date]:
@@ -364,6 +406,12 @@ async def build_reconciliation_report(
             document_date=document.document_date,
             amount=document.amount,
             vat_amount=document.vat_amount,
+            storage_state=_document_storage_state(document),
+            storage_provider=document.storage_provider,
+            storage_bucket=document.storage_bucket,
+            storage_key=document.storage_key,
+            drive_file_id=document.drive_file_id,
+            drive_web_link=document.drive_web_link,
             score=None,
             reason="No transaction report match found for this invoice in the selected month",
         )
@@ -496,12 +544,9 @@ async def build_transaction_review_queue(
     }
     filtered_items.sort(
         key=lambda item: (
-            _status_rank(item.status),
-            -len(item.exact_matches),
-            -_max_score(item.suggested_matches),
-            -_max_score(item.supporting_matches),
             item.transaction_date or date.max,
             item.row_number,
+            _status_rank(item.status),
         ),
     )
 
@@ -732,6 +777,12 @@ def build_transaction_reconciliation_flow(
                 score=_document_score_from_analysis(document.id, analysis, persisted_links),
                 role="statement_support",
                 reason=_document_reason_from_analysis(document.id, analysis, persisted_links),
+                storage_state=_document_storage_state(document),
+                storage_provider=document.storage_provider,
+                storage_bucket=document.storage_bucket,
+                storage_key=document.storage_key,
+                drive_file_id=document.drive_file_id,
+                drive_web_link=document.drive_web_link,
                 statement_kind=ledger.statement_kind,
                 is_financial=ledger.is_financial,
                 invoice_reference_count=len(ledger_invoice_refs),
@@ -768,19 +819,24 @@ def build_transaction_reconciliation_flow(
         invoice_ledger_by_id=invoice_ledger_by_id,
         supporting_documents=supporting_documents,
         supporting_ledgers=supporting_ledgers,
+        persisted_links=persisted_links,
         statement_invoice_refs=statement_invoice_refs,
         statement_credit_refs=statement_credit_refs,
     )
     found_component_refs = {
-        document.reference
+        normalized
         for document in component_documents
-        if document.reference
+        if (normalized := _normalize_reference_token(document.reference))
     }
     missing_invoice_refs = [
-        reference for reference in statement_invoice_refs if reference not in found_component_refs
+        reference
+        for reference in statement_invoice_refs
+        if _normalize_reference_token(reference) not in found_component_refs
     ]
     missing_credit_refs = [
-        reference for reference in statement_credit_refs if reference not in found_component_refs
+        reference
+        for reference in statement_credit_refs
+        if _normalize_reference_token(reference) not in found_component_refs
     ]
 
     supplier_stage = ReconciliationFlowStage(
@@ -884,11 +940,12 @@ def build_transaction_reconciliation_flow(
         documents=component_documents,
     )
 
+    resolved_review_summary = _resolved_review_summary(transaction)
     action_stage = ReconciliationFlowStage(
         key="resolve",
         title="Resolve",
-        status=_action_stage_status(analysis.resolution_bucket),
-        summary=analysis.resolution_reason or "Use the evidence chain above to resolve the row.",
+        status="resolved" if resolved_review_summary else _action_stage_status(analysis.resolution_bucket),
+        summary=resolved_review_summary or analysis.resolution_reason or "Use the evidence chain above to resolve the row.",
         items=[
             item
             for item in [
@@ -1242,6 +1299,12 @@ def _find_exact_matches(
                 document_date=document.document_date,
                 amount=document.amount,
                 vat_amount=document.vat_amount,
+                storage_state=_document_storage_state(document),
+                storage_provider=document.storage_provider,
+                storage_bucket=document.storage_bucket,
+                storage_key=document.storage_key,
+                drive_file_id=document.drive_file_id,
+                drive_web_link=document.drive_web_link,
                 score=1.0,
                 reason=EXACT_REFERENCE_REASON,
             )
@@ -1419,6 +1482,12 @@ def _find_single_document_suggestions(
                 document_date=document_date,
                 amount=document_entry.amount,
                 vat_amount=document_entry.vat_amount,
+                storage_state=_document_storage_state(document),
+                storage_provider=document.storage_provider,
+                storage_bucket=document.storage_bucket,
+                storage_key=document.storage_key,
+                drive_file_id=document.drive_file_id,
+                drive_web_link=document.drive_web_link,
                 score=round(float(score), 2),
                 reason="; ".join(reason_parts),
             )
@@ -1706,6 +1775,12 @@ def _find_grouped_suggestion(
             document_date=entry.event_date,
             amount=entry.amount,
             vat_amount=entry.vat_amount,
+            storage_state=_document_storage_state(document_by_id[entry.document_id]),
+            storage_provider=document_by_id[entry.document_id].storage_provider,
+            storage_bucket=document_by_id[entry.document_id].storage_bucket,
+            storage_key=document_by_id[entry.document_id].storage_key,
+            drive_file_id=document_by_id[entry.document_id].drive_file_id,
+            drive_web_link=document_by_id[entry.document_id].drive_web_link,
             score=round(score, 2),
             reason=reason,
         )
@@ -1897,6 +1972,12 @@ def _find_supporting_document_suggestions(
                 document_date=document.document_date,
                 amount=document.amount,
                 vat_amount=document.vat_amount,
+                storage_state=_document_storage_state(document),
+                storage_provider=document.storage_provider,
+                storage_bucket=document.storage_bucket,
+                storage_key=document.storage_key,
+                drive_file_id=document.drive_file_id,
+                drive_web_link=document.drive_web_link,
                 score=round(float(score), 2),
                 reason="; ".join(reason_parts),
             )
@@ -2153,8 +2234,6 @@ def _collect_related_statement_ledgers(
                 _build_document_supplier_keys(document),
             ):
                 continue
-            if not pub_matches and transaction.pub:
-                continue
             ledger = ledger_by_id.get(document.id)
             if transaction.transaction_date is not None:
                 timing_context = _support_document_timing_context(
@@ -2168,7 +2247,7 @@ def _collect_related_statement_ledgers(
 
     ordered_ids = _ordered_unique(selected_ids)
     ledgers = [ledger_by_id[document_id] for document_id in ordered_ids if document_id in ledger_by_id]
-    return [
+    relevant_ledgers = [
         ledger
         for ledger in ledgers
         if _statement_is_flow_relevant(
@@ -2178,6 +2257,27 @@ def _collect_related_statement_ledgers(
             invoice_ledgers=invoice_ledgers,
         )
     ]
+    if relevant_ledgers or analysis.resolution_bucket != "confirm_match":
+        return relevant_ledgers
+
+    if not ledgers:
+        return []
+
+    def _context_rank(ledger: ParsedDocumentLedger) -> tuple[int, int]:
+        document = support_doc_by_id.get(ledger.document_id)
+        if document is None or transaction.transaction_date is None:
+            return (9999, 9999)
+        timing_context = _support_document_timing_context(
+            transaction_date=transaction.transaction_date,
+            document=document,
+            ledger=ledger,
+        )
+        if "covers the bank transaction date" in str(timing_context["reason"]):
+            return (0, 0)
+        date_difference = abs((transaction.transaction_date - (document.document_date or transaction.transaction_date)).days)
+        return (1, date_difference)
+
+    return sorted(ledgers, key=_context_rank)[:1]
 
 
 def _statement_is_flow_relevant(
@@ -2231,6 +2331,7 @@ def _build_flow_component_documents(
     invoice_ledger_by_id: dict[uuid.UUID, ParsedDocumentLedger],
     supporting_documents: list[Document],
     supporting_ledgers: list[ParsedDocumentLedger],
+    persisted_links: list[TransactionDocumentLink],
     statement_invoice_refs: list[str],
     statement_credit_refs: list[str],
 ) -> list[ReconciliationFlowDocument]:
@@ -2238,21 +2339,59 @@ def _build_flow_component_documents(
     seen_document_ids: set[uuid.UUID] = set()
 
     for match in [*analysis.exact_matches, *analysis.suggested_matches]:
+            component_documents.append(
+                ReconciliationFlowDocument(
+                    document_id=match.document_id,
+                    supplier=match.supplier,
+                    document_type=match.document_type,
+                    reference=match.reference,
+                    document_date=match.document_date,
+                    amount=match.amount,
+                    vat_amount=match.vat_amount,
+                    score=match.score,
+                    role="invoice_candidate",
+                    reason=match.reason,
+                    storage_state=match.storage_state,
+                    storage_provider=match.storage_provider,
+                    storage_bucket=match.storage_bucket,
+                    storage_key=match.storage_key,
+                    drive_file_id=match.drive_file_id,
+                    drive_web_link=match.drive_web_link,
+                )
+            )
+            seen_document_ids.add(match.document_id)
+
+    for link in persisted_links:
+        document = link.document
+        if (
+            document is None
+            or link.role == "ignore"
+            or link.status == "rejected"
+            or document.document_type not in {"invoice", "credit_note"}
+            or document.id in seen_document_ids
+        ):
+            continue
         component_documents.append(
             ReconciliationFlowDocument(
-                document_id=match.document_id,
-                supplier=match.supplier,
-                document_type=match.document_type,
-                reference=match.reference,
-                document_date=match.document_date,
-                amount=match.amount,
-                vat_amount=match.vat_amount,
-                score=match.score,
-                role="invoice_candidate",
-                reason=match.reason,
+                document_id=document.id,
+                supplier=document.supplier,
+                document_type=document.document_type,
+                reference=document.reference,
+                document_date=document.document_date,
+                amount=document.amount,
+                vat_amount=document.vat_amount,
+                score=link.score,
+                role="persisted_link",
+                reason=link.match_reason or "Already linked to this transaction",
+                storage_state=_document_storage_state(document),
+                storage_provider=document.storage_provider,
+                storage_bucket=document.storage_bucket,
+                storage_key=document.storage_key,
+                drive_file_id=document.drive_file_id,
+                drive_web_link=document.drive_web_link,
             )
         )
-        seen_document_ids.add(match.document_id)
+        seen_document_ids.add(document.id)
 
     transaction_supplier_keys = _build_transaction_supplier_keys(transaction)
     statement_context = _build_statement_invoice_context(
@@ -2261,10 +2400,11 @@ def _build_flow_component_documents(
     )
 
     for reference in statement_invoice_refs:
+        normalized_reference = _normalize_reference_token(reference)
         matched_documents = [
             document
             for document in invoice_documents
-            if document.reference == reference
+            if _normalize_reference_token(document.reference) == normalized_reference
             and (
                 not transaction_supplier_keys
                 or _supplier_keys_overlap(
@@ -2311,6 +2451,12 @@ def _build_flow_component_documents(
                         context=statement_context.get(reference),
                         transaction_date=transaction.transaction_date,
                     ),
+                    storage_state=_document_storage_state(document),
+                    storage_provider=document.storage_provider,
+                    storage_bucket=document.storage_bucket,
+                    storage_key=document.storage_key,
+                    drive_file_id=document.drive_file_id,
+                    drive_web_link=document.drive_web_link,
                 )
             )
             seen_document_ids.add(document.id)
@@ -2318,11 +2464,19 @@ def _build_flow_component_documents(
                 break
 
     support_doc_by_id = {document.id: document for document in supporting_documents}
+    normalized_statement_credit_refs = {
+        _normalize_reference_token(reference)
+        for reference in statement_credit_refs
+        if _normalize_reference_token(reference)
+    }
     for ledger in supporting_ledgers:
         document = support_doc_by_id.get(ledger.document_id)
         if document is None or document.document_type != "credit_note":
             continue
-        if document.reference not in statement_credit_refs or document.id in seen_document_ids:
+        if (
+            _normalize_reference_token(document.reference) not in normalized_statement_credit_refs
+            or document.id in seen_document_ids
+        ):
             continue
         pub_matches, pub_conflict, _ = _pub_compatibility(
             transaction=transaction,
@@ -2342,6 +2496,12 @@ def _build_flow_component_documents(
                 score=0.8 if pub_matches else 0.74,
                 role="statement_credit_reference",
                 reason="Referenced by the supplier statement as a credit-note component",
+                storage_state=_document_storage_state(document),
+                storage_provider=document.storage_provider,
+                storage_bucket=document.storage_bucket,
+                storage_key=document.storage_key,
+                drive_file_id=document.drive_file_id,
+                drive_web_link=document.drive_web_link,
             )
         )
         seen_document_ids.add(document.id)
@@ -2503,6 +2663,15 @@ def _action_stage_status(resolution_bucket: str) -> str:
     }.get(resolution_bucket, "partial")
 
 
+def _resolved_review_summary(transaction: Transaction) -> str | None:
+    if transaction.review_status == "hard_copy_available":
+        return "A hard-copy supplier document is available for this row."
+    if transaction.review_status == "handled_by_rule":
+        label = transaction.category or "saved handling rule"
+        return f"A saved transaction rule classifies this row as {label}."
+    return None
+
+
 def _next_step_for_flow(
     *,
     transaction: Transaction,
@@ -2513,6 +2682,8 @@ def _next_step_for_flow(
     missing_credit_refs: list[str],
     statements_missing_amounts: bool,
 ) -> str:
+    if _resolved_review_summary(transaction):
+        return "Use the supplier hint and review note to identify the paper document when you need to revisit this row."
     if analysis.resolution_bucket == "confirm_match":
         return "Confirm the invoice coverage shown for this row."
     if settlements:
@@ -2537,8 +2708,9 @@ def _next_step_for_flow(
 def _flow_role_rank(role: str | None) -> int:
     return {
         "invoice_candidate": 0,
-        "statement_reference": 1,
-        "statement_credit_reference": 2,
+        "persisted_link": 1,
+        "statement_reference": 2,
+        "statement_credit_reference": 3,
     }.get(role or "", 3)
 
 

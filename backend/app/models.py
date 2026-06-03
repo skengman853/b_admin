@@ -24,6 +24,7 @@ class User(Base):
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
     transaction_document_links: Mapped[list["TransactionDocumentLink"]] = relationship(back_populates="user")
     transaction_review_events: Mapped[list["TransactionReviewEvent"]] = relationship(back_populates="user")
+    transaction_rules: Mapped[list["TransactionRule"]] = relationship(back_populates="user")
 
 
 class GmailConnection(Base):
@@ -106,6 +107,10 @@ class Document(Base):
     ai_extraction_model: Mapped[str | None] = mapped_column(String(100))
     ai_extraction_payload: Mapped[dict | None] = mapped_column(JSON)
     ai_extracted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    storage_provider: Mapped[str | None] = mapped_column(String(20))
+    storage_bucket: Mapped[str | None] = mapped_column(String(255))
+    storage_key: Mapped[str | None] = mapped_column(Text)
+    storage_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
     local_path: Mapped[str] = mapped_column(Text, nullable=False)
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
     review_reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
@@ -243,6 +248,40 @@ class TransactionReviewEvent(Base):
 
     user: Mapped["User"] = relationship(back_populates="transaction_review_events")
     transaction: Mapped["Transaction"] = relationship(back_populates="review_events")
+
+
+class TransactionRule(Base):
+    __tablename__ = "transaction_rules"
+    __table_args__ = (
+        Index("idx_transaction_rules_user_active", "user_id", "is_active"),
+        Index("idx_transaction_rules_lookup", "user_id", "source_type", "pub", "match_field", "match_value"),
+        UniqueConstraint(
+            "user_id",
+            "source_type",
+            "pub",
+            "match_field",
+            "match_value",
+            name="uq_transaction_rule_scope",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    source_type: Mapped[str] = mapped_column(String(50), default="bank_statement")
+    pub: Mapped[str | None] = mapped_column(String(255))
+    match_field: Mapped[str] = mapped_column(String(50), default="description1_counterparty")
+    match_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    category_override: Mapped[str | None] = mapped_column(String(255))
+    review_status: Mapped[str] = mapped_column(String(32), default="handled_by_rule")
+    expected_supplier: Mapped[str | None] = mapped_column(String(255))
+    document_expectation: Mapped[str | None] = mapped_column(String(50))
+    owner_note: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="transaction_rules")
 
 
 class ProcessedEmail(Base):

@@ -13,6 +13,7 @@ from app.services.drive_client import ensure_drive_path, get_drive_service, uplo
 from app.services.drive_paths import drive_path_parts_for_local_path
 from app.services.document_registry import dedupe_documents_for_user
 from app.services.document_split import sync_child_documents_from_parent
+from app.services.object_storage import ensure_local_document_file
 
 
 def _sync_error_reason(exc: Exception) -> str:
@@ -86,8 +87,9 @@ async def sync_documents_to_drive(
             )
             continue
 
-        local_path = Path(document.local_path)
-        if not local_path.exists():
+        try:
+            local_path = ensure_local_document_file(document)
+        except FileNotFoundError:
             skipped += 1
             response_results.append(
                 {
@@ -103,7 +105,7 @@ async def sync_documents_to_drive(
 
         try:
             folder_id, folder_path = ensure_drive_path(service, drive_path_parts_for_local_path(document.local_path))
-            uploaded = upload_local_file(service, local_path=document.local_path, parent_id=folder_id)
+            uploaded = upload_local_file(service, local_path=str(local_path), parent_id=folder_id)
         except Exception as exc:
             skipped += 1
             response_results.append(

@@ -1,5 +1,11 @@
 # 17 — Current Roadmap
 
+This file is now the high-level bridge.
+
+The active execution order is in:
+
+- `docs/20-execution-roadmap.md`
+
 ## Where The Project Is Now
 
 Phase 1 and the practical Phase 2 work are complete.

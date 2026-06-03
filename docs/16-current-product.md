@@ -114,6 +114,15 @@ Transactions can now be compared to extracted documents with:
 
 Under the hood, invoices, credit notes, receipts, and parsed supplier-statement lines are now normalized into one shared ledger-entry model before reconciliation.
 
+The operator review layer now also has a locked category/outcome set for the common month-close decisions:
+
+- `Wages`
+- `Contract`
+- `Hard Copy Available`
+- `No Document Expected`
+- `Invoice Match`
+- `Statement Settlement`
+
 That means the engine can reason about:
 
 - direct invoice matches
@@ -136,10 +145,18 @@ Supported `review_status` values:
 - `pending`
 - `linked`
 - `supporting_docs_only`
+- `hard_copy_available`
+- `handled_by_rule`
 - `awaiting_document`
 - `no_document_expected`
 
 This means the queue is now more than analysis output. It can hold actual bookkeeping decisions.
+
+It also now supports reusable transaction-handling rules, so an operator can:
+
+- save a rule such as `Wages` or `Contract`
+- bulk-apply it to similar existing rows
+- reuse that same rule later from the review UI on one transaction at a time
 
 It also now classifies queue rows into action buckets such as:
 
@@ -172,6 +189,16 @@ It currently supports:
 - linking supporting documents and resolving rows
 - setting review states such as `awaiting_document` or `no_document_expected`
 - inspecting normalized ledger entries for invoices and statements
+
+The backend also serves a separate supplier-document visibility page at:
+
+- `/supplier-documents`
+
+That page is meant to answer:
+
+- what documents does the DB actually have for this supplier?
+- which months are covered?
+- are the files local only, in R2, in Drive, or in both?
 
 ## What Works Well Right Now
 

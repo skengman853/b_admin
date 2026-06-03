@@ -131,6 +131,41 @@ curl -s -X POST http://localhost:8000/api/documents/sync-drive \
   -d '{"limit":100}'
 ```
 
+## Object Storage Setup
+
+The app now supports S3-compatible document storage while keeping local fallback for the current review flow.
+
+Add these to `.env`:
+
+```env
+document_storage_backend=s3
+s3_bucket=your-bucket-name
+s3_region=eu-west-1
+s3_endpoint_url=
+s3_access_key_id=...
+s3_secret_access_key=...
+s3_prefix=documents
+s3_force_path_style=true
+```
+
+Then rebuild or restart the containers so the new env vars and dependency load:
+
+```bash
+docker compose up -d --build
+docker compose exec api alembic upgrade head
+```
+
+To backfill existing PDFs from local disk into the bucket:
+
+```bash
+curl -s -X POST http://localhost:8000/api/documents/sync-storage \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"limit":500}'
+```
+
+New imports will also attempt to sync to the configured bucket automatically.
+
 ## Roadmap
 
-The current source of truth is [docs/12-build-phases.md](docs/12-build-phases.md).
+The current execution roadmap is [docs/20-execution-roadmap.md](docs/20-execution-roadmap.md).
