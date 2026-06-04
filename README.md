@@ -41,6 +41,32 @@ docker compose exec api alembic upgrade head
 curl http://localhost:8000/health
 ```
 
+## Production Baseline
+
+The repo now has a separate production compose file:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml exec api alembic upgrade head
+curl http://localhost:8000/ready
+```
+
+Minimum production env expectations:
+
+```env
+app_env=production
+jwt_secret=replace-with-a-long-random-secret
+encryption_key=replace-with-a-long-random-secret
+frontend_url=https://your-frontend.example.com
+google_redirect_uri=https://your-api.example.com/api/gmail/callback
+```
+
+In `production`, the API now fails fast on unsafe defaults like:
+- placeholder JWT or encryption secrets
+- localhost frontend origins
+- localhost Google OAuth redirect URI
+- incomplete S3/R2 config when `document_storage_backend=s3`
+
 ## Useful Commands
 
 ```bash
@@ -169,3 +195,5 @@ New imports will also attempt to sync to the configured bucket automatically.
 ## Roadmap
 
 The current execution roadmap is [docs/20-execution-roadmap.md](docs/20-execution-roadmap.md).
+
+The next product-quality roadmap is [docs/21-great-tool-roadmap.md](docs/21-great-tool-roadmap.md).

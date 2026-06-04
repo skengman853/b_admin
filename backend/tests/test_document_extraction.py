@@ -14,7 +14,11 @@ from app.services.document_extraction_rules import build_extraction_fields, extr
 
 _ai_import_error: str | None = None
 try:  # pragma: no cover - host Python may not have full app deps
-    from app.services.ai_document_extraction import AIDocumentExtractionResult, merge_ai_extraction  # noqa: E402
+    from app.services.ai_document_extraction import (  # noqa: E402
+        AIDocumentExtractionResult,
+        _build_ai_extraction_messages,
+        merge_ai_extraction,
+    )
 except ModuleNotFoundError as exc:  # pragma: no cover
     _ai_import_error = str(exc)
 
@@ -258,6 +262,32 @@ Payment Method:
 Direct Debit
 """
 
+CONNACHT_ARCHIVE_INVOICE_TEXT = """JJ Mahon and Sons (Connacht) Ltd
+T/A CONNACHT BOTTLERS Grange Carrick-On-Shannon Co. Leitrim,
+Phone (071) 967 1793 email info@connachtbottlers.ie
+Vat Reg IE4110224AH
+INVOICE
+Billing address: Delivery address: 11
+CAREYS BAR LTD CAREYS
+T/A CAREYS 38 MARYDYKE STREET
+38 MARYDYKE STREET
+ATHLONE ATHLONE
+Co. Westmeath Co. Westmeath N37 AP95
+INVOICE NO. INVOICE DATE A/C NO. YOUR REF ORDER NO. OPERATOR
+34036 09/04/2026 CAREY01 DEL BY REP 37374 AIDAN
+Code Case Single Description Pack Price VAT Value
+10518 3 LA SUBIDA SAUV BLANC 187.5ML 1/4 BT 24 46.00 23.00% 138.00
+Vat Breakdown Total Goods: 138.00 €
+Rate Goods Vat
+Total VAT: 31.74 €
+23.00% 138.00 31.74
+0.00% 0.00 0.00 Deposit Fee: 0.00 €
+0.00% 0.00 0.00
+Invoice Total 169.74 €
+0.00% 0.00 0.00
+(#) Denotes Deposit Re-Turn Item
+"""
+
 
 LOVELL_MIXED_RATES_TEXT = """Lovell Bros. Ltd.
 
@@ -484,6 +514,27 @@ class DocumentExtractionTests(unittest.TestCase):
         ])
 
     @unittest.skipIf(_ai_import_error is not None, f"AI extraction helper unavailable: {_ai_import_error}")
+    def test_ai_statement_prompt_includes_row_contract_and_family_hint(self) -> None:
+        document = types.SimpleNamespace(
+            document_type="statement",
+            supplier="Diageo",
+            attachment_name="diageo_statement.pdf",
+            source_email_subject="Diageo month end statement",
+        )
+
+        messages = _build_ai_extraction_messages(
+            document=document,
+            extracted_text="STATEMENT\nTotal Sett Disc\n9263312263\nINVOIC\n",
+        )
+
+        self.assertEqual(messages[0]["role"], "system")
+        self.assertIn("prioritize row-level recovery", messages[0]["content"])
+        self.assertIn("Statement parser family hint: diageo_erp_statement", messages[1]["content"])
+        self.assertIn("keep one JSON entry per financial row", messages[1]["content"])
+        self.assertIn("Use `clearing_reference` only for a second linked document number", messages[1]["content"])
+        self.assertIn("Flattened OCR may list columns in separate blocks", messages[1]["content"])
+
+    @unittest.skipIf(_ai_import_error is not None, f"AI extraction helper unavailable: {_ai_import_error}")
     def test_ai_merge_can_promote_sparse_statement_into_structured_extraction(self) -> None:
         payload = build_extraction_fields(
             extracted_text=SPARSE_PROMO_STATEMENT_TEXT,
@@ -627,6 +678,20 @@ class DocumentExtractionTests(unittest.TestCase):
         self.assertEqual(payload["reference"], "4150707")
         self.assertEqual(str(payload["amount"]), "18.00")
         self.assertIsNone(payload["vat_amount"])
+
+    def test_builds_connacht_archive_invoice_fields_from_filename_and_total(self) -> None:
+        payload = build_extraction_fields(
+            extracted_text=CONNACHT_ARCHIVE_INVOICE_TEXT,
+            supplier="Connacht Bottlers",
+            document_type="invoice",
+            subject="JJ Mahon and Sons/Invoices/Careys Bar/JJ Mahon - INV-227 - No 34036 - Date - 09-04-2026.pdf",
+            attachment_name="JJ Mahon - INV-227 - No 34036 - Date - 09-04-2026.pdf",
+            needs_review=False,
+        )
+
+        self.assertEqual(str(payload["document_date"]), "2026-04-09")
+        self.assertEqual(payload["reference"], "34036")
+        self.assertEqual(str(payload["amount"]), "169.74")
 
 
 if __name__ == "__main__":

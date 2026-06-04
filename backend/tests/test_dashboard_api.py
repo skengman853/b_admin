@@ -25,8 +25,8 @@ _missing_dependencies: str | None = None
 try:
     import aiosqlite  # noqa: F401,E402
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
-    from app.api.dashboard import get_document_storage_summary, get_supplier_document_inventory, list_suppliers  # noqa: E402
-    from app.models import Base, Document, User  # noqa: E402
+    from app.api.dashboard import get_document_storage_summary, get_statement_workbench, get_supplier_document_inventory, list_suppliers  # noqa: E402
+    from app.models import Base, Document, Transaction, User  # noqa: E402
 except ModuleNotFoundError as exc:  # pragma: no cover
     _missing_dependencies = str(exc)
 
@@ -192,6 +192,255 @@ else:
             self.assertEqual(payload.r2_only, 1)
             self.assertEqual(payload.drive_only, 1)
             self.assertEqual(payload.r2_and_drive, 1)
+
+        async def test_statement_workbench_surfaces_imported_refs_and_likely_transactions(self) -> None:
+            async with self.session_factory() as session:
+                session.add_all(
+                    [
+                        Document(
+                            user_id=self.user.id,
+                            gmail_message_id="heineken-statement-workbench",
+                            attachment_index=0,
+                            attachment_name="heineken-may-statement.pdf",
+                            supplier="Heineken",
+                            document_type="statement",
+                            document_date=date(2026, 4, 2),
+                            reference="Summary",
+                            extraction_status="extracted",
+                            storage_provider="s3",
+                            storage_bucket="test-bucket",
+                            storage_key="documents/Heineken/Statements/heineken-may-statement.pdf",
+                            local_path="Documents/Heineken/Careys/Statements/heineken-may-statement.pdf",
+                            ai_extraction_payload={
+                                "supplier": "Heineken",
+                                "document_type": "statement",
+                                "document_date": "2026-04-02",
+                                "statement_kind": "supplier_statement",
+                                "is_financial": True,
+                                "period_start": "2026-03-01",
+                                "period_end": "2026-03-31",
+                                "entries": [
+                                    {
+                                        "event_date": "2026-03-04",
+                                        "reference": "0194101304",
+                                        "transaction_type": "Invoice",
+                                        "due_date": "2026-03-04",
+                                        "clearing_reference": "1800043903",
+                                        "amount": "3719.56",
+                                    },
+                                    {
+                                        "event_date": "2026-03-04",
+                                        "reference": "0194101305",
+                                        "transaction_type": "Invoice",
+                                        "due_date": "2026-03-04",
+                                        "clearing_reference": "1800043907",
+                                        "amount": "37.33",
+                                    },
+                                    {
+                                        "event_date": "2026-03-04",
+                                        "reference": "0194101306",
+                                        "transaction_type": "Invoice",
+                                        "due_date": "2026-03-04",
+                                        "clearing_reference": "1800043911",
+                                        "amount": "59.73",
+                                    },
+                                    {
+                                        "event_date": "2026-03-06",
+                                        "reference": "2000025959",
+                                        "transaction_type": "Payment",
+                                        "due_date": "2026-03-06",
+                                        "amount": "3816.62",
+                                    },
+                                ],
+                            },
+                            extracted_text=(
+                                "STATEMENT OF ACCOUNT\n\n"
+                                "Careys Bar Limited\n"
+                                "Date: 02.04.2026\n"
+                                "Please find below your account statement with all items between 01.03.2026 To 31.03.2026:\n"
+                                "Reference\nNumber\nDocument\nNumber\nDocument\nType\nDocument\nDate\nDue\nDate\nOriginal\nAmount\nResidual\nB/F\nAdjusted\nAmount\nBalance\n"
+                                "1800043903\n\n"
+                                "0194101304 Invoice\n\n"
+                                "04.03.2026\n\n"
+                                "04.03.2026\n\n"
+                                "3,719.56\n\n"
+                                "0.00\n\n"
+                                "-3,719.56\n\n"
+                                "0.00\n\n"
+                                "1800043907\n\n"
+                                "0194101305 Invoice\n\n"
+                                "04.03.2026\n\n"
+                                "04.03.2026\n\n"
+                                "37.33\n\n"
+                                "0.00\n\n"
+                                "-37.33\n\n"
+                                "0.00\n\n"
+                                "1800043911\n\n"
+                                "0194101306 Invoice\n\n"
+                                "04.03.2026\n\n"
+                                "04.03.2026\n\n"
+                                "59.73\n\n"
+                                "0.00\n\n"
+                                "-59.73\n\n"
+                                "0.00\n\n"
+                                "2000025959\n\n"
+                                "Payment\n\n"
+                                "06.03.2026\n\n"
+                                "06.03.2026\n\n"
+                                "-3,816.62\n\n"
+                                "0.00\n\n"
+                                "3,816.62\n\n"
+                                "0.00\n"
+                            ),
+                        ),
+                        Document(
+                            user_id=self.user.id,
+                            gmail_message_id="heineken-invoice-workbench",
+                            attachment_index=0,
+                            attachment_name="heineken-194101304.pdf",
+                            supplier="Heineken",
+                            document_type="invoice",
+                            document_date=date(2026, 3, 4),
+                            reference="194101304",
+                            amount=Decimal("3719.56"),
+                            extraction_status="extracted",
+                            storage_provider="s3",
+                            storage_bucket="test-bucket",
+                            storage_key="documents/Heineken/Invoices/heineken-194101304.pdf",
+                            local_path="Documents/Heineken/Careys/Invoices/heineken-194101304.pdf",
+                        ),
+                        Transaction(
+                            user_id=self.user.id,
+                            source_type="bank_statement",
+                            source_file="bankstatements/sample.pdf",
+                            source_sheet="53747-031",
+                            row_number=88,
+                            posted_account="93-22-64 - 53747-031",
+                            pub="Careys",
+                            transaction_date=date(2026, 3, 6),
+                            description1="D/D HEINEKEN IRELA",
+                            description2="IE26040200000000",
+                            debit_amount=Decimal("3816.62"),
+                            transaction_type="Debit",
+                            category=None,
+                            annotation_types=[],
+                            annotation_notes=[],
+                            has_linked_annotation=False,
+                            raw_row_json={},
+                        ),
+                    ]
+                )
+                await session.commit()
+
+                payload = await get_statement_workbench(
+                    supplier="Heineken",
+                    month="2026-03",
+                    pub="Careys",
+                    window_months=1,
+                    limit=20,
+                    user=self.user,
+                    db=session,
+                )
+
+            self.assertEqual(payload.total_statements, 1)
+            self.assertIn("0194101304", payload.statements[0].imported_invoice_refs)
+            self.assertGreaterEqual(payload.total_likely_transactions, 1)
+            self.assertTrue(any(transaction.row_number == 88 for transaction in payload.statements[0].likely_transactions))
+
+        async def test_statement_workbench_does_not_keep_late_proximity_only_transactions(self) -> None:
+            async with self.session_factory() as session:
+                session.add_all(
+                    [
+                        Document(
+                            user_id=self.user.id,
+                            gmail_message_id="connacht-march-statement-workbench",
+                            attachment_index=0,
+                            attachment_name="connacht-march-statement.pdf",
+                            supplier="Connacht Bottlers",
+                            document_type="statement",
+                            document_date=date(2026, 3, 31),
+                            reference="057",
+                            extraction_status="extracted",
+                            storage_provider="s3",
+                            storage_bucket="test-bucket",
+                            storage_key="documents/Connacht/Statements/057.pdf",
+                            local_path="Documents/Connacht Bottlers/Careys/Statements/057.pdf",
+                            ai_extraction_payload={
+                                "supplier": "Connacht Bottlers",
+                                "document_type": "statement",
+                                "document_date": "2026-03-31",
+                                "statement_kind": "trade_statement",
+                                "is_financial": True,
+                                "period_start": "2026-03-01",
+                                "period_end": "2026-03-31",
+                                "entries": [
+                                    {
+                                        "event_date": "2026-03-25",
+                                        "reference": "33404",
+                                        "transaction_type": "Invoice",
+                                        "due_date": "2026-03-25",
+                                        "amount": "350.33",
+                                    }
+                                ],
+                            },
+                            extracted_text="Trade account statement 01/03/2026 to 31/03/2026",
+                        ),
+                        Transaction(
+                            user_id=self.user.id,
+                            source_type="bank_statement",
+                            source_file="bankstatements/sample.pdf",
+                            source_sheet="53747-031",
+                            row_number=36,
+                            posted_account="93-22-64 - 53747-031",
+                            pub="Careys",
+                            transaction_date=date(2026, 4, 1),
+                            description1="D/D CONNACHT BOTTL",
+                            description2="IE26040144045913",
+                            debit_amount=Decimal("350.33"),
+                            transaction_type="Debit",
+                            category=None,
+                            annotation_types=[],
+                            annotation_notes=[],
+                            has_linked_annotation=False,
+                            raw_row_json={},
+                        ),
+                        Transaction(
+                            user_id=self.user.id,
+                            source_type="bank_statement",
+                            source_file="bankstatements/sample.pdf",
+                            source_sheet="53747-031",
+                            row_number=38,
+                            posted_account="93-22-64 - 53747-031",
+                            pub="Careys",
+                            transaction_date=date(2026, 4, 16),
+                            description1="D/D CONNACHT BOTTL",
+                            description2="IE26041644045913",
+                            debit_amount=Decimal("169.74"),
+                            transaction_type="Debit",
+                            category=None,
+                            annotation_types=[],
+                            annotation_notes=[],
+                            has_linked_annotation=False,
+                            raw_row_json={},
+                        ),
+                    ]
+                )
+                await session.commit()
+
+                payload = await get_statement_workbench(
+                    supplier="Connacht Bottlers",
+                    month="2026-04",
+                    pub="Careys",
+                    window_months=1,
+                    limit=20,
+                    user=self.user,
+                    db=session,
+                )
+
+            self.assertEqual(payload.total_statements, 1)
+            likely_rows = [transaction.row_number for transaction in payload.statements[0].likely_transactions]
+            self.assertIn(36, likely_rows)
+            self.assertNotIn(38, likely_rows)
 
 
 if __name__ == "__main__":

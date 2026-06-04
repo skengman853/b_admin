@@ -112,8 +112,10 @@ def extract_reference(text: str, subject: str = "", attachment_name: str = "") -
             "invoice",
             (
                 rf"Invoice No\.?[:\s]+{REFERENCE_TOKEN}",
+                rf"INVOICE NO\.?(?:\s+INVOICE DATE[^\n\r]*)?(?:\r?\n|\s)+{REFERENCE_TOKEN}",
                 rf"Invoice number[:\s]+{REFERENCE_TOKEN}",
                 r"\bINVOICE\s+(\d{4,})\b",
+                rf"\bNo\s+{REFERENCE_TOKEN}\b",
                 rf"\bInv(?:oice)?\s+[A-Z0-9-]+\s*-\s*{REFERENCE_TOKEN}\b",
                 rf"(?:^|[\\/])Invoice[-_\s]+{REFERENCE_TOKEN}(?:\.[A-Za-z0-9]+)?$",
             ),

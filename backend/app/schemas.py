@@ -126,6 +126,84 @@ class DocumentStorageSummaryResponse(BaseModel):
     r2_and_drive: int = 0
 
 
+class StatementWorkbenchSettlementComponentResponse(BaseModel):
+    entry_kind: str
+    reference: str | None = None
+    related_reference: str | None = None
+    event_date: date | None = None
+    due_date: date | None = None
+    amount: Decimal | None = None
+
+
+class StatementWorkbenchSettlementResponse(BaseModel):
+    payment_reference: str | None = None
+    payment_date: date | None = None
+    due_date: date | None = None
+    amount: Decimal | None = None
+    net_amount: Decimal | None = None
+    component_count: int = 0
+    components: list[StatementWorkbenchSettlementComponentResponse] = Field(default_factory=list)
+
+
+class StatementWorkbenchTransactionResponse(BaseModel):
+    id: uuid.UUID
+    row_number: int
+    transaction_date: date | None = None
+    description1: str | None = None
+    pub: str | None = None
+    debit_amount: Decimal | None = None
+    credit_amount: Decimal | None = None
+    review_status: str
+    reason: str
+
+
+class StatementWorkbenchItemResponse(BaseModel):
+    id: uuid.UUID
+    supplier: str
+    canonical_supplier: str | None = None
+    statement_kind: str | None = None
+    document_date: date | None = None
+    reference: str | None = None
+    amount: Decimal | None = None
+    account_number: str | None = None
+    account_name: str | None = None
+    period_start: date | None = None
+    period_end: date | None = None
+    note: str | None = None
+    invoice_refs: list[str] = Field(default_factory=list)
+    credit_refs: list[str] = Field(default_factory=list)
+    payment_refs: list[str] = Field(default_factory=list)
+    imported_invoice_refs: list[str] = Field(default_factory=list)
+    missing_invoice_refs: list[str] = Field(default_factory=list)
+    imported_credit_refs: list[str] = Field(default_factory=list)
+    missing_credit_refs: list[str] = Field(default_factory=list)
+    settlement_count: int = 0
+    settlements: list[StatementWorkbenchSettlementResponse] = Field(default_factory=list)
+    likely_transactions: list[StatementWorkbenchTransactionResponse] = Field(default_factory=list)
+    storage_state: str = "local_only"
+    storage_provider: str | None = None
+    storage_bucket: str | None = None
+    storage_key: str | None = None
+    drive_file_id: str | None = None
+    drive_web_link: str | None = None
+    pub_hint: str | None = None
+
+
+class StatementWorkbenchResponse(BaseModel):
+    supplier_query: str
+    canonical_supplier: str | None = None
+    month: str | None = None
+    selected_months: list[str] = Field(default_factory=list)
+    window_months: int = 1
+    pub: str | None = None
+    total_statements: int = 0
+    statements_with_settlements: int = 0
+    total_missing_invoice_refs: int = 0
+    total_missing_credit_refs: int = 0
+    total_likely_transactions: int = 0
+    statements: list[StatementWorkbenchItemResponse] = Field(default_factory=list)
+
+
 # Pipeline
 class PipelineScanRequest(BaseModel):
     days: int = Field(default=30, ge=1, le=365)

@@ -1,7 +1,10 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    app_env: Literal["development", "production", "test"] = "development"
     database_url: str = "postgresql+asyncpg://postgres:postgres@db:5432/invoice_organizer"
     redis_url: str = "redis://redis:6379/0"
     jwt_secret: str = "change-me-in-production"
@@ -35,5 +38,41 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
 
+    @property
+    def is_production(self) -> bool:
+        return self.app_env == "production"
+
+    @property
+    def frontend_origins(self) -> list[str]:
+        raw = (self.frontend_url or "").strip()
+        if not raw:
+            return []
+        return [value.strip() for value in raw.split(",") if value.strip()]
+
 
 settings = Settings()
+
+
+def validate_runtime_settings(current: Settings) -> list[str]:
+    errors: list[str] = []
+    if current.is_production:
+        if current.jwt_secret == "change-me-in-production" or len(current.jwt_secret) < 24:
+            errors.append("jwt_secret must be set to a strong production value")
+        if current.encryption_key == "change-me-in-production" or len(current.encryption_key) < 24:
+            errors.append("encryption_key must be set to a strong production value")
+        if not current.frontend_origins:
+            errors.append("frontend_url must define at least one allowed production origin")
+        if any("localhost" in origin or "127.0.0.1" in origin for origin in current.frontend_origins):
+            errors.append("frontend_url cannot point at localhost in production")
+        if current.google_redirect_uri and "localhost" in current.google_redirect_uri:
+            errors.append("google_redirect_uri cannot point at localhost in production")
+        if current.document_storage_backend == "s3":
+            if not current.s3_bucket:
+                errors.append("s3_bucket is required when document_storage_backend=s3")
+            if not current.s3_access_key_id:
+                errors.append("s3_access_key_id is required when document_storage_backend=s3")
+            if not current.s3_secret_access_key:
+                errors.append("s3_secret_access_key is required when document_storage_backend=s3")
+            if not current.s3_endpoint_url:
+                errors.append("s3_endpoint_url is required when document_storage_backend=s3")
+    return errors

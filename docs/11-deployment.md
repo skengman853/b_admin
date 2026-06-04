@@ -2,9 +2,15 @@
 
 ## Current Priority
 
-Production deployment is not the current bottleneck.
+The product now has enough operator flow and document handling that deployment hardening matters.
 
-The current bottleneck is proving the document pipeline locally.
+The immediate production baseline is:
+
+- explicit runtime mode with `app_env`
+- strong secrets validation at startup
+- non-reload API command
+- readiness checks for DB, Redis, and object storage config
+- separate production compose shape
 
 ## Local Development Stack
 
@@ -56,6 +62,37 @@ docker compose up -d --build
 docker compose exec api alembic upgrade head
 curl http://localhost:8000/health
 ```
+
+## Production Runtime
+
+Use the dedicated production compose file:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml exec api alembic upgrade head
+curl http://localhost:8000/ready
+```
+
+### Required Production Environment
+
+```env
+app_env=production
+jwt_secret=<long-random-secret>
+encryption_key=<long-random-secret>
+frontend_url=https://your-frontend.example.com
+google_redirect_uri=https://your-api.example.com/api/gmail/callback
+```
+
+If `document_storage_backend=s3`, production also requires:
+
+```env
+s3_bucket=...
+s3_endpoint_url=...
+s3_access_key_id=...
+s3_secret_access_key=...
+```
+
+The API now refuses to start in `production` if these settings are unsafe or incomplete.
 
 ## Local Filesystem Expectations
 
@@ -117,11 +154,17 @@ You do need:
 
 ## Production Notes
 
-When the project reaches Phase 6, revisit:
+The repo is now closest to a:
 
-- Railway
-- ECS / Fargate
-- Render
 - VPS plus Docker Compose
+- or small-container-host deployment
 
-But do not let production planning delay the local workflow proof.
+Recommended next infrastructure steps after this baseline:
+
+- managed Postgres
+- managed Redis
+- object storage via R2/S3
+- reverse proxy with HTTPS
+- real secrets manager
+- automated backups
+- log aggregation / Sentry alerting

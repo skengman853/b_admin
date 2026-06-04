@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Statement Workbench</title>
+    <style>
+      :root {
+        --bg: #efe6d8;
+        --bg-deep: #d8c8b1;
+        --panel: rgba(255, 251, 244, 0.9);
+        --ink: #1d2a33;
+        --muted: #6d6b64;
+        --line: rgba(42, 51, 61, 0.14);
+        --accent: #0d6b62;
+        --accent-soft: rgba(13, 107, 98, 0.12);
+        --warn: #9a5c16;
+        --warn-soft: rgba(154, 92, 22, 0.14);
+        --shadow: 0 20px 60px rgba(39, 32, 24, 0.12);
+        --radius: 22px;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(255,255,255,0.72), transparent 30%),
+          linear-gradient(160deg, var(--bg) 0%, #f7f0e5 42%, var(--bg-deep) 100%);
+      }
+
+      .shell {
+        width: min(1360px, calc(100% - 2rem));
+        margin: 0 auto;
+        padding: 1.4rem 0 2rem;
+        display: grid;
+        gap: 1rem;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
+      }
+
+      .hero { padding: 1.25rem 1.4rem; display: grid; gap: 0.8rem; }
+      .hero-top { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+      .hero h1 {
+        margin: 0;
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+        font-size: clamp(1.9rem, 4vw, 3rem);
+        line-height: 0.96;
+        letter-spacing: -0.03em;
+      }
+      .hero p { margin: 0.35rem 0 0; color: var(--muted); max-width: 70ch; }
+
+      .filters, .actions, .summary-grid, .chips, .tx-list, .card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.7rem;
+        align-items: center;
+      }
+
+      .filters { padding: 1rem 1.4rem 1.2rem; }
+      .field { display: grid; gap: 0.32rem; min-width: 150px; }
+      .field label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      input, select, button { font: inherit; }
+      input, select {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 0.72rem 0.85rem;
+        background: rgba(255,255,255,0.8);
+        color: var(--ink);
+      }
+      button, .link-button {
+        border: 1px solid transparent;
+        border-radius: 16px;
+        padding: 0.78rem 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+      }
+      button:hover, .link-button:hover { transform: translateY(-1px); }
+      .button-primary { background: var(--accent); color: #f6f8f7; }
+      .button-secondary {
+        background: rgba(255,255,255,0.75);
+        color: var(--ink);
+        border-color: var(--line);
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.72rem;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,0.72);
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+      .tag[data-tone="good"] { background: var(--accent-soft); border-color: rgba(13,107,98,0.22); color: #0d6b62; }
+      .tag[data-tone="warn"] { background: var(--warn-soft); border-color: rgba(154,92,22,0.2); color: #8b5e1f; }
+      .tag[data-tone="r2_and_drive"] { background: rgba(13,107,98,0.15); border-color: rgba(13,107,98,0.22); color: #0d6b62; }
+      .tag[data-tone="r2_only"] { background: rgba(193,124,39,0.12); border-color: rgba(193,124,39,0.2); color: #8b5e1f; }
+      .tag[data-tone="drive_only"] { background: rgba(56,101,171,0.12); border-color: rgba(56,101,171,0.2); color: #31578d; }
+      .tag[data-tone="local_only"] { background: rgba(80,72,65,0.08); border-color: rgba(80,72,65,0.14); color: #5f574e; }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.85rem;
+        padding: 0 1.4rem 1.2rem;
+      }
+
+      .meta-card, .statement-card, .inspector {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255,255,255,0.72);
+      }
+      .meta-card { padding: 0.9rem 1rem; }
+      .meta-card label {
+        display: block;
+        font-size: 0.73rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        font-weight: 700;
+        margin-bottom: 0.3rem;
+      }
+
+      .statement-list {
+        display: grid;
+        gap: 0.9rem;
+        padding: 1rem 1.4rem 1.4rem;
+      }
+
+      .statement-card {
+        padding: 1rem;
+        display: grid;
+        gap: 0.9rem;
+      }
+
+      .card-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+
+      .small-note { color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+      .month-picks {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        gap: 0.45rem;
+        padding: 0.8rem;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.62);
+        max-height: 190px;
+        overflow: auto;
+      }
+      .month-pick {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.92rem;
+      }
+
+      .subsection {
+        display: grid;
+        gap: 0.45rem;
+        padding-top: 0.35rem;
+        border-top: 1px solid rgba(42, 51, 61, 0.08);
+      }
+
+      details {
+        border: 1px solid rgba(42, 51, 61, 0.08);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.5);
+        padding: 0.2rem 0.7rem 0.7rem;
+      }
+      details summary {
+        cursor: pointer;
+        font-weight: 700;
+        color: var(--ink);
+        padding: 0.55rem 0;
+      }
+
+      .tx-item {
+        border: 1px solid rgba(42, 51, 61, 0.1);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.65);
+        padding: 0.75rem 0.85rem;
+        display: grid;
+        gap: 0.35rem;
+      }
+
+      .empty, .banner {
+        padding: 1rem 1.2rem;
+        border-radius: 18px;
+        margin: 0 1.4rem 1.4rem;
+      }
+      .empty {
+        border: 1px dashed var(--line);
+        color: var(--muted);
+        background: rgba(255,255,255,0.45);
+      }
+      .banner.error { background: rgba(141,60,51,0.12); color: #8d3c33; border: 1px solid rgba(141,60,51,0.18); }
+      .banner.success { background: rgba(13,107,98,0.12); color: var(--accent); border: 1px solid rgba(13,107,98,0.18); }
+
+      .inspector-wrap { padding: 0 1.4rem 1.4rem; }
+      .inspector { padding: 1rem; }
+
+      @media (max-width: 880px) {
+        .hero-top, .card-top { flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="panel hero">
+        <div class="hero-top">
+          <div>
+            <h1>Statement Workbench</h1>
+            <p>Review supplier account statements directly: see the refs they contain, what is already imported, what is missing, and which bank transactions they likely explain.</p>
+          </div>
+          <div class="actions">
+            <a class="link-button button-secondary" href="/review">Back to review</a>
+            <a class="link-button button-secondary" href="/supplier-documents">Supplier documents</a>
+          </div>
+        </div>
+        <div id="auth-banner" class="small-note">Using your saved local session.</div>
+      </section>
+
+      <section class="panel">
+        <div class="filters">
+          <div class="field" style="min-width:220px">
+            <label for="supplier-input">Supplier</label>
+            <select id="supplier-input">
+              <option value="">Choose supplier…</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="month-input">Month</label>
+            <input id="month-input" type="month" />
+          </div>
+          <div class="field">
+            <label for="pub-select">Pub</label>
+            <select id="pub-select">
+              <option value="">All pubs</option>
+              <option value="Careys">Careys</option>
+              <option value="Canal">Canal</option>
+              <option value="Corrcross">Corrcross</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="window-select">Month window</label>
+            <select id="window-select">
+              <option value="0">Current month only</option>
+              <option value="1" selected>Prev / current / next</option>
+              <option value="2">Two months each side</option>
+            </select>
+          </div>
+          <div class="field" style="min-width:320px; flex: 1 1 320px;">
+            <label>Specific months</label>
+            <div id="months-checkboxes" class="month-picks"></div>
+            <div class="small-note">Pick one or more months here to override the month window.</div>
+          </div>
+          <div class="actions" style="align-self:end">
+            <button class="button-primary" id="load-button" type="button">Load statements</button>
+            <button class="button-secondary" id="reextract-button" type="button">Re-extract shown statements</button>
+          </div>
+        </div>
+        <div id="message-banner"></div>
+        <div class="summary-grid" id="summary-grid"></div>
+        <div class="statement-list" id="statement-list"></div>
+        <div class="inspector-wrap">
+          <div class="inspector" id="inspector">
+            <div class="small-note">Click Inspect on a statement to see extracted detail and settlement clues here.</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const state = {
+        token: localStorage.getItem("b_admin_token") || "",
+        suppliers: [],
+        workbench: null,
+      };
+
+      const supplierInput = document.getElementById("supplier-input");
+      const monthInput = document.getElementById("month-input");
+      const pubSelect = document.getElementById("pub-select");
+      const windowSelect = document.getElementById("window-select");
+      const monthsCheckboxes = document.getElementById("months-checkboxes");
+      const summaryGrid = document.getElementById("summary-grid");
+      const statementList = document.getElementById("statement-list");
+      const inspector = document.getElementById("inspector");
+      const messageBanner = document.getElementById("message-banner");
+      const authBanner = document.getElementById("auth-banner");
+      const reextractButton = document.getElementById("reextract-button");
+
+      function defaultMonthValue() {
+        const now = new Date();
+        now.setMonth(now.getMonth() - 1);
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      }
+
+      function shiftMonth(month, offset) {
+        const [yearRaw, monthRaw] = String(month || defaultMonthValue()).split("-");
+        const year = Number(yearRaw);
+        const m = Number(monthRaw);
+        const total = year * 12 + (m - 1) + offset;
+        const shiftedYear = Math.floor(total / 12);
+        const shiftedMonth = (total % 12) + 1;
+        return `${shiftedYear}-${String(shiftedMonth).padStart(2, "0")}`;
+      }
+
+      function monthLabel(month) {
+        const [year, m] = String(month).split("-");
+        const date = new Date(Number(year), Number(m) - 1, 1);
+        return date.toLocaleString("en-IE", { month: "short", year: "numeric" });
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function formatDate(value) { return value || "—"; }
+      function formatCurrency(value) {
+        if (value === null || value === undefined || value === "") return "—";
+        const amount = Number(value);
+        if (Number.isNaN(amount)) return String(value);
+        return new Intl.NumberFormat("en-IE", {
+          style: "currency",
+          currency: "EUR",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(amount);
+      }
+
+      function buildTag(label, tone) {
+        return `<span class="tag" data-tone="${escapeHtml(tone || "good")}">${escapeHtml(label)}</span>`;
+      }
+
+      function storageStateLabel(state) {
+        return {
+          r2_and_drive: "R2 + Drive",
+          r2_only: "R2",
+          drive_only: "Drive",
+          local_only: "Local only",
+        }[state] || "Local only";
+      }
+
+      function statementKindMeta(kind) {
+        return {
+          diageo_erp_statement: {
+            label: "Month-End Account Statement",
+            description: "Primary month-end settlement statement with invoice, payment, and clearing rows.",
+          },
+          supplier_statement: {
+            label: "Account Settlement Statement",
+            description: "Primary supplier account statement used to settle invoices and payments.",
+          },
+          trade_statement: {
+            label: "Trade Account Statement",
+            description: "Account statement showing invoices, receipts, and credits across the trade account.",
+          },
+          sub_account_statement: {
+            label: "Sub-Account Discount Statement",
+            description: "Secondary discount / sub-account statement. Useful context, but not the main invoice settlement statement.",
+          },
+          keg_flow_statement: {
+            label: "Operational Keg Flow Statement",
+            description: "Operational support only, not financial settlement evidence.",
+          },
+          statement: {
+            label: "Statement",
+            description: "Supplier statement context.",
+          },
+        }[kind] || {
+          label: kind || "Statement",
+          description: "",
+        };
+      }
+
+      function statementKindLabel(kind) {
+        return statementKindMeta(kind).label;
+      }
+
+      function statementKindDescription(kind) {
+        return statementKindMeta(kind).description;
+      }
+
+      function renderStorageTags(item) {
+        const tags = [buildTag(storageStateLabel(item.storage_state || "local_only"), item.storage_state || "local_only")];
+        if (item.storage_bucket && (item.storage_provider || "").toLowerCase() === "s3") {
+          tags.push(buildTag(`Bucket ${item.storage_bucket}`, "r2_only"));
+        }
+        if (item.drive_file_id) {
+          tags.push(buildTag("Drive linked", "drive_only"));
+        }
+        return tags.join("");
+      }
+
+      function setMessage(type, text) {
+        if (!text) {
+          messageBanner.innerHTML = "";
+          return;
+        }
+        messageBanner.innerHTML = `<div class="banner ${escapeHtml(type)}">${escapeHtml(text)}</div>`;
+      }
+
+      async function requestJson(url) {
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${state.token}`,
+          },
+        });
+        const text = await response.text();
+        const payload = text ? JSON.parse(text) : {};
+        if (!response.ok) {
+          throw new Error(payload.detail || response.statusText || "Request failed");
+        }
+        return payload;
+      }
+
+      async function postJson(url, body) {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${state.token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+        const text = await response.text();
+        const payload = text ? JSON.parse(text) : {};
+        if (!response.ok) {
+          throw new Error(payload.detail || response.statusText || "Request failed");
+        }
+        return payload;
+      }
+
+      function renderMonthCheckboxes(anchorMonth) {
+        const months = [];
+        for (let offset = -2; offset <= 2; offset += 1) {
+          months.push(shiftMonth(anchorMonth, offset));
+        }
+        monthsCheckboxes.innerHTML = months
+          .map((month) => `
+            <label class="month-pick">
+              <input type="checkbox" value="${escapeHtml(month)}" />
+              <span>${escapeHtml(monthLabel(month))}</span>
+            </label>
+          `)
+          .join("");
+      }
+
+      function selectedMonths() {
+        return Array.from(monthsCheckboxes.querySelectorAll("input:checked")).map((input) => input.value);
+      }
+
+      async function loadSuppliers() {
+        const params = new URLSearchParams();
+        if (pubSelect.value) params.set("pub", pubSelect.value);
+        const payload = await requestJson(`/api/dashboard/suppliers?${params.toString()}`);
+        state.suppliers = payload.suppliers || [];
+        const currentValue = supplierInput.value;
+        supplierInput.innerHTML =
+          '<option value="">Choose supplier…</option>' +
+          state.suppliers
+            .map((item) => `<option value="${escapeHtml(item.supplier)}">${escapeHtml(item.canonical_supplier || item.supplier)} (${item.document_count})</option>`)
+            .join("");
+        supplierInput.value = currentValue;
+      }
+
+      function renderSummary(workbench) {
+        summaryGrid.innerHTML = [
+          ["Supplier", workbench.canonical_supplier || workbench.supplier_query || "—"],
+          ["Statements", workbench.total_statements],
+          ["With settlements", workbench.statements_with_settlements],
+          ["Missing invoice refs", workbench.total_missing_invoice_refs],
+          ["Missing credit refs", workbench.total_missing_credit_refs],
+          ["Likely transactions", workbench.total_likely_transactions],
+        ]
+          .map(([label, value]) => `
+            <div class="meta-card">
+              <label>${escapeHtml(label)}</label>
+              <strong>${escapeHtml(value)}</strong>
+            </div>
+          `)
+          .join("");
+      }
+
+      function renderRefTags(refs, tone) {
+        if (!refs.length) {
+          return '<span class="small-note">None.</span>';
+        }
+        return refs.map((ref) => buildTag(ref, tone)).join("");
+      }
+
+      function renderSettlementDetail(settlement) {
+        return `
+          <details>
+            <summary>${escapeHtml(settlement.payment_reference || "Payment")} · ${escapeHtml(formatCurrency(settlement.amount))} · clears ${escapeHtml(settlement.component_count)} component(s)</summary>
+            <div class="small-note">Payment date ${escapeHtml(formatDate(settlement.payment_date))} · Due ${escapeHtml(formatDate(settlement.due_date))} · Net ${escapeHtml(formatCurrency(settlement.net_amount))}</div>
+            <div class="chips" style="margin-top:0.6rem">
+              ${(settlement.components || []).map((component) =>
+                buildTag(`${component.entry_kind} ${component.reference || component.related_reference || "—"} ${formatCurrency(component.amount)}`, "good")
+              ).join("")}
+            </div>
+          </details>
+        `;
+      }
+
+      function renderLikelyTransactions(item) {
+        if (!(item.likely_transactions || []).length) {
+          return '<div class="small-note">No likely bank transactions were inferred from this statement yet.</div>';
+        }
+        return `
+          <div class="tx-list">
+            ${(item.likely_transactions || []).map((transaction) => `
+              <div class="tx-item">
+                <strong>#${escapeHtml(transaction.row_number)} · ${escapeHtml(transaction.description1 || "Untitled transaction")}</strong>
+                <div class="small-note">${escapeHtml(formatDate(transaction.transaction_date))} · ${escapeHtml(transaction.pub || "—")} · ${escapeHtml(formatCurrency(transaction.debit_amount || transaction.credit_amount))}</div>
+                <div class="small-note">${escapeHtml(transaction.reason)}</div>
+                <div class="chips">${buildTag(transaction.review_status || "pending", transaction.review_status === "pending" ? "warn" : "good")}</div>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      }
+
+      function renderStatements(workbench) {
+        if (!(workbench.statements || []).length) {
+          statementList.innerHTML = '<div class="empty">No parsed statement documents matched this supplier and month window.</div>';
+          return;
+        }
+
+        statementList.innerHTML = (workbench.statements || []).map((item) => `
+          <article class="statement-card">
+            <div class="card-top">
+              <div>
+                <strong>${escapeHtml(item.supplier)}</strong>
+                <div class="small-note" style="margin-top:0.35rem">
+                  ${escapeHtml(item.reference || "No reference")} · ${escapeHtml(formatDate(item.document_date))} · ${escapeHtml(statementKindLabel(item.statement_kind || "statement"))}
+                </div>
+                ${statementKindDescription(item.statement_kind || "statement") ? `<div class="small-note" style="margin-top:0.3rem">${escapeHtml(statementKindDescription(item.statement_kind || "statement"))}</div>` : ""}
+              </div>
+              <div class="chips">
+                ${buildTag(item.settlement_count ? `${item.settlement_count} settlement group(s)` : "No settlement groups", item.settlement_count ? "good" : "warn")}
+                ${buildTag(item.period_start && item.period_end ? `${item.period_start} to ${item.period_end}` : "No clear period", item.period_start && item.period_end ? "good" : "warn")}
+              </div>
+            </div>
+
+            <div class="chips">
+              ${renderStorageTags(item)}
+            </div>
+
+            <div class="subsection">
+              <strong>Imported vs missing refs</strong>
+              <div class="small-note">Imported invoice refs</div>
+              <div class="chips">${renderRefTags(item.imported_invoice_refs || [], "good")}</div>
+              <div class="small-note">Missing invoice refs</div>
+              <div class="chips">${renderRefTags(item.missing_invoice_refs || [], "warn")}</div>
+              <div class="small-note">Imported credit refs</div>
+              <div class="chips">${renderRefTags(item.imported_credit_refs || [], "good")}</div>
+              <div class="small-note">Missing credit refs</div>
+              <div class="chips">${renderRefTags(item.missing_credit_refs || [], "warn")}</div>
+            </div>
+
+            <details>
+              <summary>Statement refs and settlement groups</summary>
+              <div class="small-note">Invoice refs</div>
+              <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.invoice_refs || [], "good")}</div>
+              <div class="small-note">Payment refs</div>
+              <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.payment_refs || [], "good")}</div>
+              <div class="small-note">Credit refs</div>
+              <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.credit_refs || [], "good")}</div>
+              ${(item.settlements || []).map(renderSettlementDetail).join("") || '<div class="small-note">No settlement groups recovered from this statement yet.</div>'}
+            </details>
+
+            <details open>
+              <summary>Likely transactions (${(item.likely_transactions || []).length})</summary>
+              ${renderLikelyTransactions(item)}
+            </details>
+
+            <div class="card-actions">
+              <button class="button-secondary" data-inspect-document-id="${escapeHtml(item.id)}" type="button">Inspect</button>
+              <button class="button-secondary" data-open-document-id="${escapeHtml(item.id)}" type="button">Open PDF</button>
+              <button class="button-secondary" data-reextract-document-id="${escapeHtml(item.id)}" type="button">Re-extract</button>
+            </div>
+          </article>
+        `).join("");
+
+        statementList.querySelectorAll("[data-inspect-document-id]").forEach((button) => {
+          button.addEventListener("click", () => inspectDocument(button.dataset.inspectDocumentId));
+        });
+        statementList.querySelectorAll("[data-open-document-id]").forEach((button) => {
+          button.addEventListener("click", () => openDocument(button.dataset.openDocumentId));
+        });
+        statementList.querySelectorAll("[data-reextract-document-id]").forEach((button) => {
+          button.addEventListener("click", () => reextractStatements([button.dataset.reextractDocumentId]));
+        });
+      }
+
+      async function inspectDocument(documentId) {
+        const detail = await requestJson(`/api/documents/${documentId}`);
+        const statementLines = (detail.statement_analysis?.entries || []).slice(0, 12);
+        inspector.innerHTML = `
+          <strong>${escapeHtml(detail.supplier || "Unknown supplier")}</strong>
+          <div class="small-note" style="margin-top:0.35rem">${escapeHtml(detail.document_type)} · ${escapeHtml(detail.reference || "No reference")} · ${escapeHtml(formatDate(detail.document_date))}</div>
+          <div class="chips" style="margin-top:0.7rem">${detail.storage_state ? buildTag(detail.storage_state.replaceAll("_", " "), detail.storage_state) : ""}</div>
+          ${
+            detail.statement_analysis?.statement_kind
+              ? `<div class="small-note" style="margin-top:0.8rem"><strong>${escapeHtml(statementKindLabel(detail.statement_analysis.statement_kind))}</strong>${statementKindDescription(detail.statement_analysis.statement_kind) ? ` · ${escapeHtml(statementKindDescription(detail.statement_analysis.statement_kind))}` : ""}</div>`
+              : ""
+          }
+          <div class="small-note" style="margin-top:0.8rem">${escapeHtml(detail.statement_analysis?.note || detail.extracted_text?.slice(0, 900) || "No extracted text available.")}</div>
+          ${
+            statementLines.length
+              ? `
+                <details open style="margin-top:0.8rem">
+                  <summary>Parsed statement lines (${statementLines.length})</summary>
+                  <div class="small-note" style="display:grid;gap:0.35rem">
+                    ${statementLines
+                      .map((entry) => `
+                        <div>${escapeHtml(entry.transaction_type || "entry")} · ${escapeHtml(entry.reference || entry.clearing_reference || "—")} · ${escapeHtml(formatDate(entry.event_date))} · ${escapeHtml(formatCurrency(entry.amount))}</div>
+                      `)
+                      .join("")}
+                  </div>
+                </details>
+              `
+              : ""
+          }
+        `;
+      }
+
+      async function openDocument(documentId) {
+        const response = await fetch(`/api/documents/${documentId}/file`, {
+          headers: { Authorization: `Bearer ${state.token}` },
+        });
+        if (!response.ok) {
+          setMessage("error", "Could not open document file.");
+          return;
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank", "noopener");
+      }
+
+      async function reextractStatements(documentIds) {
+        const ids = Array.from(new Set((documentIds || []).filter(Boolean)));
+        if (!ids.length) {
+          setMessage("error", "No statement documents are loaded to re-extract.");
+          return;
+        }
+        try {
+          setMessage("success", `Re-extracting ${ids.length} statement document(s)…`);
+          const payload = await postJson("/api/documents/extract", {
+            document_ids: ids,
+            force: true,
+            limit: Math.max(ids.length, 1),
+          });
+          await loadWorkbench();
+          setMessage("success", `Re-extracted ${payload.extracted || 0} statement document(s).`);
+        } catch (error) {
+          setMessage("error", error.message || "Could not re-extract the selected statements.");
+        }
+      }
+
+      async function loadWorkbench() {
+        if (!supplierInput.value) {
+          setMessage("error", "Choose a supplier first.");
+          return;
+        }
+        const params = new URLSearchParams({
+          supplier: supplierInput.value,
+          month: monthInput.value,
+          window_months: windowSelect.value,
+        });
+        if (pubSelect.value) params.set("pub", pubSelect.value);
+        const months = selectedMonths();
+        if (months.length) params.set("months", months.join(","));
+
+        try {
+          setMessage("", "");
+          statementList.innerHTML = '<div class="empty">Loading statement workbench…</div>';
+          const payload = await requestJson(`/api/dashboard/statement-workbench?${params.toString()}`);
+          state.workbench = payload;
+          renderSummary(payload);
+          renderStatements(payload);
+        } catch (error) {
+          setMessage("error", `Could not load statement workbench: ${error.message}`);
+          statementList.innerHTML = "";
+        }
+      }
+
+      function applyQueryState() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("supplier")) supplierInput.value = params.get("supplier");
+        if (params.get("pub")) pubSelect.value = params.get("pub");
+        if (params.get("month")) monthInput.value = params.get("month");
+      }
+
+      pubSelect.addEventListener("change", async () => {
+        await loadSuppliers();
+      });
+
+      monthInput.addEventListener("change", () => {
+        renderMonthCheckboxes(monthInput.value || defaultMonthValue());
+      });
+
+      document.getElementById("load-button").addEventListener("click", loadWorkbench);
+      reextractButton.addEventListener("click", () => {
+        const ids = (state.workbench?.statements || []).map((item) => item.id);
+        reextractStatements(ids);
+      });
+
+      async function init() {
+        if (!state.token) {
+          authBanner.textContent = "No saved session token found. Sign in on /review first.";
+          setMessage("error", "No saved session token found. Sign in on /review first.");
+          return;
+        }
+        monthInput.value = defaultMonthValue();
+        renderMonthCheckboxes(monthInput.value);
+        await loadSuppliers();
+        applyQueryState();
+        await loadSuppliers();
+        if (supplierInput.value) {
+          await loadWorkbench();
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>

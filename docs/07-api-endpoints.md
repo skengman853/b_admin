@@ -429,6 +429,7 @@ These still exist in the repo:
 #### `GET /api/dashboard/summary`
 #### `GET /api/dashboard/document-inventory`
 #### `GET /api/dashboard/storage-summary`
+#### `GET /api/dashboard/statement-workbench`
 #### `GET /api/dashboard/suppliers`
 #### `POST /api/webhooks/gmail`
 
@@ -447,6 +448,9 @@ Current behavior:
 - `GET /api/dashboard/storage-summary` exposes the month/window storage mix currently in the DB
   - returns counts for `local_only`, `r2_only`, `drive_only`, and `r2_and_drive`
   - accepts the same `month`, `months`, `pub`, and `window_months` filtering shape as the supplier inventory endpoint
+- `GET /api/dashboard/statement-workbench` exposes supplier statement docs as statement-first review material
+  - returns parsed statement refs, imported vs missing refs, settlement groups, and likely bank transactions
+  - accepts `supplier`, `month`, `months`, `pub`, `window_months`, and `limit`
 - `GET /api/dashboard/suppliers` returns the distinct supplier list currently represented in documents
   - supports an optional `pub` filter
 - `POST /api/documents/sync-storage` uploads existing document files into the configured S3-compatible bucket and stores `storage_provider`, `storage_bucket`, and `storage_key` on the document record

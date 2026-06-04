@@ -123,7 +123,7 @@
         padding: 0 1.4rem 1.2rem;
       }
 
-      .meta-card, .doc-card, .inspector {
+      .meta-card, .doc-card, .inspector, .doc-inline-inspector {
         border: 1px solid var(--line);
         border-radius: 18px;
         background: rgba(255,255,255,0.72);
@@ -149,6 +149,14 @@
         padding: 0.95rem 1rem;
         display: grid;
         gap: 0.6rem;
+      }
+
+      .doc-inline-inspector {
+        padding: 0.95rem 1rem;
+        display: grid;
+        gap: 0.7rem;
+        background: rgba(246, 251, 249, 0.88);
+        border-color: rgba(13, 107, 98, 0.16);
       }
 
       .doc-top {
@@ -208,6 +216,7 @@
           </div>
           <div class="actions">
             <a class="link-button button-secondary" href="/review">Back to review</a>
+            <a class="link-button button-secondary" href="/statement-workbench">Statement workbench</a>
           </div>
         </div>
         <div id="auth-banner" class="small-note">Using your saved local session.</div>
@@ -249,6 +258,7 @@
           </div>
           <div class="actions" style="align-self:end">
             <button class="button-primary" id="load-button" type="button">Load documents</button>
+            <button class="button-secondary" id="reextract-button" type="button">Re-extract shown docs</button>
           </div>
         </div>
         <div id="message-banner"></div>
@@ -287,6 +297,7 @@
       const inspector = document.getElementById("inspector");
       const messageBanner = document.getElementById("message-banner");
       const authBanner = document.getElementById("auth-banner");
+      const reextractButton = document.getElementById("reextract-button");
 
       function defaultMonthValue() {
         const now = new Date();
@@ -454,6 +465,16 @@
         return response.json();
       }
 
+      async function postJson(url, body) {
+        return requestJson(url, {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      }
+
       function renderSummary() {
         const inventory = state.inventory;
         if (!inventory) {
@@ -559,6 +580,41 @@
         ].join("");
       }
 
+      function renderDocumentPreview(detail) {
+        const clueLines = String(detail.extracted_text || "")
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .filter((line) => /careys|canal|statement|invoice|account|ref|due|vat|payment|total|balance|amount/i.test(line))
+          .slice(0, 14);
+
+        return `
+          <div class="doc-inline-inspector">
+            <div class="summary-grid" style="padding:0;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+              <div class="meta-card"><label>Supplier</label><div>${escapeHtml(detail.supplier || "—")}</div></div>
+              <div class="meta-card"><label>Type</label><div>${escapeHtml(detail.document_type || "—")}</div></div>
+              <div class="meta-card"><label>Reference</label><div>${escapeHtml(detail.reference || "—")}</div></div>
+              <div class="meta-card"><label>Date</label><div>${escapeHtml(formatDate(detail.document_date))}</div></div>
+              <div class="meta-card"><label>Amount</label><div>${escapeHtml(formatCurrency(detail.amount))}</div></div>
+              <div class="meta-card"><label>Storage</label><div>${escapeHtml(storageStateLabel(detail.storage_provider === "s3" && detail.drive_file_id ? "r2_and_drive" : detail.storage_provider === "s3" ? "r2_only" : detail.drive_file_id ? "drive_only" : "local_only"))}</div></div>
+            </div>
+            <div class="small-note">${escapeHtml(detail.source_email_subject || detail.attachment_name || "No subject metadata.")}</div>
+            <div class="small-note">${escapeHtml(detail.local_path || "")}</div>
+            <div class="summary-tags">
+              ${renderStorageTags(detail)}
+            </div>
+            <div class="actions">
+              <button class="button-secondary" data-open-inline-document-id="${escapeHtml(detail.id)}" type="button">Open PDF</button>
+              <button class="button-secondary" data-close-inline-document-id="${escapeHtml(detail.id)}" type="button">Close inspect</button>
+            </div>
+            <div class="meta-card">
+              <label>Clue lines</label>
+              <div style="white-space:pre-wrap;line-height:1.45">${escapeHtml(clueLines.join("\n") || "No extracted clue lines available.")}</div>
+            </div>
+          </div>
+        `;
+      }
+
       function renderDocuments() {
         const inventory = state.inventory;
         if (!inventory) {
@@ -590,9 +646,15 @@
               ${renderStorageTags(document)}
             </div>
             <div class="actions">
-              <button class="button-secondary" data-inspect-document-id="${escapeHtml(document.id)}" type="button">Inspect</button>
+              <button class="button-secondary" data-inspect-document-id="${escapeHtml(document.id)}" type="button">${state.previewDocument?.id === document.id ? "Hide inspect" : "Inspect"}</button>
               <button class="button-secondary" data-open-document-id="${escapeHtml(document.id)}" type="button">Open PDF</button>
+              <button class="button-secondary" data-reextract-document-id="${escapeHtml(document.id)}" type="button">Re-extract</button>
             </div>
+            ${
+              state.previewDocument?.id === document.id
+                ? renderDocumentPreview(state.previewDocument)
+                : ""
+            }
           </article>
         `).join("");
 
@@ -602,42 +664,63 @@
         docList.querySelectorAll("[data-open-document-id]").forEach((button) => {
           button.addEventListener("click", () => openDocumentFile(button.dataset.openDocumentId));
         });
+        docList.querySelectorAll("[data-reextract-document-id]").forEach((button) => {
+          button.addEventListener("click", () => reextractDocuments([button.dataset.reextractDocumentId]));
+        });
+        docList.querySelectorAll("[data-open-inline-document-id]").forEach((button) => {
+          button.addEventListener("click", () => openDocumentFile(button.dataset.openInlineDocumentId));
+        });
+        docList.querySelectorAll("[data-close-inline-document-id]").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.previewDocument = null;
+            renderDocuments();
+          });
+        });
       }
 
       async function inspectDocument(documentId) {
+        if (state.previewDocument?.id === documentId) {
+          state.previewDocument = null;
+          renderDocuments();
+          return;
+        }
         try {
           const detail = await requestJson(`/api/documents/${documentId}`);
-          const clueLines = String(detail.extracted_text || "")
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .filter((line) => /careys|canal|statement|invoice|account|ref|due|vat|payment/i.test(line))
-            .slice(0, 14);
-
-          inspector.innerHTML = `
-            <div class="summary-grid" style="padding:0;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
-              <div class="meta-card"><label>Supplier</label><div>${escapeHtml(detail.supplier || "—")}</div></div>
-              <div class="meta-card"><label>Type</label><div>${escapeHtml(detail.document_type || "—")}</div></div>
-              <div class="meta-card"><label>Reference</label><div>${escapeHtml(detail.reference || "—")}</div></div>
-              <div class="meta-card"><label>Date</label><div>${escapeHtml(formatDate(detail.document_date))}</div></div>
-              <div class="meta-card"><label>Storage</label><div>${escapeHtml(storageStateLabel(detail.storage_provider === "s3" && detail.drive_file_id ? "r2_and_drive" : detail.storage_provider === "s3" ? "r2_only" : detail.drive_file_id ? "drive_only" : "local_only"))}</div></div>
-            </div>
-            <div class="small-note" style="margin-top:0.9rem">${escapeHtml(detail.source_email_subject || detail.attachment_name || "No subject metadata.")}</div>
-            <div class="small-note" style="margin-top:0.6rem">${escapeHtml(detail.local_path || "")}</div>
-            <div class="summary-tags" style="margin-top:0.8rem">
-              ${renderStorageTags(detail)}
-            </div>
-            <div class="actions" style="margin-top:0.8rem">
-              <button class="button-secondary" data-open-preview-document-button type="button">Open PDF</button>
-            </div>
-            <div class="meta-card" style="margin-top:0.9rem">
-              <label>Clue lines</label>
-              <div style="white-space:pre-wrap;line-height:1.45">${escapeHtml(clueLines.join("\n") || "No extracted clue lines available.")}</div>
-            </div>
-          `;
-          inspector.querySelector("[data-open-preview-document-button]")?.addEventListener("click", () => openDocumentFile(documentId));
+          state.previewDocument = detail;
+          renderDocuments();
+          inspector.innerHTML = '<div class="small-note">Inspect now opens inline on the selected document row.</div>';
         } catch (error) {
           setBanner("error", `Could not inspect document: ${error.message}`);
+        }
+      }
+
+      async function reextractDocuments(documentIds) {
+        const ids = Array.from(new Set((documentIds || []).filter(Boolean)));
+        if (!ids.length) {
+          setBanner("error", "No supplier documents are loaded to re-extract.");
+          return;
+        }
+        const reopenId =
+          ids.length === 1
+            ? ids[0]
+            : state.previewDocument && ids.includes(state.previewDocument.id)
+              ? state.previewDocument.id
+              : null;
+        try {
+          setBanner("success", `Re-extracting ${ids.length} document(s)…`);
+          await postJson("/api/documents/extract", {
+            document_ids: ids,
+            force: true,
+            limit: Math.max(ids.length, 1),
+          });
+          state.previewDocument = null;
+          await loadInventory();
+          if (reopenId) {
+            await inspectDocument(reopenId);
+          }
+          setBanner("success", `Re-extracted ${ids.length} document(s).`);
+        } catch (error) {
+          setBanner("error", `Could not re-extract documents: ${error.message}`);
         }
       }
 
@@ -669,10 +752,14 @@
           params.set("limit", "80");
           const payload = await requestJson(`/api/dashboard/document-inventory?${params.toString()}`);
           state.inventory = payload;
+          if (state.previewDocument && !payload.documents.some((document) => document.id === state.previewDocument.id)) {
+            state.previewDocument = null;
+          }
           renderSummary();
           renderDocuments();
         } catch (error) {
           state.inventory = null;
+          state.previewDocument = null;
           renderSummary();
           renderDocuments();
           setBanner("error", `Could not load supplier documents: ${error.message}`);
@@ -731,6 +818,10 @@
           renderDocuments();
           setBanner("success", "Storage summary refreshed. Pick a supplier to load document detail.");
         }
+      });
+      reextractButton.addEventListener("click", async () => {
+        const ids = (state.inventory?.documents || []).map((document) => document.id);
+        await reextractDocuments(ids);
       });
       pubSelect.addEventListener("change", () => {
         loadSuppliers();

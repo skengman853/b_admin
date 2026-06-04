@@ -9,6 +9,13 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.config import settings
 from app.models import Document
+from app.services.supplier_profiles import (
+    PARSER_FAMILY_DIAGEO_ERP,
+    PARSER_FAMILY_GENERIC_STATEMENT,
+    PARSER_FAMILY_STATEMENT_OF_ACCOUNT,
+    PARSER_FAMILY_TRADE_STATEMENT,
+    detect_statement_parser_family,
+)
 
 
 AI_EXTRACTION_PROVIDER = "openai"
@@ -208,6 +215,25 @@ def _has_configured_openai_key(api_key: str | None) -> bool:
 
 
 def _build_ai_extraction_messages(*, document: Document, extracted_text: str) -> list[dict[str, str]]:
+    statement_family = None
+    statement_family_instructions = ""
+    statement_entry_contract = ""
+    if document.document_type == "statement":
+        statement_family = detect_statement_parser_family(
+            supplier=document.supplier,
+            text=extracted_text,
+        )
+        statement_family_instructions = _statement_family_instructions(statement_family)
+        statement_entry_contract = (
+            "For statements, keep one JSON entry per financial row in the same order it appears in the document. "
+            "Do not merge multiple rows into one entry and do not reuse statement totals as row amounts. "
+            "Use `reference` for the row's main invoice/payment/credit reference. "
+            "Use `clearing_reference` only for a second linked document number or clearing document if it is distinct. "
+            "Use `transaction_type` values that preserve the source wording when possible, such as `INVOIC`, `PAYMNT`, `CRNOTE`, `Invoice`, `Receipt`, or `Cr.Note`. "
+            "If a row amount is not visible for a specific row, leave `amount` null instead of guessing. "
+            "Set `raw_text` to a short row-level excerpt, not the whole page."
+        )
+
     return [
         {
             "role": "system",
@@ -215,6 +241,7 @@ def _build_ai_extraction_messages(*, document: Document, extracted_text: str) ->
                 "You extract structured bookkeeping data from supplier PDFs. "
                 "Return one strict JSON object only. Prefer gross totals for amount. "
                 "For statements, recover account details, period, totals, and row entries. "
+                "When the document is a statement, prioritize row-level recovery over generic summarization. "
                 "Do not invent values. Leave unknown fields null."
             ),
         },
@@ -225,6 +252,20 @@ def _build_ai_extraction_messages(*, document: Document, extracted_text: str) ->
                 f"Supplier hint: {document.supplier}\n"
                 f"Attachment name: {document.attachment_name}\n"
                 f"Email subject: {document.source_email_subject or ''}\n\n"
+                + (
+                    f"Statement parser family hint: {statement_family or 'unknown'}\n"
+                    f"{statement_entry_contract}\n"
+                    f"{statement_family_instructions}\n\n"
+                    if document.document_type == "statement"
+                    else ""
+                )
+                + (
+                    "If the document is an operational statement that explicitly says it is not financial, "
+                    "set `is_financial` to false and return no financial entries.\n\n"
+                    if document.document_type == "statement"
+                    else ""
+                )
+                +
                 "Return JSON with keys:\n"
                 "{"
                 '"supplier": string|null, '
@@ -254,6 +295,32 @@ def _build_ai_extraction_messages(*, document: Document, extracted_text: str) ->
             ),
         },
     ]
+
+
+def _statement_family_instructions(statement_family: str | None) -> str:
+    if statement_family == PARSER_FAMILY_DIAGEO_ERP:
+        return (
+            "This is an ERP-style supplier statement. Flattened OCR may list columns in separate blocks. "
+            "Reconstruct rows by aligning document references, transaction types, event dates, due dates, clearing docs, and row amounts in order. "
+            "Prefer row-level invoice/payment amounts over closing balance or settlement discount totals."
+        )
+    if statement_family == PARSER_FAMILY_STATEMENT_OF_ACCOUNT:
+        return (
+            "This is a statement of account. Each financial row usually has a reference/document number, a document type, a document date, a due date, and an original or adjusted amount. "
+            "Capture invoice, payment, and credit rows separately. If both a reference number and a document number appear, use the main row identifier as `reference` and the other as `clearing_reference` when it is meaningfully distinct."
+        )
+    if statement_family == PARSER_FAMILY_TRADE_STATEMENT:
+        return (
+            "This is a trade account statement. Preserve invoice, receipt, and credit-note rows separately, including direct-debit receipt references like `DD-29-04`. "
+            "Use the per-row charge or receipt amount, not the running balance, as the row `amount`."
+        )
+    if statement_family == PARSER_FAMILY_GENERIC_STATEMENT:
+        return (
+            "This is a generic supplier statement. Recover statement period, balances, and any row-level invoice/payment/credit references that can be tied to amounts and dates."
+        )
+    return (
+        "Treat this as a supplier statement if it contains account-period activity, balances, or invoice/payment rows."
+    )
 
 
 async def _run_ai_extraction_request(*, model: str, messages: list[dict[str, str]]) -> str | None:

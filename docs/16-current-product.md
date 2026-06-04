@@ -200,6 +200,17 @@ That page is meant to answer:
 - which months are covered?
 - are the files local only, in R2, in Drive, or in both?
 
+The backend now also serves a statement-first supplier review page at:
+
+- `/statement-workbench`
+
+That page is meant to answer:
+
+- what does this supplier statement actually contain?
+- which invoice / credit refs are already imported?
+- which refs are still missing?
+- which bank transactions does this statement likely explain?
+
 ## What Works Well Right Now
 
 - Gmail-to-document ingestion works

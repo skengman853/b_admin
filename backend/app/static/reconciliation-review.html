@@ -757,6 +757,48 @@
         gap: 0.75rem;
       }
 
+      .primary-evidence-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.8rem;
+      }
+
+      .primary-evidence-card {
+        padding: 0.95rem;
+        border-radius: 18px;
+        border: 1px solid rgba(42, 51, 61, 0.08);
+        background: rgba(255, 255, 255, 0.72);
+        display: grid;
+        gap: 0.55rem;
+      }
+
+      .primary-evidence-card[data-tone="ready"] {
+        border-color: rgba(13, 107, 98, 0.16);
+        background: rgba(241, 253, 250, 0.78);
+      }
+
+      .primary-evidence-card[data-tone="partial"] {
+        border-color: rgba(40, 83, 122, 0.16);
+        background: rgba(244, 248, 253, 0.82);
+      }
+
+      .primary-evidence-card[data-tone="missing"] {
+        border-color: rgba(154, 92, 22, 0.16);
+        background: rgba(255, 248, 238, 0.8);
+      }
+
+      .primary-evidence-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.6rem;
+        align-items: flex-start;
+      }
+
+      .primary-evidence-title strong {
+        display: block;
+        font-size: 1rem;
+      }
+
       .flow-stage-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -840,7 +882,8 @@
         }
 
         .register-inline-detail .detail-grid,
-        .register-inline-detail .flow-stage-grid {
+        .register-inline-detail .flow-stage-grid,
+        .register-inline-detail .primary-evidence-grid {
           grid-template-columns: 1fr;
         }
       }
@@ -857,7 +900,8 @@
         }
 
         .stats-grid,
-        .detail-grid {
+        .detail-grid,
+        .primary-evidence-grid {
           grid-template-columns: 1fr;
         }
 
@@ -922,6 +966,7 @@
             <div class="small-note" id="user-label">Signed in</div>
             <button class="button-secondary" id="refresh-button" type="button">Refresh Queue</button>
             <a class="button-link button-secondary" href="/supplier-documents">Supplier Documents</a>
+            <a class="button-link button-secondary" href="/statement-workbench">Statement Workbench</a>
             <button class="button-ghost" id="logout-button" type="button">Log Out</button>
           </div>
         </div>
@@ -1355,14 +1400,44 @@
         return tags.join("");
       }
 
-      function statementKindLabel(kind) {
+      function statementKindMeta(kind) {
         return {
-          supplier_statement: "Supplier Statement",
-          trade_statement: "Account Statement",
-          sub_account_statement: "Sub-Account Statement",
-          keg_flow_statement: "Keg Flow Statement",
-          statement: "Statement",
-        }[kind] || kind || "Statement";
+          diageo_erp_statement: {
+            label: "Month-End Account Statement",
+            description: "Primary month-end settlement statement with invoice, payment, and clearing rows.",
+          },
+          supplier_statement: {
+            label: "Account Settlement Statement",
+            description: "Primary supplier account statement used to settle invoices and payments.",
+          },
+          trade_statement: {
+            label: "Trade Account Statement",
+            description: "Account statement showing invoices, receipts, and credits across the trade account.",
+          },
+          sub_account_statement: {
+            label: "Sub-Account Discount Statement",
+            description: "Secondary discount / sub-account statement. Useful context, but not the main invoice settlement statement.",
+          },
+          keg_flow_statement: {
+            label: "Operational Keg Flow Statement",
+            description: "Operational support only, not financial settlement evidence.",
+          },
+          statement: {
+            label: "Statement",
+            description: "Supplier statement context.",
+          },
+        }[kind] || {
+          label: kind || "Statement",
+          description: "",
+        };
+      }
+
+      function statementKindLabel(kind) {
+        return statementKindMeta(kind).label;
+      }
+
+      function statementKindDescription(kind) {
+        return statementKindMeta(kind).description;
       }
 
       function ledgerEntryLabel(kind) {
@@ -2078,6 +2153,11 @@
                   )}
                 </div>
                 ${
+                  ledgerAnalysis.statement_kind && statementKindDescription(ledgerAnalysis.statement_kind)
+                    ? `<div class="small-note">${escapeHtml(statementKindDescription(ledgerAnalysis.statement_kind))}</div>`
+                    : ""
+                }
+                ${
                   ledgerAnalysis.note
                     ? `<div class="small-note">${escapeHtml(ledgerAnalysis.note)}</div>`
                     : ""
@@ -2092,6 +2172,11 @@
               <label>Statement Analysis</label>
               <div style="display:grid;gap:0.45rem">
                 <div>${escapeHtml(statementKindLabel(statementAnalysis.statement_kind))} · ${escapeHtml(statementAnalysis.is_financial ? "Financial" : "Operational only")}</div>
+                ${
+                  statementKindDescription(statementAnalysis.statement_kind)
+                    ? `<div class="small-note">${escapeHtml(statementKindDescription(statementAnalysis.statement_kind))}</div>`
+                    : ""
+                }
                 <div class="small-note">
                   ${escapeHtml(
                     [
@@ -2355,6 +2440,7 @@
 
       function renderSettlementCard(documentDetail, settlement, payload) {
         const ledger = documentDetail.ledger_analysis;
+        const statementDescription = statementKindDescription(ledger.statement_kind || "statement");
         const componentRefs = settlement.component_entries.map((entry) => entry.reference).filter(Boolean);
         return `
           <article class="match-card">
@@ -2370,6 +2456,7 @@
               </div>
               ${buildTag("Statement Settlement", "supporting_docs_only")}
             </div>
+            ${statementDescription ? `<div class="small-note" style="margin-top:0.45rem">${escapeHtml(statementDescription)}</div>` : ""}
             <div class="match-reason">
               Bank payment lines up with statement payment ref <strong>${escapeHtml(settlement.payment_entry.reference || "—")}</strong>
               and clears ${escapeHtml(String(settlement.component_entries.length))} component entr${settlement.component_entries.length === 1 ? "y" : "ies"}.
@@ -2402,6 +2489,7 @@
 
       function renderSettlementLineCard(documentDetail, entry, payload) {
         const ledger = documentDetail.ledger_analysis;
+        const statementDescription = statementKindDescription(ledger.statement_kind || "statement");
         const relatedRefs = [entry.reference, entry.related_reference].filter(Boolean);
         return `
           <article class="match-card">
@@ -2417,6 +2505,7 @@
               </div>
               ${buildTag("Matching Statement Line", "review_supporting_docs")}
             </div>
+            ${statementDescription ? `<div class="small-note" style="margin-top:0.45rem">${escapeHtml(statementDescription)}</div>` : ""}
             <div class="match-reason">
               The statement contains a ${escapeHtml(ledgerEntryLabel(entry.entry_kind).toLowerCase())} line at the bank amount.
               Use this when the payment is explained by the statement, even if the invoice PDF is not linked yet.
@@ -2467,6 +2556,11 @@
           document.payment_reference_count ? `${document.payment_reference_count} payment ref(s)` : null,
           document.settlement_count ? `${document.settlement_count} settlement group(s)` : null,
         ].filter(Boolean);
+        const statementDescription = document.statement_kind ? statementKindDescription(document.statement_kind) : "";
+        const documentTone =
+          document.statement_kind === "sub_account_statement" || document.statement_kind === "keg_flow_statement"
+            ? flowStageTone("partial")
+            : flowStageTone(document.is_financial === false ? "partial" : "ready");
 
         return `
           <article class="flow-document">
@@ -2480,9 +2574,10 @@
               </div>
               ${buildTag(
                 document.statement_kind ? statementKindLabel(document.statement_kind) : (document.role || "document").replaceAll("_", " "),
-                flowStageTone(document.is_financial === false ? "partial" : "ready")
+                documentTone
               )}
             </div>
+            ${statementDescription ? `<div class="small-note">${escapeHtml(statementDescription)}</div>` : ""}
             ${renderCompactReason(document.reason || "", "Why this document", 1)}
             ${statementBits.length ? `<div class="small-note">${escapeHtml(statementBits.join(" · "))}</div>` : ""}
             <div class="queue-meta" style="margin-top:0.55rem">
@@ -2505,37 +2600,320 @@
         if (reason.includes("gross matches bank amount")) score += 70;
         if (reason.includes("referenced by a supplier statement")) score += 20;
         if (reason.includes("statement reference")) score += 15;
+        if (document?.statement_kind === "diageo_erp_statement") score += 22;
+        if (document?.statement_kind === "supplier_statement") score += 18;
+        if (document?.statement_kind === "trade_statement") score += 16;
+        if (document?.settlement_count) score += Number(document.settlement_count) * 12;
+        if (document?.invoice_reference_count) score += Number(document.invoice_reference_count) * 2;
+        if (document?.payment_reference_count) score += Number(document.payment_reference_count) * 1.5;
         if (document?.reference) score += 3;
         if (document?.document_type === "invoice") score += 2;
         return score;
       }
 
+      function flowStatementGroupKey(document) {
+        if (!document || document.document_type !== "statement") {
+          return `doc:${document?.document_id || ""}`;
+        }
+        const amount = decimalValue(document.amount);
+        const roundedAmount = amount === null ? "" : amount.toFixed(2);
+        return [
+          String(document.supplier || "").trim().toLowerCase(),
+          String(document.statement_kind || "").trim().toLowerCase(),
+          String(document.document_date || "").trim(),
+          roundedAmount,
+        ].join("|");
+      }
+
+      function groupFlowDocumentsForDisplay(documents, stageTitle = "") {
+        const items = [...(documents || [])];
+        if (!/statement/i.test(stageTitle || "")) {
+          return items.map((document) => ({ primary: document, related: [] }));
+        }
+
+        const buckets = new Map();
+        items.forEach((document) => {
+          const key = flowStatementGroupKey(document);
+          const bucket = buckets.get(key) || [];
+          bucket.push(document);
+          buckets.set(key, bucket);
+        });
+
+        return Array.from(buckets.values())
+          .map((bucket) => {
+            const ordered = [...bucket].sort((left, right) => flowDocumentPriority(right) - flowDocumentPriority(left));
+            return {
+              primary: ordered[0],
+              related: ordered.slice(1),
+            };
+          })
+          .sort((left, right) => flowDocumentPriority(right.primary) - flowDocumentPriority(left.primary));
+      }
+
       function renderFlowDocumentList(documents, visibleCount = 1, summaryLabel = "See alternatives", stageTitle = "") {
-        const items = [...(documents || [])].sort((left, right) => flowDocumentPriority(right) - flowDocumentPriority(left));
-        if (!items.length) {
+        const groups = groupFlowDocumentsForDisplay(documents, stageTitle);
+        if (!groups.length) {
           return "";
         }
         const invoiceStage = /invoice|credit/i.test(stageTitle || "");
+        const statementStage = /statement/i.test(stageTitle || "");
+        const items = groups.map((group) => group.primary);
         const hasDirectCandidate = invoiceStage && items.some((document) => flowDocumentPriority(document) >= 80);
         const effectiveVisibleCount = hasDirectCandidate ? 1 : visibleCount;
         const effectiveSummaryLabel = hasDirectCandidate ? "See other supplier-period docs" : summaryLabel;
-        const primary = items.slice(0, effectiveVisibleCount);
-        const related = items.slice(effectiveVisibleCount);
+        const primaryGroups = groups.slice(0, effectiveVisibleCount);
+        const trailingGroups = groups.slice(effectiveVisibleCount);
         return `
           <div class="flow-document-list">
-            ${primary.map((document) => renderFlowDocument(document)).join("")}
+            ${primaryGroups
+              .map((group) => `
+                ${renderFlowDocument(group.primary)}
+                ${
+                  group.related.length
+                    ? `
+                      <details class="inline-more">
+                        <summary>${escapeHtml(`See duplicate statement copy${group.related.length === 1 ? "" : "ies"} (${group.related.length})`)}</summary>
+                        <div class="related-match-list">
+                          ${group.related.map((document) => renderFlowDocument(document)).join("")}
+                        </div>
+                      </details>
+                    `
+                    : ""
+                }
+              `)
+              .join("")}
             ${
-              related.length
+              trailingGroups.length
                 ? `
                   <details class="inline-more">
-                    <summary>${escapeHtml(`${effectiveSummaryLabel} (${related.length})`)}</summary>
+                    <summary>${escapeHtml(`${effectiveSummaryLabel} (${trailingGroups.length})`)}</summary>
                     <div class="related-match-list">
-                      ${related.map((document) => renderFlowDocument(document)).join("")}
+                      ${trailingGroups
+                        .map((group) => `
+                          ${renderFlowDocument(group.primary)}
+                          ${
+                            statementStage && group.related.length
+                              ? `
+                                <details class="inline-more">
+                                  <summary>${escapeHtml(`See duplicate statement copy${group.related.length === 1 ? "" : "ies"} (${group.related.length})`)}</summary>
+                                  <div class="related-match-list">
+                                    ${group.related.map((document) => renderFlowDocument(document)).join("")}
+                                  </div>
+                                </details>
+                              `
+                              : ""
+                          }
+                        `)
+                        .join("")}
                     </div>
                   </details>
                 `
                 : ""
             }
+          </div>
+        `;
+      }
+
+      function flowStageByKey(flow, key) {
+        return (flow?.stages || []).find((stage) => stage.key === key) || null;
+      }
+
+      function primaryStatementDocument(flow) {
+        const statementStage = flowStageByKey(flow, "statement");
+        const settlement = flow?.settlements?.[0];
+        if (settlement && statementStage?.documents?.length) {
+          const matched = statementStage.documents.find((document) => document.document_id === settlement.source_document_id);
+          if (matched) {
+            return matched;
+          }
+        }
+        const documents = [...(statementStage?.documents || [])];
+        if (!documents.length) {
+          return null;
+        }
+        function statementPriority(document) {
+          let score = Number(document.score || 0);
+          score += Number(document.settlement_count || 0) * 50;
+          score += Number(document.invoice_reference_count || 0) * 5;
+          score += Number(document.payment_reference_count || 0) * 3;
+          if (document.statement_kind === "diageo_erp_statement") score += 140;
+          if (document.statement_kind === "supplier_statement") score += 120;
+          if (document.statement_kind === "trade_statement") score += 110;
+          if (document.statement_kind === "sub_account_statement") score += 15;
+          if (document.statement_kind === "keg_flow_statement") score -= 20;
+          return score;
+        }
+        documents.sort((left, right) => statementPriority(right) - statementPriority(left));
+        return documents[0];
+      }
+
+      function primaryComponentDocument(flow) {
+        const componentStage = flowStageByKey(flow, "components");
+        const documents = [...(componentStage?.documents || [])];
+        if (!documents.length) {
+          return null;
+        }
+        documents.sort((left, right) => flowDocumentPriority(right) - flowDocumentPriority(left));
+        return documents[0];
+      }
+
+      function flowMissingItems(flow) {
+        const statementStage = flowStageByKey(flow, "statement");
+        const componentStage = flowStageByKey(flow, "components");
+        const items = [];
+        [statementStage, componentStage].forEach((stage) => {
+          (stage?.items || []).forEach((item) => {
+            if (
+              item.toLowerCase().includes("missing") ||
+              item.toLowerCase().includes("incomplete") ||
+              item.toLowerCase().includes("still missing")
+            ) {
+              items.push(item);
+            }
+          });
+        });
+        return [...new Set(items)];
+      }
+
+      function renderPrimaryEvidence(flow) {
+        const statementStage = flowStageByKey(flow, "statement");
+        const componentStage = flowStageByKey(flow, "components");
+        const primaryStatement = primaryStatementDocument(flow);
+        const settlement = flow?.settlements?.[0] || null;
+        const primaryComponent = primaryComponentDocument(flow);
+        const missingItems = flowMissingItems(flow);
+        const statementTone = statementStage?.status || "missing";
+        const componentTone = componentStage?.status || "missing";
+        const missingTone = missingItems.length ? "partial" : "ready";
+
+        const statementCard = primaryStatement
+          ? `
+            <article class="primary-evidence-card" data-tone="${escapeHtml(statementTone)}">
+              <div class="primary-evidence-title">
+                <div>
+                  <label>Main statement</label>
+                  <strong>${escapeHtml(statementKindLabel(primaryStatement.statement_kind || "statement"))}</strong>
+                </div>
+                ${buildTag(statementStage?.status || "partial", flowStageTone(statementStage?.status || "partial"))}
+              </div>
+              <div class="small-note">${escapeHtml(
+                [
+                  primaryStatement.supplier || "Unknown supplier",
+                  primaryStatement.reference ? `Ref ${primaryStatement.reference}` : null,
+                  primaryStatement.document_date ? formatDate(primaryStatement.document_date) : null,
+                  primaryStatement.amount !== null && primaryStatement.amount !== undefined ? formatCurrency(primaryStatement.amount) : null,
+                ].filter(Boolean).join(" · ")
+              )}</div>
+              ${statementKindDescription(primaryStatement.statement_kind || "statement") ? `<div class="small-note">${escapeHtml(statementKindDescription(primaryStatement.statement_kind || "statement"))}</div>` : ""}
+              <div class="small-note">${escapeHtml(
+                [
+                  primaryStatement.invoice_reference_count ? `${primaryStatement.invoice_reference_count} invoice ref(s)` : null,
+                  primaryStatement.payment_reference_count ? `${primaryStatement.payment_reference_count} payment ref(s)` : null,
+                  primaryStatement.settlement_count ? `${primaryStatement.settlement_count} settlement group(s)` : null,
+                ].filter(Boolean).join(" · ") || "Statement context only"
+              )}</div>
+            </article>
+          `
+          : `
+            <article class="primary-evidence-card" data-tone="missing">
+              <div class="primary-evidence-title">
+                <div>
+                  <label>Main statement</label>
+                  <strong>No primary statement yet</strong>
+                </div>
+                ${buildTag("missing", flowStageTone("missing"))}
+              </div>
+              <div class="small-note">No statement has been tied strongly enough to act as the main settlement evidence for this row.</div>
+            </article>
+          `;
+
+        const coverageCard = settlement
+          ? `
+            <article class="primary-evidence-card" data-tone="ready">
+              <div class="primary-evidence-title">
+                <div>
+                  <label>Invoice / credit coverage</label>
+                  <strong>Statement settlement recovered</strong>
+                </div>
+                ${buildTag("ready", flowStageTone("ready"))}
+              </div>
+              <div class="small-note">${escapeHtml(
+                `Payment ref ${settlement.payment_entry?.reference || "—"} clears ${(settlement.component_entries || []).length} component(s).`
+              )}</div>
+              <div class="small-note">${escapeHtml(
+                [
+                  settlement.payment_entry?.event_date ? `Payment date ${formatDate(settlement.payment_entry.event_date)}` : null,
+                  settlement.net_amount !== null && settlement.net_amount !== undefined ? `Net ${formatCurrency(settlement.net_amount)}` : null,
+                ].filter(Boolean).join(" · ")
+              )}</div>
+              <div class="small-note">${escapeHtml(
+                (settlement.component_entries || [])
+                  .slice(0, 4)
+                  .map((entry) => `${ledgerEntryLabel(entry.entry_kind)} ${entry.reference || entry.related_reference || "—"} ${formatCurrency(entry.amount)}`)
+                  .join(" · ") || "Settlement components recovered"
+              )}</div>
+            </article>
+          `
+          : primaryComponent
+            ? `
+              <article class="primary-evidence-card" data-tone="${escapeHtml(componentTone)}">
+                <div class="primary-evidence-title">
+                  <div>
+                    <label>Invoice / credit coverage</label>
+                    <strong>${escapeHtml(primaryComponent.document_type === "credit_note" ? "Primary credit context" : "Primary invoice context")}</strong>
+                  </div>
+                  ${buildTag(componentStage?.status || "partial", flowStageTone(componentStage?.status || "partial"))}
+                </div>
+                <div class="small-note">${escapeHtml(
+                  [
+                    primaryComponent.supplier || "Unknown supplier",
+                    primaryComponent.reference ? `Ref ${primaryComponent.reference}` : null,
+                    primaryComponent.document_date ? formatDate(primaryComponent.document_date) : null,
+                    primaryComponent.amount !== null && primaryComponent.amount !== undefined ? formatCurrency(primaryComponent.amount) : null,
+                  ].filter(Boolean).join(" · ")
+                )}</div>
+                ${renderCompactReason(primaryComponent.reason || componentStage?.summary || "", "More coverage detail", 1)}
+              </article>
+            `
+            : `
+              <article class="primary-evidence-card" data-tone="missing">
+                <div class="primary-evidence-title">
+                  <div>
+                    <label>Invoice / credit coverage</label>
+                    <strong>No imported components yet</strong>
+                  </div>
+                  ${buildTag("missing", flowStageTone("missing"))}
+                </div>
+                <div class="small-note">${escapeHtml(componentStage?.summary || "No invoice or credit-note documents have been tied to this row yet.")}</div>
+              </article>
+            `;
+
+        const missingCard = `
+          <article class="primary-evidence-card" data-tone="${escapeHtml(missingTone)}">
+            <div class="primary-evidence-title">
+              <div>
+                <label>Missing pieces</label>
+                <strong>${escapeHtml(missingItems.length ? "Still needed before this is fully explained" : "No obvious missing pieces called out")}</strong>
+              </div>
+              ${buildTag(missingItems.length ? "partial" : "ready", flowStageTone(missingItems.length ? "partial" : "ready"))}
+            </div>
+            ${
+              missingItems.length
+                ? `
+                  <ul class="flow-list">
+                    ${missingItems.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                  </ul>
+                `
+                : `<div class="small-note">${escapeHtml(flow.next_step || "Use the evidence above to resolve the row.")}</div>`
+            }
+          </article>
+        `;
+
+        return `
+          <div class="primary-evidence-grid">
+            ${statementCard}
+            ${coverageCard}
+            ${missingCard}
           </div>
         `;
       }
@@ -2595,58 +2973,64 @@
               <label>Next step</label>
               <div>${escapeHtml(flow.next_step || "Review the evidence chain and resolve the row.")}</div>
             </div>
-            ${
-              flow.settlements && flow.settlements.length
-                ? `
-                  <div>
-                    <div class="small-note" style="margin-bottom:0.55rem">Recovered settlement groups</div>
-                    <div class="flow-settlement-list">
-                      ${flow.settlements.map((settlement) => renderFlowSettlement(settlement)).join("")}
-                    </div>
-                  </div>
-                `
-                : ""
-            }
-            <div class="flow-stage-grid">
-              ${(flow.stages || []).map((stage) => `
-                <article class="flow-stage" data-status="${escapeHtml(stage.status || "partial")}">
-                  <div class="match-top">
-                    <strong>${escapeHtml(stage.title || "Stage")}</strong>
-                    ${buildTag(stage.status || "partial", flowStageTone(stage.status || "partial"))}
-                  </div>
-                  ${renderCompactReason(stage.summary || "No summary available.", "More stage detail", 1)}
-                  ${
-                    stage.items && stage.items.length
-                      ? `
-                        ${
-                          stage.items.length > 4
-                            ? `
-                              <ul class="flow-list">${stage.items.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-                              <details class="inline-more">
-                                <summary>${escapeHtml(`${stage.items.length - 4} more detail item${stage.items.length - 4 === 1 ? "" : "s"}`)}</summary>
-                                <div class="inline-more-body">
-                                  ${escapeHtml(stage.items.slice(4).join("\n"))}
-                                </div>
-                              </details>
-                            `
-                            : `<ul class="flow-list">${stage.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
-                        }
-                      `
-                      : ""
-                  }
-                  ${
-                    stage.documents && stage.documents.length
-                      ? renderFlowDocumentList(
-                          stage.documents,
-                          /statement/i.test(stage.title || "") ? 1 : /invoice|credit/i.test(stage.title || "") ? 3 : 2,
-                          /statement/i.test(stage.title || "") ? "See other statement options" : "See other related docs",
-                          stage.title || ""
-                        )
-                      : ""
-                  }
-                </article>
-              `).join("")}
-            </div>
+            ${renderPrimaryEvidence(flow)}
+            <details class="detail-expander">
+              <summary>Open full evidence flow (${escapeHtml(String((flow.stages || []).length))} stages)</summary>
+              <div class="expander-body">
+                ${
+                  flow.settlements && flow.settlements.length
+                    ? `
+                      <div>
+                        <div class="small-note" style="margin-bottom:0.55rem">Recovered settlement groups</div>
+                        <div class="flow-settlement-list">
+                          ${flow.settlements.map((settlement) => renderFlowSettlement(settlement)).join("")}
+                        </div>
+                      </div>
+                    `
+                    : ""
+                }
+                <div class="flow-stage-grid" style="margin-top:${flow.settlements && flow.settlements.length ? "0.85rem" : "0"}">
+                  ${(flow.stages || []).map((stage) => `
+                    <article class="flow-stage" data-status="${escapeHtml(stage.status || "partial")}">
+                      <div class="match-top">
+                        <strong>${escapeHtml(stage.title || "Stage")}</strong>
+                        ${buildTag(stage.status || "partial", flowStageTone(stage.status || "partial"))}
+                      </div>
+                      ${renderCompactReason(stage.summary || "No summary available.", "More stage detail", 1)}
+                      ${
+                        stage.items && stage.items.length
+                          ? `
+                            ${
+                              stage.items.length > 4
+                                ? `
+                                  <ul class="flow-list">${stage.items.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+                                  <details class="inline-more">
+                                    <summary>${escapeHtml(`${stage.items.length - 4} more detail item${stage.items.length - 4 === 1 ? "" : "s"}`)}</summary>
+                                    <div class="inline-more-body">
+                                      ${escapeHtml(stage.items.slice(4).join("\n"))}
+                                    </div>
+                                  </details>
+                                `
+                                : `<ul class="flow-list">${stage.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+                            }
+                          `
+                          : ""
+                      }
+                      ${
+                        stage.documents && stage.documents.length
+                          ? renderFlowDocumentList(
+                              stage.documents,
+                              /statement/i.test(stage.title || "") ? 1 : /invoice|credit/i.test(stage.title || "") ? 3 : 2,
+                              /statement/i.test(stage.title || "") ? "See other statement options" : "See other related docs",
+                              stage.title || ""
+                            )
+                          : ""
+                      }
+                    </article>
+                  `).join("")}
+                </div>
+              </div>
+            </details>
           </div>
         `;
       }

@@ -327,6 +327,32 @@ Total €
 18.00
 """
 
+CONNACHT_INVOICE_TEXT = """JJ Mahon and Sons (Connacht) Ltd
+T/A CONNACHT BOTTLERS Grange Carrick-On-Shannon Co. Leitrim,
+Phone (071) 967 1793 email info@connachtbottlers.ie
+Vat Reg IE4110224AH
+INVOICE
+Billing address: Delivery address: 11
+CAREYS BAR LTD CAREYS
+T/A CAREYS 38 MARYDYKE STREET
+38 MARYDYKE STREET
+ATHLONE ATHLONE
+Co. Westmeath Co. Westmeath N37 AP95
+INVOICE NO. INVOICE DATE A/C NO. YOUR REF ORDER NO. OPERATOR
+34036 09/04/2026 CAREY01 DEL BY REP 37374 AIDAN
+Code Case Single Description Pack Price VAT Value
+10518 3 LA SUBIDA SAUV BLANC 187.5ML 1/4 BT 24 46.00 23.00% 138.00
+Vat Breakdown Total Goods: 138.00 €
+Rate Goods Vat
+Total VAT: 31.74 €
+23.00% 138.00 31.74
+0.00% 0.00 0.00 Deposit Fee: 0.00 €
+0.00% 0.00 0.00
+Invoice Total 169.74 €
+0.00% 0.00 0.00
+(#) Denotes Deposit Re-Turn Item
+"""
+
 
 class ExtractAmountTests(unittest.TestCase):
     def test_prefers_grand_total_over_order_total_header(self) -> None:
@@ -387,6 +413,19 @@ class ExtractAmountTests(unittest.TestCase):
 
     def test_extracts_total_amount_from_archive_invoice_and_ignores_export_row(self) -> None:
         self.assertEqual(extract_amount(BULMERS_INVOICE_TEXT, "invoice"), "18.00")
+
+    def test_extracts_connacht_invoice_reference_from_multiline_header(self) -> None:
+        self.assertEqual(
+            extract_reference(
+                CONNACHT_INVOICE_TEXT,
+                "JJ Mahon and Sons/Invoices/Careys Bar/JJ Mahon - INV-227 - No 34036 - Date - 09-04-2026.pdf",
+                "JJ Mahon - INV-227 - No 34036 - Date - 09-04-2026.pdf",
+            ),
+            "34036",
+        )
+
+    def test_extracts_connacht_invoice_amount_from_invoice_total_line(self) -> None:
+        self.assertEqual(extract_amount(CONNACHT_INVOICE_TEXT, "invoice"), "169.74")
 
     def test_prefers_receipt_reference_for_receipts(self) -> None:
         self.assertEqual(
