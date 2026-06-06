@@ -397,6 +397,59 @@ class DocumentLedgerTest(unittest.TestCase):
                 ("4188699", "2026-04-30", "851.87"),
             ],
         )
+        self.assertTrue(
+            all(entry.entry_kind == LEDGER_ENTRY_INVOICE for entry in ledger.entries[:6])
+        )
+
+    def test_ai_statement_short_codes_become_invoice_and_payment_entries(self) -> None:
+        statement = Document(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            gmail_message_id="bulmers-statement-ai-doc",
+            attachment_index=0,
+            derivation_index=0,
+            attachment_name="bulmers_statement_ai.pdf",
+            supplier="Bulmers",
+            document_type="statement",
+            document_date=date(2026, 4, 30),
+            amount=Decimal("0.00"),
+            local_path="Documents/Bulmers/statement_ai.pdf",
+            extracted_text="weak ocr text",
+            ai_extraction_payload={
+                "statement_kind": "supplier_statement",
+                "is_financial": True,
+                "entries": [
+                    {
+                        "event_date": "2026-03-25",
+                        "reference": "4100706",
+                        "transaction_type": "INV",
+                        "due_date": "2026-04-01",
+                        "amount": "876.10",
+                        "raw_text": "25/03/26 INV 4100706 876.10",
+                    },
+                    {
+                        "event_date": "2026-04-01",
+                        "reference": "DD-01-04",
+                        "transaction_type": "PMT",
+                        "due_date": "2026-04-01",
+                        "amount": "-876.10",
+                        "raw_text": "01/04/26 PMT DD-01-04 876.10",
+                    },
+                ],
+            },
+        )
+
+        ledger = build_document_ledger(statement)
+
+        self.assertIsNotNone(ledger)
+        assert ledger is not None
+        self.assertEqual(
+            [(entry.entry_kind, entry.reference, str(entry.amount)) for entry in ledger.entries],
+            [
+                (LEDGER_ENTRY_INVOICE, "4100706", "876.10"),
+                (LEDGER_ENTRY_PAYMENT, "DD-01-04", "876.10"),
+            ],
+        )
 
 
 if __name__ == "__main__":

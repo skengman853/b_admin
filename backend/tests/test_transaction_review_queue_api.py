@@ -112,6 +112,24 @@ else:
                         user_id=self.user.id,
                         source_file="vatbook/sample.xlsx",
                         source_sheet="VAT BOOK MAR - APR",
+                        row_number=9,
+                        posted_account="ACC-1",
+                        pub="Careys",
+                        transaction_date=date(2026, 3, 29),
+                        description1="March Unknown Supplier",
+                        description2="bank ref",
+                        debit_amount=Decimal("88.00"),
+                        transaction_type="Debit",
+                        category="Maintenance",
+                        annotation_types=["invoice"],
+                        annotation_notes=["March note"],
+                        has_linked_annotation=False,
+                        raw_row_json={},
+                    ),
+                    Transaction(
+                        user_id=self.user.id,
+                        source_file="vatbook/sample.xlsx",
+                        source_sheet="VAT BOOK MAR - APR",
                         row_number=10,
                         posted_account="ACC-1",
                         pub="Canal",
@@ -279,16 +297,28 @@ else:
                     user=self.user,
                     db=session,
                 )
+                vat_period_queue = await get_transaction_review_queue(
+                    month="2026-04",
+                    months="2026-03,2026-04",
+                    pub=None,
+                    status=None,
+                    annotated_only=True,
+                    persist_exact_matches=False,
+                    page=1,
+                    limit=20,
+                    user=self.user,
+                    db=session,
+                )
 
             self.assertEqual(queue.total, 3)
             self.assertEqual(queue.matched_transactions, 1)
             self.assertEqual(queue.partial_transactions, 1)
             self.assertEqual(queue.suggested_transactions, 1)
-            self.assertEqual(queue.unmatched_transactions, 2)
+            self.assertEqual(queue.unmatched_transactions, 3)
             self.assertEqual(queue.statuses, ["partial", "suggested", "unmatched"])
-            self.assertEqual(queue.resolution_bucket_counts["confirm_match"], 2)
+            self.assertEqual(queue.resolution_bucket_counts["confirm_match"], 1)
             self.assertEqual(queue.resolution_bucket_counts["complete_partial_match"], 1)
-            self.assertEqual(queue.resolution_bucket_counts["awaiting_document"], 2)
+            self.assertEqual(queue.resolution_bucket_counts["awaiting_document"], 1)
             self.assertEqual(
                 [item.status for item in queue.transactions],
                 ["partial", "suggested", "unmatched"],
@@ -323,6 +353,13 @@ else:
             self.assertEqual(
                 hard_copy_queue.transactions[0].recommended_review_status,
                 "hard_copy_available",
+            )
+            self.assertEqual(vat_period_queue.selected_months, ["2026-03", "2026-04"])
+            self.assertEqual(vat_period_queue.window_months, 0)
+            self.assertEqual(vat_period_queue.total, 4)
+            self.assertEqual(
+                [item.transaction.row_number for item in vat_period_queue.transactions],
+                [9, 11, 12, 13],
             )
 
 

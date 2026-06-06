@@ -98,6 +98,7 @@ NO_DOCUMENT_EXPECTED_PATTERNS = (
     re.compile(r"\b(?:atm|cash withdrawal)\b", re.IGNORECASE),
 )
 INDIVIDUAL_PAYMENT_PREFIX_PATTERN = re.compile(r"^\*(?:INET|MOBI)\b", re.IGNORECASE)
+MONTH_TOKEN_PATTERN = re.compile(r"^\d{4}-\d{2}$")
 
 
 def _normalize_reference_token(reference: str | None) -> str | None:
@@ -189,6 +190,8 @@ class TransactionReviewQueue:
     partial_transactions: int
     suggested_transactions: int
     unmatched_transactions: int
+    selected_months: list[str] = field(default_factory=list)
+    window_months: int = 0
     resolution_bucket_counts: dict[str, int] = field(default_factory=dict)
     transactions: list[ReconciliationTransactionItem] = field(default_factory=list)
 
@@ -269,6 +272,45 @@ def month_bounds(month: str) -> tuple[date, date]:
     start = date(year, month_number, 1)
     end = date(year + 1, 1, 1) if month_number == 12 else date(year, month_number + 1, 1)
     return start, end
+
+
+def shift_month(month: str, offset: int) -> str:
+    year, month_number = int(month[:4]), int(month[5:7])
+    total = year * 12 + (month_number - 1) + offset
+    shifted_year = total // 12
+    shifted_month = (total % 12) + 1
+    return f"{shifted_year:04d}-{shifted_month:02d}"
+
+
+def month_window(month: str, window_months: int) -> tuple[date, date]:
+    start_month = shift_month(month, -window_months)
+    end_month = shift_month(month, window_months)
+    start, _ = month_bounds(start_month)
+    _, end = month_bounds(end_month)
+    return start, end
+
+
+def parse_selected_months(months: str | None) -> list[str]:
+    if not months:
+        return []
+    values: list[str] = []
+    for raw in months.split(","):
+        value = raw.strip()
+        if not value or not MONTH_TOKEN_PATTERN.fullmatch(value):
+            continue
+        values.append(value)
+    return list(dict.fromkeys(values))
+
+
+def selected_month_period(month: str | None, selected_months: list[str], window_months: int = 0) -> tuple[date, date]:
+    if selected_months:
+        ordered_months = sorted(selected_months)
+        start, _ = month_bounds(ordered_months[0])
+        _, end = month_bounds(ordered_months[-1])
+        return start, end
+    if not month:
+        raise ValueError("month is required when selected_months is empty")
+    return month_window(month, window_months)
 
 
 async def build_reconciliation_report(
@@ -442,7 +484,8 @@ async def build_transaction_review_queue(
     *,
     db: AsyncSession,
     user_id,
-    month: str,
+    month: str | None,
+    selected_months: list[str] | None = None,
     source_type: str | None = None,
     pub: str | None = None,
     statuses: list[str] | None = None,
@@ -450,10 +493,12 @@ async def build_transaction_review_queue(
     review_statuses: list[str] | None = None,
     annotated_only: bool = True,
     persist_exact_matches: bool = False,
+    window_months: int = 0,
     page: int = 1,
     limit: int = 50,
 ) -> TransactionReviewQueue:
-    start, end = month_bounds(month)
+    normalized_selected_months = sorted(selected_months or [])
+    start, end = selected_month_period(month, normalized_selected_months, window_months)
     requested_statuses = statuses or list(DEFAULT_REVIEW_QUEUE_STATUSES)
     normalized_statuses = [status for status in requested_statuses if status in VALID_RECONCILIATION_STATUSES]
     if not normalized_statuses:
@@ -473,6 +518,13 @@ async def build_transaction_review_queue(
         transaction_query.order_by(Transaction.transaction_date.asc(), Transaction.row_number.asc())
     )
     all_transactions = list(transaction_result.scalars().all())
+    if normalized_selected_months:
+        all_transactions = [
+            transaction
+            for transaction in all_transactions
+            if transaction.transaction_date is not None
+            and transaction.transaction_date.strftime("%Y-%m") in normalized_selected_months
+        ]
     expense_transactions = [
         transaction
         for transaction in all_transactions
@@ -555,7 +607,7 @@ async def build_transaction_review_queue(
     page_items = filtered_items[start_index:start_index + limit]
 
     return TransactionReviewQueue(
-        month=month,
+        month=month or (normalized_selected_months[-1] if normalized_selected_months else ""),
         pub=pub,
         annotated_only=annotated_only,
         statuses=normalized_statuses,
@@ -566,6 +618,8 @@ async def build_transaction_review_queue(
         partial_transactions=partial_count,
         suggested_transactions=suggested_count,
         unmatched_transactions=unmatched_count,
+        selected_months=normalized_selected_months,
+        window_months=window_months,
         resolution_bucket_counts=resolution_bucket_counts,
         transactions=page_items,
     )

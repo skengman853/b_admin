@@ -279,11 +279,11 @@ def _document_entry_kind(document_type: str | None) -> str | None:
 
 def _statement_entry_kind(transaction_type: str | None) -> str:
     normalized = (transaction_type or "").strip().lower()
-    if normalized in {"invoice", "invoic"}:
+    if normalized in {"invoice", "invoic", "inv"}:
         return LEDGER_ENTRY_INVOICE
-    if normalized in {"cr.note", "crnote", "credit", "credit note"}:
+    if normalized in {"cr.note", "crnote", "credit", "credit note", "crn"}:
         return LEDGER_ENTRY_CREDIT_NOTE
-    if normalized in {"receipt", "paymnt", "payment"}:
+    if normalized in {"receipt", "rec", "rct", "paymnt", "payment", "pay", "pmt"}:
         return LEDGER_ENTRY_PAYMENT
     return LEDGER_ENTRY_OTHER
 

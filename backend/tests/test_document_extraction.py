@@ -588,6 +588,66 @@ class DocumentExtractionTests(unittest.TestCase):
         self.assertIsNotNone(document.ai_extraction_payload)
         self.assertEqual(document.ai_extraction_payload["statement_kind"], "trade_statement")
 
+    @unittest.skipIf(_ai_import_error is not None, f"AI extraction helper unavailable: {_ai_import_error}")
+    def test_ai_merge_keeps_incomplete_statement_rows_in_review(self) -> None:
+        payload = build_extraction_fields(
+            extracted_text=SPARSE_PROMO_STATEMENT_TEXT,
+            supplier="Diageo",
+            document_type="statement",
+            subject="Diageo month end statement",
+            attachment_name="diageo_statement.pdf",
+            needs_review=False,
+        )
+        document = types.SimpleNamespace(
+            document_type="statement",
+            supplier="Diageo",
+            attachment_name="diageo_statement.pdf",
+            source_email_subject="Diageo month end statement",
+            ai_extraction_status=None,
+            ai_extraction_provider=None,
+            ai_extraction_model=None,
+            ai_extraction_payload=None,
+            ai_extracted_at=None,
+        )
+        ai_result = AIDocumentExtractionResult(
+            document_date="2026-03-31",
+            statement_kind="diageo_erp_statement",
+            is_financial=True,
+            account_number="CAREY01",
+            period_start="2026-03-01",
+            period_end="2026-03-31",
+            confidence_score=0.82,
+            entries=[
+                {
+                    "event_date": "2026-03-05",
+                    "reference": "9263290802",
+                    "transaction_type": "INVOIC",
+                    "due_date": "2026-03-12",
+                    "amount": None,
+                    "raw_text": "9263290802 INVOIC 05.03.2026 12.03.2026",
+                },
+                {
+                    "event_date": "2026-03-11",
+                    "reference": "2503701436",
+                    "transaction_type": "PAYMNT",
+                    "amount": None,
+                    "raw_text": "2503701436 PAYMNT 11.03.2026",
+                },
+            ],
+        )
+
+        merged = merge_ai_extraction(
+            document=document,
+            extraction_fields=payload,
+            ai_result=ai_result,
+        )
+
+        self.assertEqual(merged["extraction_status"], "review")
+        self.assertTrue(merged["needs_review"])
+        self.assertIn("statement_rows_missing_amounts", merged["review_reasons"])
+        self.assertIn("low_confidence_extraction", merged["review_reasons"])
+        self.assertLess(merged["confidence_score"], 0.7)
+
     def test_extracts_multi_invoice_candidates(self) -> None:
         candidates = extract_multi_invoice_candidates(
             text=LOVELL_MULTI_INVOICE_TEXT,

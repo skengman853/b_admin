@@ -197,6 +197,33 @@
         font-weight: 700;
       }
 
+      .month-picks {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+        gap: 0.45rem;
+        padding: 0.8rem;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.62);
+        max-height: 178px;
+        overflow: auto;
+      }
+
+      .month-pick {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.92rem;
+      }
+
+      .month-pick input {
+        margin: 0;
+      }
+
+      .month-picks.is-locked {
+        opacity: 0.72;
+      }
+
       input,
       select,
       textarea,
@@ -942,8 +969,8 @@
           <div>
             <h1>Reconciliation Review Workbench</h1>
             <p>
-              Work one month at a time. Review invoice suggestions, resolve statement-led payments,
-              and push the queue into real bookkeeping outcomes instead of raw match guesses.
+              Review a single month, a 2-month VAT period, or a custom month set. Resolve invoice
+              suggestions, statement-led payments, and turn the queue into real bookkeeping outcomes.
             </p>
           </div>
           <div class="status-pill" id="auth-status" data-tone="accent">Signed out</div>
@@ -965,6 +992,7 @@
           <div class="auth-actions hidden" id="session-panel">
             <div class="small-note" id="user-label">Signed in</div>
             <button class="button-secondary" id="refresh-button" type="button">Refresh Queue</button>
+            <a class="button-link button-secondary" href="/month-audit">Month Audit</a>
             <a class="button-link button-secondary" href="/supplier-documents">Supplier Documents</a>
             <a class="button-link button-secondary" href="/statement-workbench">Statement Workbench</a>
             <button class="button-ghost" id="logout-button" type="button">Log Out</button>
@@ -979,6 +1007,14 @@
           <div class="field">
             <label for="month-input">Month</label>
             <input id="month-input" type="month" />
+          </div>
+          <div class="field" style="min-width: 180px">
+            <label for="period-mode-select">Review span</label>
+            <select id="period-mode-select">
+              <option value="month">Single month</option>
+              <option value="vat_period">VAT period</option>
+              <option value="specific_months">Specific months</option>
+            </select>
           </div>
           <div class="field">
             <label for="source-type-select">Source</label>
@@ -1013,6 +1049,11 @@
               <option value="completed">Completed</option>
               <option value="all">All</option>
             </select>
+          </div>
+          <div class="field" style="min-width: 320px; flex: 1 1 320px;">
+            <label>Months in scope</label>
+            <div id="months-checkboxes" class="month-picks"></div>
+            <div class="small-note" id="months-help">Use VAT period to review a 2-month VAT window instead of a single month.</div>
           </div>
           <div class="toolbar-spacer"></div>
           <button class="button-secondary" id="apply-filters-button" type="button">Apply Filters</button>
@@ -1056,6 +1097,7 @@
       const state = {
         token: localStorage.getItem("b_admin_token") || "",
         month: "",
+        periodMode: "month",
         sourceType: "bank_statement",
         pub: "",
         bucket: "",
@@ -1129,6 +1171,9 @@
       const sourceTypeSelect = document.getElementById("source-type-select");
       const pubSelect = document.getElementById("pub-select");
       const monthInput = document.getElementById("month-input");
+      const periodModeSelect = document.getElementById("period-mode-select");
+      const monthsCheckboxes = document.getElementById("months-checkboxes");
+      const monthsHelp = document.getElementById("months-help");
       const pageSizeSelect = document.getElementById("page-size-select");
       const queueModeSelect = document.getElementById("queue-mode-select");
       const queueList = document.getElementById("queue-list");
@@ -1149,6 +1194,90 @@
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, "0");
         return `${year}-${month}`;
+      }
+
+      function shiftMonth(month, offset) {
+        const [yearRaw, monthRaw] = String(month || defaultMonthValue()).split("-");
+        const year = Number(yearRaw);
+        const m = Number(monthRaw);
+        const total = year * 12 + (m - 1) + offset;
+        const shiftedYear = Math.floor(total / 12);
+        const shiftedMonth = (total % 12 + 12) % 12 + 1;
+        return `${shiftedYear}-${String(shiftedMonth).padStart(2, "0")}`;
+      }
+
+      function monthLabel(month) {
+        const [year, m] = String(month).split("-");
+        const value = new Date(Number(year), Number(m) - 1, 1);
+        return value.toLocaleString("en-IE", { month: "short", year: "numeric" });
+      }
+
+      function vatPeriodMonths(anchorMonth) {
+        const normalized = anchorMonth || defaultMonthValue();
+        const [, monthRaw] = normalized.split("-");
+        const monthNumber = Number(monthRaw);
+        const startMonth = monthNumber % 2 === 1 ? normalized : shiftMonth(normalized, -1);
+        return [startMonth, shiftMonth(startMonth, 1)];
+      }
+
+      function selectedMonthsValues() {
+        return Array.from(monthsCheckboxes.querySelectorAll('input[type="checkbox"]:checked'))
+          .map((input) => input.value);
+      }
+
+      function effectiveSelectedMonths() {
+        const anchorMonth = monthInput.value || state.month || defaultMonthValue();
+        if (state.periodMode === "vat_period") {
+          return vatPeriodMonths(anchorMonth);
+        }
+        if (state.periodMode === "specific_months") {
+          return selectedMonthsValues();
+        }
+        return [];
+      }
+
+      function renderMonthCheckboxes(anchorMonth, selectedValues = []) {
+        const months = [];
+        for (let offset = -2; offset <= 2; offset += 1) {
+          months.push(shiftMonth(anchorMonth, offset));
+        }
+        const selected = new Set(selectedValues);
+        monthsCheckboxes.innerHTML = months
+          .map((month) => `
+            <label class="month-pick">
+              <input type="checkbox" value="${escapeHtml(month)}" ${selected.has(month) ? "checked" : ""} />
+              <span>${escapeHtml(monthLabel(month))}</span>
+            </label>
+          `)
+          .join("");
+        syncMonthScopeControls();
+      }
+
+      function syncMonthScopeControls() {
+        const mode = state.periodMode;
+        const anchorMonth = monthInput.value || state.month || defaultMonthValue();
+        const forcedMonths = mode === "vat_period"
+          ? vatPeriodMonths(anchorMonth)
+          : mode === "month"
+            ? [anchorMonth]
+            : [];
+        const forcedSet = new Set(forcedMonths);
+        monthsCheckboxes.classList.toggle("is-locked", mode !== "specific_months");
+        monthsCheckboxes.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+          if (mode === "specific_months") {
+            input.disabled = false;
+            return;
+          }
+          input.checked = forcedSet.has(input.value);
+          input.disabled = true;
+        });
+        if (mode === "vat_period") {
+          monthsHelp.textContent = `VAT period mode uses ${forcedMonths.map((month) => monthLabel(month)).join(" and ")} together.`;
+        } else if (mode === "specific_months") {
+          monthsHelp.textContent = "Tick one or more months here to review a custom cross-month window.";
+        } else {
+          monthsHelp.textContent = "Single month mode only reviews the selected month.";
+        }
       }
 
       function setBanner(type, message) {
@@ -1648,6 +1777,10 @@
           page: String(state.page),
           source_type: state.sourceType,
         });
+        const selectedMonths = effectiveSelectedMonths();
+        if (selectedMonths.length) {
+          params.set("months", selectedMonths.join(","));
+        }
         if (state.pub) {
           params.set("pub", state.pub);
         }
@@ -1666,6 +1799,26 @@
           );
         }
         return params.toString();
+      }
+
+      function hydrateFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        state.month = params.get("month") || defaultMonthValue();
+        state.periodMode = params.get("period_mode") || "month";
+        state.sourceType = params.get("source_type") || "bank_statement";
+        state.pub = params.get("pub") || "";
+        state.queueMode = params.get("queue_mode") || "actionable";
+        state.selectedTransactionId = params.get("transaction_id") || null;
+        monthInput.value = state.month;
+        periodModeSelect.value = state.periodMode;
+        sourceTypeSelect.value = state.sourceType;
+        pubSelect.value = state.pub;
+        queueModeSelect.value = state.queueMode;
+        const queryMonths = (params.get("months") || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        renderMonthCheckboxes(monthInput.value || defaultMonthValue(), queryMonths);
       }
 
       function captureQueueViewport() {
@@ -1799,10 +1952,13 @@
           completed: "completed",
           all: "total",
         }[state.queueMode] || "actionable";
+        const monthScopeLabel = payload.selected_months?.length
+          ? payload.selected_months.join(", ")
+          : payload.month;
         queueSubtitle.textContent =
           state.bucket
-            ? `${payload.month} · ${bucketLabels[state.bucket] || state.bucket} · ${payload.total} row(s)`
-            : `${payload.month} · ${payload.total} ${modeLabel} row(s)`;
+            ? `${monthScopeLabel} · ${bucketLabels[state.bucket] || state.bucket} · ${payload.total} row(s)`
+            : `${monthScopeLabel} · ${payload.total} ${modeLabel} row(s)`;
 
         if (!payload.transactions.length) {
           queueList.innerHTML = '<div class="queue-empty">No transactions matched the current filters.</div>';
@@ -1832,6 +1988,7 @@
               supplier: supplierLabel,
               pub: transaction.pub || state.pub || "",
               month: state.month,
+              months: effectiveSelectedMonths(),
             });
             const isSelected = state.selectedTransactionId === transaction.id;
             const showInlineDetail =
@@ -3491,11 +3648,13 @@
         ].join("");
       }
 
-      function supplierDocumentsUrl({ supplier, pub, month }) {
+      function supplierDocumentsUrl({ supplier, pub, month, months = [] }) {
         const params = new URLSearchParams();
         if (supplier) params.set("supplier", supplier);
         if (pub) params.set("pub", pub);
         if (month) params.set("month", month);
+        if (months.length) params.set("months", months.join(","));
+        params.set("period_mode", state.periodMode);
         return `/supplier-documents?${params.toString()}`;
       }
 
@@ -3820,6 +3979,7 @@
       document.getElementById("refresh-button").addEventListener("click", loadQueue);
       document.getElementById("apply-filters-button").addEventListener("click", async () => {
         state.month = monthInput.value;
+        state.periodMode = periodModeSelect.value;
         state.sourceType = sourceTypeSelect.value;
         state.pub = pubSelect.value;
         state.limit = Number(pageSizeSelect.value);
@@ -3838,8 +3998,21 @@
         await loadQueue();
       });
 
-      monthInput.value = defaultMonthValue();
-      state.month = monthInput.value;
+      monthInput.addEventListener("change", () => {
+        renderMonthCheckboxes(monthInput.value || defaultMonthValue(), effectiveSelectedMonths());
+      });
+      periodModeSelect.addEventListener("change", () => {
+        state.periodMode = periodModeSelect.value;
+        syncMonthScopeControls();
+      });
+      monthsCheckboxes.addEventListener("change", () => {
+        if (state.periodMode !== "specific_months") {
+          syncMonthScopeControls();
+        }
+      });
+
+      hydrateFromQuery();
+      periodModeSelect.value = state.periodMode;
       state.limit = Number(pageSizeSelect.value);
       sourceTypeSelect.value = state.sourceType;
       queueModeSelect.value = state.queueMode;

@@ -19,6 +19,10 @@ from app.services.supplier_profiles import (
 
 
 AI_EXTRACTION_PROVIDER = "openai"
+STATEMENT_KINDS_WITHOUT_ROW_SETTLEMENT = {
+    "sub_account_statement",
+    "keg_flow_statement",
+}
 
 
 class AIDocumentStatementEntry(BaseModel):
@@ -182,6 +186,8 @@ def merge_ai_extraction(
     document.ai_extraction_model = settings.ai_document_extraction_model
     document.ai_extraction_payload = ai_result.model_dump(mode="json")
     document.ai_extracted_at = datetime.utcnow()
+    if document.document_type == "statement":
+        merged = _apply_statement_quality(document=document, merged=merged, ai_result=ai_result)
     return merged
 
 
@@ -295,6 +301,104 @@ def _build_ai_extraction_messages(*, document: Document, extracted_text: str) ->
             ),
         },
     ]
+
+
+def _unique_reasons(reasons: list[str]) -> list[str]:
+    unique: list[str] = []
+    for reason in reasons:
+        if reason and reason not in unique:
+            unique.append(reason)
+    return unique
+
+
+def _looks_like_financial_statement_row(entry: AIDocumentStatementEntry) -> bool:
+    return bool(entry.reference or entry.clearing_reference or entry.transaction_type or entry.amount is not None)
+
+
+def _is_invoice_or_credit_row(entry: AIDocumentStatementEntry) -> bool:
+    transaction_type = (entry.transaction_type or "").strip().lower()
+    return any(token in transaction_type for token in ("invoic", "invoice", "crnote", "cr.note", "credit"))
+
+
+def _is_payment_row(entry: AIDocumentStatementEntry) -> bool:
+    transaction_type = (entry.transaction_type or "").strip().lower()
+    return any(token in transaction_type for token in ("paymnt", "payment", "receipt", "dd-"))
+
+
+def _apply_statement_quality(
+    *,
+    document: Document,
+    merged: dict,
+    ai_result: AIDocumentExtractionResult,
+) -> dict:
+    statement_kind = ai_result.statement_kind or "statement"
+    is_financial = ai_result.is_financial if ai_result.is_financial is not None else True
+    existing_reasons = [
+        reason
+        for reason in merged.get("review_reasons", [])
+        if reason not in {"low_confidence_extraction", "statement_rows_missing_amounts", "statement_no_financial_rows"}
+    ]
+    financial_rows = [entry for entry in ai_result.entries if _looks_like_financial_statement_row(entry)]
+    rows_missing_amounts = [
+        entry
+        for entry in financial_rows
+        if entry.amount is None and (_is_invoice_or_credit_row(entry) or _is_payment_row(entry))
+    ]
+    has_period = bool(ai_result.period_start or ai_result.period_end)
+    has_totals = any(
+        value is not None
+        for value in (
+            ai_result.total_due,
+            ai_result.closing_balance,
+            ai_result.settlement_discount_total,
+            ai_result.amount,
+        )
+    )
+    invoice_rows = [entry for entry in financial_rows if _is_invoice_or_credit_row(entry)]
+    payment_rows = [entry for entry in financial_rows if _is_payment_row(entry)]
+
+    score = float(merged.get("confidence_score") or ai_result.confidence_score or 0.0)
+    score = max(score, 0.45 if is_financial else 0.7)
+    if ai_result.account_number or ai_result.account_name:
+        score += 0.08
+    if has_period:
+        score += 0.12
+    if has_totals:
+        score += 0.08
+    if financial_rows:
+        score += min(0.22, len(financial_rows) * 0.03)
+    if invoice_rows:
+        score += 0.08
+    if payment_rows:
+        score += 0.08
+    if rows_missing_amounts:
+        score -= min(0.4, len(rows_missing_amounts) * 0.12)
+        row_count = max(len(invoice_rows) + len(payment_rows), 1)
+        if len(rows_missing_amounts) / row_count >= 0.5:
+            score = min(score, 0.64)
+
+    review_reasons = list(existing_reasons)
+    if is_financial and statement_kind not in STATEMENT_KINDS_WITHOUT_ROW_SETTLEMENT and not financial_rows and not has_totals:
+        review_reasons.append("statement_no_financial_rows")
+        score -= 0.22
+    if rows_missing_amounts:
+        review_reasons.append("statement_rows_missing_amounts")
+    if not has_period and statement_kind not in STATEMENT_KINDS_WITHOUT_ROW_SETTLEMENT:
+        score -= 0.08
+
+    score = round(max(0.0, min(score, 0.99)), 2)
+    review_reasons = _unique_reasons(review_reasons)
+    if score < 0.7:
+        review_reasons = _unique_reasons([*review_reasons, "low_confidence_extraction"])
+
+    merged["confidence_score"] = score
+    merged["review_reasons"] = review_reasons
+    merged["needs_review"] = bool(review_reasons)
+    if review_reasons:
+        merged["extraction_status"] = "review"
+    else:
+        merged["extraction_status"] = "extracted"
+    return merged
 
 
 def _statement_family_instructions(statement_family: str | None) -> str:

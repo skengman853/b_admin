@@ -838,6 +838,8 @@ class TransactionReviewQueueItemResponse(BaseModel):
 
 class TransactionReviewQueueResponse(BaseModel):
     month: str
+    selected_months: list[str] = Field(default_factory=list)
+    window_months: int = 0
     pub: str | None
     annotated_only: bool
     statuses: list[str] = Field(default_factory=list)

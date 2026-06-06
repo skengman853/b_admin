@@ -185,6 +185,7 @@
         font-size: 0.92rem;
       }
       .month-pick input { margin: 0; }
+      .month-picks.is-locked { opacity: 0.72; }
       .empty, .banner {
         padding: 1rem 1.2rem;
         border-radius: 18px;
@@ -216,6 +217,7 @@
           </div>
           <div class="actions">
             <a class="link-button button-secondary" href="/review">Back to review</a>
+            <a class="link-button button-secondary" href="/month-audit">Month audit</a>
             <a class="link-button button-secondary" href="/statement-workbench">Statement workbench</a>
           </div>
         </div>
@@ -233,6 +235,14 @@
           <div class="field">
             <label for="month-input">Month</label>
             <input id="month-input" type="month" />
+          </div>
+          <div class="field">
+            <label for="period-mode-select">Period mode</label>
+            <select id="period-mode-select">
+              <option value="month_window">Month window</option>
+              <option value="vat_period">VAT period</option>
+              <option value="specific_months">Specific months</option>
+            </select>
           </div>
           <div class="field">
             <label for="pub-select">Pub</label>
@@ -254,7 +264,7 @@
           <div class="field" style="min-width:320px; flex: 1 1 320px;">
             <label>Specific months</label>
             <div id="months-checkboxes" class="month-picks"></div>
-            <div class="small-note">Pick one or more months here to override the month window.</div>
+            <div class="small-note" id="months-help">Pick one or more months here to override the month window.</div>
           </div>
           <div class="actions" style="align-self:end">
             <button class="button-primary" id="load-button" type="button">Load documents</button>
@@ -286,9 +296,11 @@
 
       const supplierInput = document.getElementById("supplier-input");
       const monthInput = document.getElementById("month-input");
+      const periodModeSelect = document.getElementById("period-mode-select");
       const pubSelect = document.getElementById("pub-select");
       const windowSelect = document.getElementById("window-select");
       const monthsCheckboxes = document.getElementById("months-checkboxes");
+      const monthsHelp = document.getElementById("months-help");
       const storageSummaryGrid = document.getElementById("storage-summary-grid");
       const storageSummaryTags = document.getElementById("storage-summary-tags");
       const summaryGrid = document.getElementById("summary-grid");
@@ -321,6 +333,14 @@
         const [year, m] = String(month).split("-");
         const date = new Date(Number(year), Number(m) - 1, 1);
         return date.toLocaleString("en-IE", { month: "short", year: "numeric" });
+      }
+
+      function vatPeriodMonths(anchorMonth) {
+        const normalized = anchorMonth || defaultMonthValue();
+        const [, monthRaw] = normalized.split("-");
+        const monthNumber = Number(monthRaw);
+        const startMonth = monthNumber % 2 === 1 ? normalized : shiftMonth(normalized, -1);
+        return [startMonth, shiftMonth(startMonth, 1)];
       }
 
       function escapeHtml(value) {
@@ -382,10 +402,11 @@
           month: monthInput.value || defaultMonthValue(),
           window_months: windowSelect.value || "1",
         });
-        const selectedMonths = selectedMonthsValues();
+        const selectedMonths = effectiveSelectedMonths();
         if (selectedMonths.length) {
           params.set("months", selectedMonths.join(","));
         }
+        params.set("period_mode", periodModeSelect.value || "month_window");
         if (pubSelect.value) params.set("pub", pubSelect.value);
         if (includeSupplier) {
           const supplier = supplierInput.value.trim();
@@ -429,6 +450,16 @@
           .filter(Boolean);
       }
 
+      function effectiveSelectedMonths() {
+        if (periodModeSelect.value === "vat_period") {
+          return vatPeriodMonths(monthInput.value || defaultMonthValue());
+        }
+        if (periodModeSelect.value === "specific_months") {
+          return selectedMonthsValues();
+        }
+        return [];
+      }
+
       function renderMonthCheckboxes(anchorMonth, selectedMonths = []) {
         const selected = new Set((selectedMonths || []).filter(Boolean));
         const months = [];
@@ -445,6 +476,32 @@
             `
           )
           .join("");
+        syncMonthScopeControls();
+      }
+
+      function syncMonthScopeControls() {
+        const mode = periodModeSelect.value || "month_window";
+        const forcedMonths = mode === "vat_period"
+          ? vatPeriodMonths(monthInput.value || defaultMonthValue())
+          : [];
+        const forcedSet = new Set(forcedMonths);
+        monthsCheckboxes.classList.toggle("is-locked", mode !== "specific_months");
+        monthsCheckboxes.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+          if (mode === "specific_months") {
+            input.disabled = false;
+            return;
+          }
+          input.checked = forcedSet.has(input.value);
+          input.disabled = true;
+        });
+        windowSelect.disabled = mode !== "month_window";
+        if (mode === "vat_period") {
+          monthsHelp.textContent = `VAT period mode uses ${forcedMonths.map((month) => monthLabel(month)).join(" and ")} together.`;
+        } else if (mode === "specific_months") {
+          monthsHelp.textContent = "Pick one or more months here to review a custom document window.";
+        } else {
+          monthsHelp.textContent = "Month window mode uses the selected month plus the configured months either side.";
+        }
       }
 
       async function requestJson(url, options = {}) {
@@ -797,6 +854,7 @@
         supplierInput.dataset.pendingValue = params.get("supplier") || "";
         monthInput.value = params.get("month") || defaultMonthValue();
         pubSelect.value = params.get("pub") || "";
+        periodModeSelect.value = params.get("period_mode") || "month_window";
         windowSelect.value = params.get("window_months") || "1";
         const queryMonths = (params.get("months") || "")
           .split(",")
@@ -804,7 +862,7 @@
           .filter(Boolean);
         renderMonthCheckboxes(
           monthInput.value || defaultMonthValue(),
-          queryMonths.length ? queryMonths : [monthInput.value || defaultMonthValue()]
+          queryMonths
         );
       }
 
@@ -828,7 +886,11 @@
         loadStorageSummary();
       });
       monthInput.addEventListener("change", () => {
-        renderMonthCheckboxes(monthInput.value || defaultMonthValue(), selectedMonthsValues());
+        renderMonthCheckboxes(monthInput.value || defaultMonthValue(), effectiveSelectedMonths());
+        loadStorageSummary();
+      });
+      periodModeSelect.addEventListener("change", () => {
+        syncMonthScopeControls();
         loadStorageSummary();
       });
       windowSelect.addEventListener("change", () => {

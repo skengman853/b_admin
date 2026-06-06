@@ -50,6 +50,7 @@ from app.services.transaction_reconciliation import (
     month_bounds,
     load_candidate_documents_for_transaction,
     load_supporting_documents_for_transaction,
+    parse_selected_months,
     sync_exact_transaction_document_links,
 )
 from app.services.document_ledger import build_document_ledgers
@@ -784,6 +785,7 @@ async def list_transactions(
 @router.get("/review-queue", response_model=TransactionReviewQueueResponse)
 async def get_transaction_review_queue(
     month: str,
+    months: str | None = None,
     source_type: str | None = None,
     pub: str | None = None,
     status: str | None = None,
@@ -791,12 +793,16 @@ async def get_transaction_review_queue(
     review_status: str | None = None,
     annotated_only: bool | None = None,
     persist_exact_matches: bool = True,
+    window_months: int = 0,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     _parse_month(month)
+    if window_months < 0 or window_months > 3:
+        raise HTTPException(status_code=422, detail="window_months must be between 0 and 3")
+    selected_months = parse_selected_months(months)
     normalized_source_type = _parse_source_type(source_type)
     effective_annotated_only = (
         annotated_only
@@ -813,6 +819,7 @@ async def get_transaction_review_queue(
         db=db,
         user_id=user.id,
         month=month,
+        selected_months=selected_months,
         source_type=normalized_source_type,
         pub=pub,
         statuses=requested_statuses,
@@ -820,6 +827,7 @@ async def get_transaction_review_queue(
         review_statuses=requested_review_statuses,
         annotated_only=effective_annotated_only,
         persist_exact_matches=persist_exact_matches,
+        window_months=window_months,
         page=page,
         limit=limit,
     )
@@ -875,6 +883,8 @@ async def get_transaction_review_queue(
 
     return TransactionReviewQueueResponse(
         month=queue.month,
+        selected_months=queue.selected_months,
+        window_months=queue.window_months,
         pub=queue.pub,
         annotated_only=queue.annotated_only,
         statuses=queue.statuses,

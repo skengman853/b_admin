@@ -119,17 +119,18 @@ def _parse_ai_extracted_statement(document: Document) -> ParsedSupplierStatement
 
     entries = []
     for entry in ai_result.entries:
+        normalized_type = _canonical_statement_transaction_type(entry.transaction_type)
         normalized_amount = entry.amount
-        if normalized_amount is not None and _is_payment_statement_type(entry.transaction_type):
+        if normalized_amount is not None and _is_payment_statement_type(normalized_type):
             normalized_amount = abs(normalized_amount)
-        if normalized_amount is not None and _is_invoice_statement_type(entry.transaction_type):
+        if normalized_amount is not None and _is_invoice_statement_type(normalized_type):
             normalized_amount = abs(normalized_amount)
 
         entries.append(
             ParsedSupplierStatementEntry(
                 event_date=entry.event_date,
                 reference=entry.reference,
-                transaction_type=entry.transaction_type,
+                transaction_type=normalized_type,
                 due_date=entry.due_date,
                 clearing_reference=entry.clearing_reference,
                 amount=normalized_amount,
@@ -315,12 +316,12 @@ def _parse_diageo_statement(document: Document, text: str) -> ParsedSupplierStat
     invoice_references = [
         entry.reference
         for entry in entries
-        if entry.reference and entry.transaction_type == "INVOIC"
+        if entry.reference and _is_invoice_statement_type(entry.transaction_type)
     ]
     payment_references = [
         entry.reference
         for entry in entries
-        if entry.reference and entry.transaction_type == "PAYMNT"
+        if entry.reference and _is_payment_statement_type(entry.transaction_type)
     ]
 
     opening_balance_line = lines[opening_balance_index]
@@ -399,12 +400,12 @@ def _parse_statement_of_account(document: Document, text: str) -> ParsedSupplier
     invoice_references = [
         entry.reference
         for entry in entries
-        if entry.reference and entry.transaction_type == "Invoice"
+        if entry.reference and _is_invoice_statement_type(entry.transaction_type)
     ]
     payment_references = [
         entry.reference
         for entry in entries
-        if entry.reference and entry.transaction_type == "Payment"
+        if entry.reference and _is_payment_statement_type(entry.transaction_type)
     ]
     note_parts = []
     if entries:
@@ -467,16 +468,22 @@ def _parse_connacht_statement(document: Document, text: str) -> ParsedSupplierSt
     invoice_references = [
         entry.reference
         for entry in entries
-        if entry.reference and entry.transaction_type == "Invoice"
+        if entry.reference and _is_invoice_statement_type(entry.transaction_type)
     ]
     payment_references = [
         entry.reference
         for entry in entries
-        if entry.reference and entry.transaction_type == "Receipt"
+        if entry.reference and _is_payment_statement_type(entry.transaction_type)
     ]
-    receipt_count = sum(1 for entry in entries if entry.transaction_type == "Receipt")
-    invoice_count = sum(1 for entry in entries if entry.transaction_type == "Invoice")
-    credit_count = sum(1 for entry in entries if entry.transaction_type == "Cr.Note")
+    receipt_count = sum(
+        1 for entry in entries if _canonical_statement_transaction_type(entry.transaction_type) == "Receipt"
+    )
+    invoice_count = sum(
+        1 for entry in entries if _canonical_statement_transaction_type(entry.transaction_type) == "Invoice"
+    )
+    credit_count = sum(
+        1 for entry in entries if _canonical_statement_transaction_type(entry.transaction_type) == "Cr.Note"
+    )
 
     month_end = document.document_date
     month_start = (
@@ -626,14 +633,29 @@ def _parse_decimal(value: str | None) -> Decimal | None:
         return None
 
 
+def _canonical_statement_transaction_type(transaction_type: str | None) -> str | None:
+    if not transaction_type:
+        return None
+    normalized = re.sub(r"[^a-z]+", "", transaction_type.lower())
+    if normalized in {"invoice", "invoic", "inv"}:
+        return "Invoice"
+    if normalized in {"payment", "paymnt", "pay", "pmt"}:
+        return "Payment"
+    if normalized in {"receipt", "rec", "rct"}:
+        return "Receipt"
+    if normalized in {"crnote", "creditnote", "credit", "crn"}:
+        return "Cr.Note"
+    return transaction_type
+
+
 def _is_invoice_statement_type(transaction_type: str | None) -> bool:
-    normalized = (transaction_type or "").strip().lower()
-    return normalized in {"invoice", "invoic", "cr.note", "crnote", "credit note", "credit"}
+    normalized = _canonical_statement_transaction_type(transaction_type)
+    return normalized in {"Invoice", "Cr.Note"}
 
 
 def _is_payment_statement_type(transaction_type: str | None) -> bool:
-    normalized = (transaction_type or "").strip().lower()
-    return normalized in {"payment", "paymnt", "receipt", "paymnt"}
+    normalized = _canonical_statement_transaction_type(transaction_type)
+    return normalized in {"Payment", "Receipt"}
 
 
 def _looks_like_statement_reference(value: str) -> bool:

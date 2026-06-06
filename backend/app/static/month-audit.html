@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Month Audit Ledger</title>
+    <style>
+      :root {
+        --bg: #efe6d8;
+        --bg-deep: #d8c8b1;
+        --panel: rgba(255, 251, 244, 0.88);
+        --panel-strong: rgba(255, 252, 247, 0.96);
+        --ink: #1d2a33;
+        --muted: #6d6b64;
+        --line: rgba(42, 51, 61, 0.14);
+        --accent: #0d6b62;
+        --accent-soft: rgba(13, 107, 98, 0.12);
+        --warn: #9a5c16;
+        --warn-soft: rgba(154, 92, 22, 0.14);
+        --danger: #8d3c33;
+        --danger-soft: rgba(141, 60, 51, 0.14);
+        --shadow: 0 20px 60px rgba(39, 32, 24, 0.12);
+        --radius: 22px;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(255,255,255,0.72), transparent 30%),
+          linear-gradient(160deg, var(--bg) 0%, #f7f0e5 42%, var(--bg-deep) 100%);
+      }
+
+      .shell {
+        width: min(1320px, calc(100% - 2rem));
+        margin: 0 auto;
+        padding: 1.4rem 0 2rem;
+        display: grid;
+        gap: 1rem;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
+      }
+
+      .hero { padding: 1.2rem 1.4rem; display: grid; gap: 0.8rem; }
+      .hero-top { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+      .hero h1 {
+        margin: 0;
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+        font-size: clamp(1.9rem, 4vw, 3rem);
+        line-height: 0.96;
+        letter-spacing: -0.03em;
+      }
+      .hero p { margin: 0.35rem 0 0; color: var(--muted); max-width: 66ch; line-height: 1.45; }
+
+      .toolbar, .filters, .actions, .chips, .doc-grid, .summary-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.7rem;
+        align-items: center;
+      }
+
+      .filters { padding: 1rem 1.4rem 1.2rem; }
+      .field { display: grid; gap: 0.32rem; min-width: 150px; }
+      .field label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      input, select, button, textarea { font: inherit; }
+      input, select {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 0.72rem 0.85rem;
+        background: rgba(255,255,255,0.8);
+        color: var(--ink);
+      }
+      button, .link-button {
+        border: 1px solid transparent;
+        border-radius: 16px;
+        padding: 0.78rem 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      button:hover, .link-button:hover { transform: translateY(-1px); }
+      .button-primary { background: var(--ink); color: #fffaf2; }
+      .button-secondary {
+        background: rgba(255,255,255,0.82);
+        color: var(--ink);
+        border-color: var(--line);
+      }
+      .button-ghost {
+        background: transparent;
+        color: var(--ink);
+        border-color: var(--line);
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.72rem;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,0.72);
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+      .tag[data-tone="confirm_match"],
+      .tag[data-tone="linked"],
+      .tag[data-tone="storage_r2_only"],
+      .tag[data-tone="ok"] {
+        background: var(--accent-soft);
+        color: var(--accent);
+        border-color: rgba(13,107,98,0.18);
+      }
+      .tag[data-tone="review_supporting_docs"],
+      .tag[data-tone="supporting_docs_only"],
+      .tag[data-tone="complete_partial_match"],
+      .tag[data-tone="warn"] {
+        background: rgba(36, 84, 135, 0.11);
+        color: #28537a;
+        border-color: rgba(40, 83, 122, 0.18);
+      }
+      .tag[data-tone="awaiting_document"],
+      .tag[data-tone="hard_copy_available"] {
+        background: var(--warn-soft);
+        color: var(--warn);
+        border-color: rgba(154,92,22,0.18);
+      }
+      .tag[data-tone="needs_matcher_improvement"],
+      .tag[data-tone="unmatched"],
+      .tag[data-tone="error"] {
+        background: var(--danger-soft);
+        color: var(--danger);
+        border-color: rgba(141,60,51,0.18);
+      }
+      .tag[data-tone="handled_by_rule"],
+      .tag[data-tone="rule"] {
+        background: rgba(94, 102, 54, 0.12);
+        color: #59632f;
+        border-color: rgba(89, 99, 47, 0.18);
+      }
+      .tag[data-tone="storage_r2_and_drive"] {
+        background: rgba(13,107,98,0.15);
+        border-color: rgba(13,107,98,0.22);
+        color: #0d6b62;
+      }
+      .tag[data-tone="storage_drive_only"] {
+        background: rgba(56,101,171,0.12);
+        border-color: rgba(56,101,171,0.2);
+        color: #31578d;
+      }
+      .tag[data-tone="storage_local_only"] {
+        background: rgba(80,72,65,0.08);
+        border-color: rgba(80,72,65,0.14);
+        color: #5f574e;
+      }
+
+      .month-picks {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        gap: 0.45rem;
+        padding: 0.8rem;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.62);
+        max-height: 180px;
+        overflow: auto;
+      }
+      .month-pick {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.92rem;
+      }
+      .month-pick input { margin: 0; }
+      .month-picks.is-locked { opacity: 0.72; }
+
+      .small-note { color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.85rem;
+        padding: 0 1.4rem 1rem;
+      }
+      .summary-card, .ledger-row, .expand-panel, .doc-card {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255,255,255,0.72);
+      }
+      .summary-card { padding: 0.9rem 1rem; }
+      .summary-card label {
+        display: block;
+        font-size: 0.73rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        font-weight: 700;
+        margin-bottom: 0.3rem;
+      }
+
+      .ledger-list {
+        display: grid;
+        gap: 0.7rem;
+        padding: 0 1.4rem 1.4rem;
+      }
+      .ledger-row {
+        padding: 0.85rem 1rem;
+        cursor: pointer;
+        display: grid;
+        gap: 0.75rem;
+      }
+      .ledger-row.is-active {
+        border-color: rgba(13,107,98,0.22);
+        background: rgba(246, 251, 249, 0.9);
+      }
+      .ledger-top {
+        display: grid;
+        grid-template-columns: minmax(240px, 2fr) minmax(160px, 1.1fr) minmax(100px, 0.8fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) minmax(180px, 1fr);
+        gap: 0.85rem;
+        align-items: start;
+      }
+      .ledger-cell strong { display: block; }
+      .ledger-cell .sub { color: var(--muted); font-size: 0.9rem; margin-top: 0.16rem; }
+      .ledger-amount {
+        font-variant-numeric: tabular-nums;
+        font-weight: 700;
+      }
+      .ledger-amount.is-empty { color: var(--muted); }
+
+      .evidence-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+      }
+      .evidence-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.36rem 0.62rem;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.76);
+        border: 1px solid var(--line);
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+      .evidence-pill[data-level="ok"] { background: var(--accent-soft); color: var(--accent); border-color: rgba(13,107,98,0.18); }
+      .evidence-pill[data-level="warn"] { background: var(--warn-soft); color: var(--warn); border-color: rgba(154,92,22,0.18); }
+      .evidence-pill[data-level="empty"] { color: var(--muted); }
+
+      .expand-panel {
+        padding: 1rem;
+        display: grid;
+        gap: 0.9rem;
+      }
+      .expand-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+      .doc-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 0.75rem;
+      }
+      .doc-card {
+        padding: 0.85rem 0.9rem;
+        display: grid;
+        gap: 0.55rem;
+      }
+      .empty, .banner {
+        padding: 1rem 1.2rem;
+        border-radius: 18px;
+        margin: 0 1.4rem 1.4rem;
+      }
+      .empty {
+        border: 1px dashed var(--line);
+        color: var(--muted);
+        background: rgba(255,255,255,0.45);
+      }
+      .banner.error { background: rgba(141,60,51,0.12); color: #8d3c33; border: 1px solid rgba(141,60,51,0.18); }
+      .banner.success { background: rgba(13,107,98,0.12); color: var(--accent); border: 1px solid rgba(13,107,98,0.18); }
+
+      @media (max-width: 980px) {
+        .hero-top, .expand-head { flex-direction: column; }
+        .ledger-top { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="panel hero">
+        <div class="hero-top">
+          <div>
+            <h1>Month Audit Ledger</h1>
+            <p>Scan the month quickly. Expand a row to see the main statement, the invoice or credit docs tied to it, and the current final state without the review diagnostics.</p>
+          </div>
+          <div class="actions">
+            <a class="link-button button-secondary" href="/review">Full review</a>
+            <a class="link-button button-secondary" href="/statement-workbench">Statement workbench</a>
+          </div>
+        </div>
+        <div id="auth-banner" class="small-note">Using your saved local session.</div>
+      </section>
+
+      <section class="panel">
+        <div class="filters">
+          <div class="field">
+            <label for="month-input">Month</label>
+            <input id="month-input" type="month" />
+          </div>
+          <div class="field">
+            <label for="period-mode-select">Period mode</label>
+            <select id="period-mode-select">
+              <option value="month">Single month</option>
+              <option value="vat_period">VAT period</option>
+              <option value="specific_months">Specific months</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="source-type-select">Source</label>
+            <select id="source-type-select">
+              <option value="bank_statement">Bank statement</option>
+              <option value="vatbook">VAT book</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="pub-select">Pub</label>
+            <select id="pub-select">
+              <option value="">All pubs</option>
+              <option value="Careys">Careys</option>
+              <option value="Canal">Canal</option>
+              <option value="Corrcross">Corrcross</option>
+              <option value="Careys Bar">Careys Bar</option>
+              <option value="Canal Turn">Canal Turn</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="audit-mode-select">Rows</label>
+            <select id="audit-mode-select">
+              <option value="all" selected>All rows</option>
+              <option value="completed">Completed only</option>
+              <option value="actionable">Actionable only</option>
+            </select>
+          </div>
+          <div class="field" style="min-width:320px; flex: 1 1 320px;">
+            <label>Months in scope</label>
+            <div id="months-checkboxes" class="month-picks"></div>
+            <div class="small-note" id="months-help">VAT period mode uses a 2-month review window.</div>
+          </div>
+          <div class="actions" style="align-self:end">
+            <button class="button-primary" id="load-button" type="button">Load ledger</button>
+          </div>
+        </div>
+        <div id="message-banner"></div>
+        <div class="summary-grid" id="summary-grid"></div>
+        <div class="ledger-list" id="ledger-list">
+          <div class="empty">Load a month to start auditing.</div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const state = {
+        token: localStorage.getItem("b_admin_token") || "",
+        month: "",
+        periodMode: "month",
+        sourceType: "bank_statement",
+        pub: "",
+        auditMode: "all",
+        queue: null,
+        detailById: {},
+        activeTransactionId: null,
+      };
+
+      const monthInput = document.getElementById("month-input");
+      const periodModeSelect = document.getElementById("period-mode-select");
+      const sourceTypeSelect = document.getElementById("source-type-select");
+      const pubSelect = document.getElementById("pub-select");
+      const auditModeSelect = document.getElementById("audit-mode-select");
+      const monthsCheckboxes = document.getElementById("months-checkboxes");
+      const monthsHelp = document.getElementById("months-help");
+      const messageBanner = document.getElementById("message-banner");
+      const authBanner = document.getElementById("auth-banner");
+      const summaryGrid = document.getElementById("summary-grid");
+      const ledgerList = document.getElementById("ledger-list");
+
+      const bucketLabels = {
+        confirm_match: "Confirm Match",
+        complete_partial_match: "Complete Partial Match",
+        review_supporting_docs: "Review Supporting Docs",
+        awaiting_document: "Awaiting Document",
+        no_document_expected: "No Document Expected",
+        needs_matcher_improvement: "Needs Matcher Improvement",
+      };
+
+      const statusLabels = {
+        linked: "Linked",
+        supporting_docs_only: "Supporting Docs Only",
+        hard_copy_available: "Hard Copy Available",
+        handled_by_rule: "Handled By Rule",
+        awaiting_document: "Awaiting Document",
+        no_document_expected: "No Document Expected",
+        pending: "Pending",
+      };
+
+      function defaultMonthValue() {
+        const now = new Date();
+        now.setMonth(now.getMonth() - 1);
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      }
+
+      function shiftMonth(month, offset) {
+        const [yearRaw, monthRaw] = String(month || defaultMonthValue()).split("-");
+        const year = Number(yearRaw);
+        const m = Number(monthRaw);
+        const total = year * 12 + (m - 1) + offset;
+        const shiftedYear = Math.floor(total / 12);
+        const shiftedMonth = (total % 12 + 12) % 12 + 1;
+        return `${shiftedYear}-${String(shiftedMonth).padStart(2, "0")}`;
+      }
+
+      function monthLabel(month) {
+        const [year, m] = String(month).split("-");
+        const value = new Date(Number(year), Number(m) - 1, 1);
+        return value.toLocaleString("en-IE", { month: "short", year: "numeric" });
+      }
+
+      function vatPeriodMonths(anchorMonth) {
+        const normalized = anchorMonth || defaultMonthValue();
+        const [, monthRaw] = normalized.split("-");
+        const monthNumber = Number(monthRaw);
+        const startMonth = monthNumber % 2 === 1 ? normalized : shiftMonth(normalized, -1);
+        return [startMonth, shiftMonth(startMonth, 1)];
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function formatCurrency(value) {
+        if (value === null || value === undefined || value === "") return "—";
+        const amount = Number(value);
+        if (Number.isNaN(amount)) return String(value);
+        return new Intl.NumberFormat("en-IE", {
+          style: "currency",
+          currency: "EUR",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(amount);
+      }
+
+      function buildTag(label, tone) {
+        return `<span class="tag" data-tone="${escapeHtml(tone)}">${escapeHtml(label)}</span>`;
+      }
+
+      function setMessage(type, message) {
+        if (!message) {
+          messageBanner.innerHTML = "";
+          return;
+        }
+        messageBanner.innerHTML = `<div class="banner ${type}">${escapeHtml(message)}</div>`;
+      }
+
+      function selectedMonthsValues() {
+        return Array.from(monthsCheckboxes.querySelectorAll('input[type="checkbox"]:checked'))
+          .map((input) => input.value)
+          .filter(Boolean);
+      }
+
+      function effectiveSelectedMonths() {
+        const anchorMonth = monthInput.value || state.month || defaultMonthValue();
+        if (state.periodMode === "vat_period") {
+          return vatPeriodMonths(anchorMonth);
+        }
+        if (state.periodMode === "specific_months") {
+          return selectedMonthsValues();
+        }
+        return [];
+      }
+
+      function renderMonthCheckboxes(anchorMonth, selectedValues = []) {
+        const selected = new Set(selectedValues);
+        const months = [];
+        for (let offset = -2; offset <= 2; offset += 1) {
+          months.push(shiftMonth(anchorMonth, offset));
+        }
+        monthsCheckboxes.innerHTML = months
+          .map((month) => `
+            <label class="month-pick">
+              <input type="checkbox" value="${escapeHtml(month)}" ${selected.has(month) ? "checked" : ""} />
+              <span>${escapeHtml(monthLabel(month))}</span>
+            </label>
+          `)
+          .join("");
+        syncMonthScopeControls();
+      }
+
+      function syncMonthScopeControls() {
+        const anchorMonth = monthInput.value || state.month || defaultMonthValue();
+        const mode = state.periodMode;
+        const forcedMonths = mode === "vat_period"
+          ? vatPeriodMonths(anchorMonth)
+          : mode === "month"
+            ? [anchorMonth]
+            : [];
+        const forcedSet = new Set(forcedMonths);
+        monthsCheckboxes.classList.toggle("is-locked", mode !== "specific_months");
+        monthsCheckboxes.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+          if (mode === "specific_months") {
+            input.disabled = false;
+            return;
+          }
+          input.checked = forcedSet.has(input.value);
+          input.disabled = true;
+        });
+        if (mode === "vat_period") {
+          monthsHelp.textContent = `VAT period mode uses ${forcedMonths.map((month) => monthLabel(month)).join(" and ")} together.`;
+        } else if (mode === "specific_months") {
+          monthsHelp.textContent = "Pick one or more months here to audit a custom month set.";
+        } else {
+          monthsHelp.textContent = "Single month mode audits only the selected month.";
+        }
+      }
+
+      async function requestJson(url, options = {}) {
+        const headers = new Headers(options.headers || {});
+        headers.set("Accept", "application/json");
+        if (state.token) headers.set("Authorization", `Bearer ${state.token}`);
+        if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+        const response = await fetch(url, { ...options, headers });
+        if (!response.ok) {
+          let detail = response.statusText || "Request failed";
+          try {
+            const payload = await response.json();
+            if (payload.detail && typeof payload.detail === "object") {
+              detail = JSON.stringify(payload.detail);
+            } else {
+              detail = payload.detail || payload.message || detail;
+            }
+          } catch {}
+          throw new Error(detail);
+        }
+        if (response.status === 204) return null;
+        return response.json();
+      }
+
+      async function postJson(url, body) {
+        return requestJson(url, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+      }
+
+      async function openDocument(documentId) {
+        const response = await fetch(`/api/documents/${documentId}/file`, {
+          headers: { Authorization: `Bearer ${state.token}` },
+        });
+        if (!response.ok) {
+          setMessage("error", "Could not open document file.");
+          return;
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank", "noopener");
+      }
+
+      function buildQueueQuery() {
+        const params = new URLSearchParams({
+          month: state.month,
+          source_type: state.sourceType,
+          limit: "200",
+        });
+        const selectedMonths = effectiveSelectedMonths();
+        if (selectedMonths.length) params.set("months", selectedMonths.join(","));
+        if (state.pub) params.set("pub", state.pub);
+        if (state.auditMode === "completed") {
+          params.set("review_status", "linked,supporting_docs_only,hard_copy_available,handled_by_rule,no_document_expected");
+        } else if (state.auditMode === "all") {
+          params.set("review_status", "pending,linked,supporting_docs_only,hard_copy_available,handled_by_rule,awaiting_document,no_document_expected");
+        }
+        return params.toString();
+      }
+
+      function renderSummary(payload) {
+        const monthScope = payload.selected_months?.length ? payload.selected_months.join(", ") : payload.month;
+        const cards = [
+          ["Scope", monthScope || "—"],
+          ["Rows", payload.total],
+          ["Matched", payload.matched_transactions],
+          ["Partial", payload.partial_transactions],
+          ["Suggested", payload.suggested_transactions],
+          ["Unmatched", payload.unmatched_transactions],
+        ];
+        summaryGrid.innerHTML = cards
+          .map(([label, value]) => `
+            <div class="summary-card">
+              <label>${escapeHtml(label)}</label>
+              <strong>${escapeHtml(value)}</strong>
+            </div>
+          `)
+          .join("");
+      }
+
+      function storageTone(stateValue) {
+        return {
+          r2_and_drive: "storage_r2_and_drive",
+          r2_only: "storage_r2_only",
+          drive_only: "storage_drive_only",
+          local_only: "storage_local_only",
+        }[stateValue || "local_only"] || "storage_local_only";
+      }
+
+      function storageLabel(stateValue) {
+        return {
+          r2_and_drive: "R2 + Drive",
+          r2_only: "R2",
+          drive_only: "Drive",
+          local_only: "Local only",
+        }[stateValue || "local_only"] || "Local only";
+      }
+
+      function statementKindAuditLabel(kind) {
+        return {
+          statement_of_account: "Account statement",
+          supplier_statement: "Supplier statement",
+          trade_statement: "Trade account statement",
+          sub_account_statement: "Sub-account discount statement",
+          diageo_erp_statement: "Month-end account statement",
+          statement: "Statement",
+        }[kind || "statement"] || "Statement";
+      }
+
+      function documentAuditTitle(document) {
+        if (!document) return "Document";
+        if (document.document_type === "statement") {
+          return "Statement";
+        }
+        if (document.document_type === "invoice") {
+          return "Invoice";
+        }
+        if (document.document_type === "credit_note") {
+          return "Credit note";
+        }
+        if (document.document_type === "receipt") {
+          return "Receipt";
+        }
+        return "Document";
+      }
+
+      function deriveSupplierLabel(item) {
+        const flowSupplier = item.reconciliation_flow?.supplier_label;
+        const exactSupplier = item.exact_matches?.[0]?.supplier;
+        const suggestedSupplier = item.suggested_matches?.[0]?.supplier;
+        const persistedSupplier = item.persisted_links?.[0]?.document?.supplier;
+        return flowSupplier || exactSupplier || suggestedSupplier || persistedSupplier || item.transaction.expected_supplier || item.transaction.description1 || "—";
+      }
+
+      function statementStage(detail) {
+        return detail?.reconciliation_flow?.stages?.find((stage) => stage.key === "statement") || null;
+      }
+
+      function componentStage(detail) {
+        return detail?.reconciliation_flow?.stages?.find((stage) => stage.key === "components") || null;
+      }
+
+      function primaryStatement(detail) {
+        return statementStage(detail)?.documents?.[0] || null;
+      }
+
+      function primaryComponent(detail) {
+        const stage = componentStage(detail);
+        if (stage?.documents?.length) return stage.documents[0];
+        return detail?.persisted_links?.find((link) => ["invoice", "credit_note"].includes(link.document?.document_type))?.document || null;
+      }
+
+      function evidenceLevel(count) {
+        if (count > 0) return "ok";
+        return "empty";
+      }
+
+      function renderEvidenceStrip(item) {
+        const statementCount = item.supporting_matches.filter((match) => match.document_type === "statement").length
+          + item.persisted_links.filter((link) => link.document?.document_type === "statement").length;
+        const invoiceCount = item.exact_matches.filter((match) => match.document_type === "invoice").length
+          + item.suggested_matches.filter((match) => match.document_type === "invoice").length
+          + item.persisted_links.filter((link) => link.document?.document_type === "invoice").length;
+        const creditCount = item.exact_matches.filter((match) => match.document_type === "credit_note").length
+          + item.suggested_matches.filter((match) => match.document_type === "credit_note").length
+          + item.persisted_links.filter((link) => link.document?.document_type === "credit_note").length;
+        return `
+          <div class="evidence-strip">
+            <span class="evidence-pill" data-level="${evidenceLevel(statementCount)}">Stmt ${statementCount}</span>
+            <span class="evidence-pill" data-level="${evidenceLevel(invoiceCount)}">Inv ${invoiceCount}</span>
+            <span class="evidence-pill" data-level="${evidenceLevel(creditCount)}">Cred ${creditCount}</span>
+          </div>
+        `;
+      }
+
+      function reviewUrl(item) {
+        const params = new URLSearchParams({
+          month: state.month,
+          period_mode: state.periodMode,
+          source_type: state.sourceType,
+          queue_mode: state.auditMode === "completed" ? "completed" : state.auditMode === "actionable" ? "actionable" : "all",
+          transaction_id: item.transaction.id,
+        });
+        if (state.pub) params.set("pub", state.pub);
+        const months = effectiveSelectedMonths();
+        if (months.length) params.set("months", months.join(","));
+        return `/review?${params.toString()}`;
+      }
+
+      function docCard(document, label, options = {}) {
+        const {
+          showAmount = true,
+          note = "",
+          compactType = "",
+          transactionId = "",
+        } = options;
+        if (!document) {
+          return `<div class="doc-card"><strong>${escapeHtml(label)}</strong><div class="small-note">None.</div></div>`;
+        }
+        const typeLabel = compactType || (document.document_type === "statement"
+          ? statementKindAuditLabel(document.statement_kind)
+          : documentAuditTitle(document));
+        const metaParts = [
+          document.reference || "No reference",
+          document.document_date || "—",
+        ];
+        if (showAmount) {
+          metaParts.push(formatCurrency(document.amount));
+        }
+        return `
+          <div class="doc-card">
+            <strong>${escapeHtml(label)}</strong>
+            <div>${escapeHtml(typeLabel)}</div>
+            <div class="small-note">${escapeHtml(metaParts.join(" · "))}</div>
+            ${note ? `<div class="small-note">${escapeHtml(note)}</div>` : ""}
+            <div class="chips">
+              ${buildTag(storageLabel(document.storage_state), storageTone(document.storage_state))}
+            </div>
+            <div class="actions">
+              <button class="button-secondary" data-open-document-id="${escapeHtml(document.document_id || document.id)}" type="button">Open PDF</button>
+              <button class="button-secondary" data-reextract-document-id="${escapeHtml(document.document_id || document.id)}" data-transaction-id="${escapeHtml(transactionId)}" type="button">Re-extract</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderExpandedRow(item, detail) {
+        const transaction = item.transaction;
+        const supplierLabel = deriveSupplierLabel({ ...item, reconciliation_flow: detail?.reconciliation_flow });
+        const statement = primaryStatement(detail);
+        const component = primaryComponent(detail);
+        const reviewState = transaction.review_status === "handled_by_rule"
+          ? transaction.category || "Handled by rule"
+          : statusLabels[transaction.review_status] || transaction.review_status;
+        const extraDocs = (detail?.persisted_links || [])
+          .filter((link) => link.status === "confirmed" && link.role !== "ignore" && link.document)
+          .map((link) => link.document)
+          .filter((doc, index, array) => {
+            const docId = doc.document_id || doc.id;
+            return array.findIndex((candidate) => (candidate.document_id || candidate.id) === docId) === index;
+          })
+          .filter((doc) => {
+            const docId = doc.document_id || doc.id;
+            const statementId = statement?.document_id || statement?.id;
+            const componentId = component?.document_id || component?.id;
+            return docId !== statementId && docId !== componentId;
+          });
+        const ownerHandled = ["handled_by_rule", "hard_copy_available", "no_document_expected"].includes(transaction.review_status);
+        return `
+          <div class="expand-panel">
+            <div class="expand-head">
+              <div>
+                <strong>#${escapeHtml(transaction.row_number)} · ${escapeHtml(transaction.description1 || "Untitled transaction")}</strong>
+                <div class="small-note">${escapeHtml(transaction.transaction_date || "—")} · ${escapeHtml(transaction.pub || "—")} · ${escapeHtml(formatCurrency(transaction.debit_amount || transaction.credit_amount))}</div>
+              </div>
+              <div class="chips">
+                ${buildTag(reviewState, transaction.review_status || "pending")}
+                ${buildTag(bucketLabels[item.resolution_bucket] || item.resolution_bucket, item.resolution_bucket)}
+              </div>
+            </div>
+            <div class="small-note">${escapeHtml(supplierLabel)}</div>
+            <div class="doc-grid">
+              ${
+                ownerHandled
+                  ? `
+                    <div class="doc-card">
+                      <strong>Owner handling</strong>
+                      <div>${escapeHtml(reviewState)}</div>
+                      <div class="small-note">${escapeHtml(transaction.review_note || transaction.category || "No extra document handling needed on this row.")}</div>
+                      <div class="actions">
+                        <a class="link-button button-secondary" href="${escapeHtml(reviewUrl(item))}">Open in review</a>
+                      </div>
+                    </div>
+                  `
+                  : docCard(statement, "Statement", { showAmount: false, compactType: statementKindAuditLabel(statement?.statement_kind), transactionId: transaction.id })
+              }
+              ${
+                ownerHandled
+                  ? ""
+                  : docCard(component, component?.document_type === "credit_note" ? "Credit note" : "Invoice", { showAmount: true, transactionId: transaction.id })
+              }
+              <div class="doc-card">
+                <strong>Final state</strong>
+                <div>${escapeHtml(reviewState)}</div>
+                <div class="small-note">${escapeHtml(transaction.review_note || transaction.category || "—")}</div>
+                <div class="actions">
+                  <a class="link-button button-secondary" href="${escapeHtml(reviewUrl(item))}">Open in review</a>
+                </div>
+              </div>
+            </div>
+            ${extraDocs.length ? `
+              <details>
+                <summary>Linked docs (${extraDocs.length})</summary>
+                <div class="doc-grid" style="margin-top:0.7rem">
+                  ${extraDocs.map((doc) => `
+                    <div class="doc-card">
+                      <strong>${escapeHtml(documentAuditTitle(doc))}</strong>
+                      <div>${escapeHtml(doc.document_type === "statement" ? statementKindAuditLabel(doc.statement_kind) : (doc.supplier || "Document"))}</div>
+                      <div class="small-note">${escapeHtml(doc.reference || "No reference")} · ${escapeHtml(doc.document_date || "—")} · ${escapeHtml(formatCurrency(doc.amount))}</div>
+                      <div class="chips">
+                        ${buildTag(storageLabel(doc.storage_state), storageTone(doc.storage_state))}
+                      </div>
+                      <div class="actions">
+                        <button class="button-secondary" data-open-document-id="${escapeHtml(doc.document_id || doc.id)}" type="button">Open PDF</button>
+                        <button class="button-secondary" data-reextract-document-id="${escapeHtml(doc.document_id || doc.id)}" data-transaction-id="${escapeHtml(transaction.id)}" type="button">Re-extract</button>
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>
+              </details>
+            ` : ""}
+          </div>
+        `;
+      }
+
+      async function loadDetail(transactionId) {
+        if (state.detailById[transactionId]) return state.detailById[transactionId];
+        const payload = await requestJson(`/api/transactions/${transactionId}/detail?persist_exact_matches=true`);
+        state.detailById[transactionId] = payload;
+        return payload;
+      }
+
+      async function reextractDocument(documentId, transactionId) {
+        try {
+          setMessage("success", "Re-extracting document…");
+          await postJson("/api/documents/extract", {
+            document_ids: [documentId],
+            force: true,
+            limit: 1,
+          });
+          if (transactionId) {
+            delete state.detailById[transactionId];
+            if (state.activeTransactionId === transactionId) {
+              await loadDetail(transactionId);
+            }
+          }
+          renderLedger(state.queue);
+          setMessage("success", "Document re-extracted.");
+        } catch (error) {
+          setMessage("error", `Could not re-extract document: ${error.message}`);
+        }
+      }
+
+      function renderLedger(payload) {
+        if (!payload.transactions?.length) {
+          ledgerList.innerHTML = '<div class="empty">No transactions matched the current audit filters.</div>';
+          return;
+        }
+        ledgerList.innerHTML = payload.transactions
+          .map((item) => {
+            const transaction = item.transaction;
+            const supplierLabel = deriveSupplierLabel(item);
+            return `
+              <article class="ledger-row ${state.activeTransactionId === transaction.id ? "is-active" : ""}" data-id="${transaction.id}">
+                <div class="ledger-top">
+                  <div class="ledger-cell">
+                    <strong>#${escapeHtml(transaction.row_number)} · ${escapeHtml(transaction.description1 || "Untitled transaction")}</strong>
+                    <div class="sub">${escapeHtml(transaction.pub || "—")} · ${escapeHtml(transaction.transaction_type || "—")}</div>
+                  </div>
+                  <div class="ledger-cell">
+                    <strong>${escapeHtml(supplierLabel || "—")}</strong>
+                    <div class="sub">Payee ${escapeHtml(transaction.expected_supplier || transaction.description1 || "—")}</div>
+                  </div>
+                  <div class="ledger-cell">
+                    <strong>${escapeHtml(transaction.transaction_date || "—")}</strong>
+                    <div class="sub">${escapeHtml(transaction.category || "—")}</div>
+                  </div>
+                  <div class="ledger-cell">
+                    <div class="ledger-amount ${transaction.debit_amount ? "" : "is-empty"}">${escapeHtml(formatCurrency(transaction.debit_amount))}</div>
+                    <div class="sub">Debit</div>
+                  </div>
+                  <div class="ledger-cell">
+                    <div class="ledger-amount ${transaction.credit_amount ? "" : "is-empty"}">${escapeHtml(formatCurrency(transaction.credit_amount))}</div>
+                    <div class="sub">Credit</div>
+                  </div>
+                  <div class="ledger-cell">
+                    <div class="chips">
+                      ${buildTag(statusLabels[transaction.review_status] || transaction.review_status, transaction.review_status || "pending")}
+                      ${buildTag(bucketLabels[item.resolution_bucket] || item.resolution_bucket, item.resolution_bucket)}
+                    </div>
+                    <div class="sub">${escapeHtml(transaction.category || "Open for audit")}</div>
+                  </div>
+                </div>
+                ${renderEvidenceStrip(item)}
+                ${state.activeTransactionId === transaction.id && state.detailById[transaction.id] ? renderExpandedRow(item, state.detailById[transaction.id]) : ""}
+              </article>
+            `;
+          })
+          .join("");
+
+        ledgerList.querySelectorAll(".ledger-row").forEach((row) => {
+          row.addEventListener("click", async (event) => {
+            if (event.target.closest("button, a, details, summary")) return;
+            const transactionId = row.dataset.id;
+            if (state.activeTransactionId === transactionId) {
+              state.activeTransactionId = null;
+              renderLedger(state.queue);
+              return;
+            }
+            state.activeTransactionId = transactionId;
+            renderLedger(state.queue);
+            try {
+              await loadDetail(transactionId);
+              renderLedger(state.queue);
+            } catch (error) {
+              setMessage("error", `Could not load audit detail: ${error.message}`);
+            }
+          });
+        });
+
+        ledgerList.querySelectorAll("[data-open-document-id]").forEach((button) => {
+          button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            openDocument(button.dataset.openDocumentId);
+          });
+        });
+        ledgerList.querySelectorAll("[data-reextract-document-id]").forEach((button) => {
+          button.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            await reextractDocument(button.dataset.reextractDocumentId, button.dataset.transactionId);
+          });
+        });
+      }
+
+      async function loadLedger() {
+        state.month = monthInput.value || defaultMonthValue();
+        state.periodMode = periodModeSelect.value;
+        state.sourceType = sourceTypeSelect.value;
+        state.pub = pubSelect.value;
+        state.auditMode = auditModeSelect.value;
+        state.activeTransactionId = null;
+        try {
+          setMessage("", "");
+          ledgerList.innerHTML = '<div class="empty">Loading audit ledger…</div>';
+          const payload = await requestJson(`/api/transactions/review-queue?${buildQueueQuery()}`);
+          state.queue = payload;
+          renderSummary(payload);
+          renderLedger(payload);
+        } catch (error) {
+          setMessage("error", `Could not load audit ledger: ${error.message}`);
+          ledgerList.innerHTML = "";
+        }
+      }
+
+      function hydrateFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        monthInput.value = params.get("month") || defaultMonthValue();
+        periodModeSelect.value = params.get("period_mode") || "month";
+        sourceTypeSelect.value = params.get("source_type") || "bank_statement";
+        pubSelect.value = params.get("pub") || "";
+        auditModeSelect.value = params.get("queue_mode") === "completed"
+          ? "completed"
+          : params.get("queue_mode") === "actionable"
+            ? "actionable"
+            : "all";
+        const queryMonths = (params.get("months") || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        renderMonthCheckboxes(monthInput.value || defaultMonthValue(), queryMonths);
+      }
+
+      monthInput.addEventListener("change", () => {
+        renderMonthCheckboxes(monthInput.value || defaultMonthValue(), effectiveSelectedMonths());
+      });
+      periodModeSelect.addEventListener("change", () => {
+        state.periodMode = periodModeSelect.value;
+        syncMonthScopeControls();
+      });
+      monthsCheckboxes.addEventListener("change", () => {
+        if (state.periodMode !== "specific_months") {
+          syncMonthScopeControls();
+        }
+      });
+      document.getElementById("load-button").addEventListener("click", loadLedger);
+
+      hydrateFromQuery();
+      state.month = monthInput.value || defaultMonthValue();
+      state.periodMode = periodModeSelect.value;
+      if (!state.token) {
+        authBanner.textContent = "No saved session token found. Sign in on /review first.";
+        setMessage("error", "No saved session token found. Sign in on /review first.");
+      } else {
+        authBanner.textContent = "Using your saved local session.";
+        loadLedger();
+      }
+    </script>
+  </body>
+</html>

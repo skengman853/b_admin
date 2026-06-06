@@ -179,12 +179,49 @@
         gap: 0.45rem;
         font-size: 0.92rem;
       }
+      .month-picks.is-locked { opacity: 0.72; }
 
       .subsection {
         display: grid;
         gap: 0.45rem;
         padding-top: 0.35rem;
         border-top: 1px solid rgba(42, 51, 61, 0.08);
+      }
+
+      .focus-box {
+        border: 1px solid rgba(42, 51, 61, 0.1);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.74);
+        padding: 0.9rem 1rem;
+        display: grid;
+        gap: 0.38rem;
+      }
+
+      .focus-box strong {
+        font-size: 1rem;
+      }
+
+      .count-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.7rem;
+      }
+
+      .count-card {
+        border: 1px solid rgba(42, 51, 61, 0.08);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.58);
+        padding: 0.7rem 0.8rem;
+      }
+
+      .count-card label {
+        display: block;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        font-weight: 700;
+        margin-bottom: 0.25rem;
       }
 
       details {
@@ -240,6 +277,7 @@
           </div>
           <div class="actions">
             <a class="link-button button-secondary" href="/review">Back to review</a>
+            <a class="link-button button-secondary" href="/month-audit">Month audit</a>
             <a class="link-button button-secondary" href="/supplier-documents">Supplier documents</a>
           </div>
         </div>
@@ -257,6 +295,14 @@
           <div class="field">
             <label for="month-input">Month</label>
             <input id="month-input" type="month" />
+          </div>
+          <div class="field">
+            <label for="period-mode-select">Period mode</label>
+            <select id="period-mode-select">
+              <option value="month_window">Month window</option>
+              <option value="vat_period">VAT period</option>
+              <option value="specific_months">Specific months</option>
+            </select>
           </div>
           <div class="field">
             <label for="pub-select">Pub</label>
@@ -278,7 +324,7 @@
           <div class="field" style="min-width:320px; flex: 1 1 320px;">
             <label>Specific months</label>
             <div id="months-checkboxes" class="month-picks"></div>
-            <div class="small-note">Pick one or more months here to override the month window.</div>
+            <div class="small-note" id="months-help">Pick one or more months here to override the month window.</div>
           </div>
           <div class="actions" style="align-self:end">
             <button class="button-primary" id="load-button" type="button">Load statements</button>
@@ -305,9 +351,11 @@
 
       const supplierInput = document.getElementById("supplier-input");
       const monthInput = document.getElementById("month-input");
+      const periodModeSelect = document.getElementById("period-mode-select");
       const pubSelect = document.getElementById("pub-select");
       const windowSelect = document.getElementById("window-select");
       const monthsCheckboxes = document.getElementById("months-checkboxes");
+      const monthsHelp = document.getElementById("months-help");
       const summaryGrid = document.getElementById("summary-grid");
       const statementList = document.getElementById("statement-list");
       const inspector = document.getElementById("inspector");
@@ -335,6 +383,14 @@
         const [year, m] = String(month).split("-");
         const date = new Date(Number(year), Number(m) - 1, 1);
         return date.toLocaleString("en-IE", { month: "short", year: "numeric" });
+      }
+
+      function vatPeriodMonths(anchorMonth) {
+        const normalized = anchorMonth || defaultMonthValue();
+        const [, monthRaw] = normalized.split("-");
+        const monthNumber = Number(monthRaw);
+        const startMonth = monthNumber % 2 === 1 ? normalized : shiftMonth(normalized, -1);
+        return [startMonth, shiftMonth(startMonth, 1)];
       }
 
       function escapeHtml(value) {
@@ -373,6 +429,10 @@
 
       function statementKindMeta(kind) {
         return {
+          statement_of_account: {
+            label: "Account Statement",
+            description: "Month-end account statement showing invoice and credit coverage for the supplier account.",
+          },
           diageo_erp_statement: {
             label: "Month-End Account Statement",
             description: "Primary month-end settlement statement with invoice, payment, and clearing rows.",
@@ -461,7 +521,8 @@
         return payload;
       }
 
-      function renderMonthCheckboxes(anchorMonth) {
+      function renderMonthCheckboxes(anchorMonth, selectedMonths = []) {
+        const selected = new Set(selectedMonths || []);
         const months = [];
         for (let offset = -2; offset <= 2; offset += 1) {
           months.push(shiftMonth(anchorMonth, offset));
@@ -469,15 +530,51 @@
         monthsCheckboxes.innerHTML = months
           .map((month) => `
             <label class="month-pick">
-              <input type="checkbox" value="${escapeHtml(month)}" />
+              <input type="checkbox" value="${escapeHtml(month)}" ${selected.has(month) ? "checked" : ""} />
               <span>${escapeHtml(monthLabel(month))}</span>
             </label>
           `)
           .join("");
+        syncMonthScopeControls();
       }
 
       function selectedMonths() {
         return Array.from(monthsCheckboxes.querySelectorAll("input:checked")).map((input) => input.value);
+      }
+
+      function effectiveSelectedMonths() {
+        if (periodModeSelect.value === "vat_period") {
+          return vatPeriodMonths(monthInput.value || defaultMonthValue());
+        }
+        if (periodModeSelect.value === "specific_months") {
+          return selectedMonths();
+        }
+        return [];
+      }
+
+      function syncMonthScopeControls() {
+        const mode = periodModeSelect.value || "month_window";
+        const forcedMonths = mode === "vat_period"
+          ? vatPeriodMonths(monthInput.value || defaultMonthValue())
+          : [];
+        const forcedSet = new Set(forcedMonths);
+        monthsCheckboxes.classList.toggle("is-locked", mode !== "specific_months");
+        monthsCheckboxes.querySelectorAll("input").forEach((input) => {
+          if (mode === "specific_months") {
+            input.disabled = false;
+            return;
+          }
+          input.checked = forcedSet.has(input.value);
+          input.disabled = true;
+        });
+        windowSelect.disabled = mode !== "month_window";
+        if (mode === "vat_period") {
+          monthsHelp.textContent = `VAT period mode uses ${forcedMonths.map((month) => monthLabel(month)).join(" and ")} together.`;
+        } else if (mode === "specific_months") {
+          monthsHelp.textContent = "Pick one or more months here to review a custom statement window.";
+        } else {
+          monthsHelp.textContent = "Month window mode uses the selected month plus the configured months either side.";
+        }
       }
 
       async function loadSuppliers() {
@@ -498,10 +595,10 @@
         summaryGrid.innerHTML = [
           ["Supplier", workbench.canonical_supplier || workbench.supplier_query || "—"],
           ["Statements", workbench.total_statements],
-          ["With settlements", workbench.statements_with_settlements],
-          ["Missing invoice refs", workbench.total_missing_invoice_refs],
-          ["Missing credit refs", workbench.total_missing_credit_refs],
-          ["Likely transactions", workbench.total_likely_transactions],
+          ["Payment-ready", workbench.statements_with_settlements],
+          ["Missing invoice docs", workbench.total_missing_invoice_refs],
+          ["Missing credit docs", workbench.total_missing_credit_refs],
+          ["Likely bank matches", workbench.total_likely_transactions],
         ]
           .map(([label, value]) => `
             <div class="meta-card">
@@ -517,6 +614,60 @@
           return '<span class="small-note">None.</span>';
         }
         return refs.map((ref) => buildTag(ref, tone)).join("");
+      }
+
+      function statementUseCase(item) {
+        const settlementCount = Number(item.settlement_count || 0);
+        const invoiceCount = (item.invoice_refs || []).length;
+        const creditCount = (item.credit_refs || []).length;
+        const paymentCount = (item.payment_refs || []).length;
+        const missingInvoiceCount = (item.missing_invoice_refs || []).length;
+        const missingCreditCount = (item.missing_credit_refs || []).length;
+
+        if (settlementCount > 0) {
+          return {
+            tone: "good",
+            label: "Can explain a bank payment",
+            description: `Recovered ${settlementCount} payment-to-invoice settlement group(s) from this statement.`,
+            nextStep: missingInvoiceCount || missingCreditCount
+              ? `Some linked documents are still missing from the system.`
+              : `Use this as the main payment statement when reviewing matching bank rows.`,
+          };
+        }
+
+        if (paymentCount > 0) {
+          return {
+            tone: "warn",
+            label: "Has payment lines, but not a clean settlement yet",
+            description: `This statement includes ${paymentCount} payment line(s), but the system has not rebuilt a reliable payment group yet.`,
+            nextStep: `Inspect or re-extract this statement if you expect it to explain a bank payment directly.`,
+          };
+        }
+
+        if (invoiceCount || creditCount) {
+          return {
+            tone: "good",
+            label: "Invoice coverage only",
+            description: `This statement is useful for checking which invoices or credits belong to the month.`,
+            nextStep: `Do not expect a direct bank-payment match from this statement on its own.`,
+          };
+        }
+
+        return {
+          tone: "warn",
+          label: "Weak extraction",
+          description: `The statement is imported, but no usable invoice or payment lines were recovered yet.`,
+          nextStep: `Re-extract or inspect the document before relying on it.`,
+        };
+      }
+
+      function coverageCounts(item) {
+        return [
+          ["Invoices in system", (item.imported_invoice_refs || []).length],
+          ["Invoices missing", (item.missing_invoice_refs || []).length],
+          ["Credits in system", (item.imported_credit_refs || []).length],
+          ["Credits missing", (item.missing_credit_refs || []).length],
+        ];
       }
 
       function renderSettlementDetail(settlement) {
@@ -535,7 +686,12 @@
 
       function renderLikelyTransactions(item) {
         if (!(item.likely_transactions || []).length) {
-          return '<div class="small-note">No likely bank transactions were inferred from this statement yet.</div>';
+          const mode = statementUseCase(item);
+          return `<div class="small-note">${escapeHtml(
+            mode.label === "Invoice coverage only"
+              ? "No direct bank-payment match is expected here. This statement is being used to show invoice coverage only."
+              : "No likely bank transactions were inferred from this statement yet."
+          )}</div>`;
         }
         return `
           <div class="tx-list">
@@ -558,6 +714,10 @@
         }
 
         statementList.innerHTML = (workbench.statements || []).map((item) => `
+          ${(() => {
+            const mode = statementUseCase(item);
+            const counts = coverageCounts(item);
+            return `
           <article class="statement-card">
             <div class="card-top">
               <div>
@@ -568,8 +728,8 @@
                 ${statementKindDescription(item.statement_kind || "statement") ? `<div class="small-note" style="margin-top:0.3rem">${escapeHtml(statementKindDescription(item.statement_kind || "statement"))}</div>` : ""}
               </div>
               <div class="chips">
-                ${buildTag(item.settlement_count ? `${item.settlement_count} settlement group(s)` : "No settlement groups", item.settlement_count ? "good" : "warn")}
-                ${buildTag(item.period_start && item.period_end ? `${item.period_start} to ${item.period_end}` : "No clear period", item.period_start && item.period_end ? "good" : "warn")}
+                ${buildTag(mode.label, mode.tone)}
+                ${buildTag(item.period_start && item.period_end ? `${item.period_start} to ${item.period_end}` : `Statement date ${formatDate(item.document_date)}`, item.period_start && item.period_end ? "good" : "warn")}
               </div>
             </div>
 
@@ -577,31 +737,40 @@
               ${renderStorageTags(item)}
             </div>
 
-            <div class="subsection">
-              <strong>Imported vs missing refs</strong>
-              <div class="small-note">Imported invoice refs</div>
-              <div class="chips">${renderRefTags(item.imported_invoice_refs || [], "good")}</div>
-              <div class="small-note">Missing invoice refs</div>
-              <div class="chips">${renderRefTags(item.missing_invoice_refs || [], "warn")}</div>
-              <div class="small-note">Imported credit refs</div>
-              <div class="chips">${renderRefTags(item.imported_credit_refs || [], "good")}</div>
-              <div class="small-note">Missing credit refs</div>
-              <div class="chips">${renderRefTags(item.missing_credit_refs || [], "warn")}</div>
+            <div class="focus-box">
+              <strong>${escapeHtml(mode.label)}</strong>
+              <div class="small-note">${escapeHtml(mode.description)}</div>
+              <div class="small-note"><strong>Next step:</strong> ${escapeHtml(mode.nextStep)}</div>
+            </div>
+
+            <div class="count-grid">
+              ${counts.map(([label, value]) => `
+                <div class="count-card">
+                  <label>${escapeHtml(label)}</label>
+                  <strong>${escapeHtml(value)}</strong>
+                </div>
+              `).join("")}
             </div>
 
             <details>
-              <summary>Statement refs and settlement groups</summary>
-              <div class="small-note">Invoice refs</div>
-              <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.invoice_refs || [], "good")}</div>
+              <summary>Open invoice, credit, and payment references</summary>
+              <div class="small-note">Imported invoice refs</div>
+              <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.imported_invoice_refs || [], "good")}</div>
+              <div class="small-note">Missing invoice refs</div>
+              <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.missing_invoice_refs || [], "warn")}</div>
+              <div class="small-note">Imported credit refs</div>
+              <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.imported_credit_refs || [], "good")}</div>
+              <div class="small-note">Missing credit refs</div>
+              <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.missing_credit_refs || [], "warn")}</div>
               <div class="small-note">Payment refs</div>
               <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.payment_refs || [], "good")}</div>
-              <div class="small-note">Credit refs</div>
-              <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.credit_refs || [], "good")}</div>
+              <div class="small-note">All statement refs</div>
+              <div class="chips" style="margin-bottom:0.6rem">${renderRefTags(item.invoice_refs || [], "good")}</div>
               ${(item.settlements || []).map(renderSettlementDetail).join("") || '<div class="small-note">No settlement groups recovered from this statement yet.</div>'}
             </details>
 
-            <details open>
-              <summary>Likely transactions (${(item.likely_transactions || []).length})</summary>
+            <details ${(item.likely_transactions || []).length ? "open" : ""}>
+              <summary>Likely bank transactions (${(item.likely_transactions || []).length})</summary>
               ${renderLikelyTransactions(item)}
             </details>
 
@@ -611,6 +780,8 @@
               <button class="button-secondary" data-reextract-document-id="${escapeHtml(item.id)}" type="button">Re-extract</button>
             </div>
           </article>
+            `;
+          })()}
         `).join("");
 
         statementList.querySelectorAll("[data-inspect-document-id]").forEach((button) => {
@@ -700,7 +871,8 @@
           window_months: windowSelect.value,
         });
         if (pubSelect.value) params.set("pub", pubSelect.value);
-        const months = selectedMonths();
+        params.set("period_mode", periodModeSelect.value || "month_window");
+        const months = effectiveSelectedMonths();
         if (months.length) params.set("months", months.join(","));
 
         try {
@@ -721,6 +893,12 @@
         if (params.get("supplier")) supplierInput.value = params.get("supplier");
         if (params.get("pub")) pubSelect.value = params.get("pub");
         if (params.get("month")) monthInput.value = params.get("month");
+        periodModeSelect.value = params.get("period_mode") || "month_window";
+        const queryMonths = (params.get("months") || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        renderMonthCheckboxes(monthInput.value || defaultMonthValue(), queryMonths);
       }
 
       pubSelect.addEventListener("change", async () => {
@@ -728,7 +906,10 @@
       });
 
       monthInput.addEventListener("change", () => {
-        renderMonthCheckboxes(monthInput.value || defaultMonthValue());
+        renderMonthCheckboxes(monthInput.value || defaultMonthValue(), effectiveSelectedMonths());
+      });
+      periodModeSelect.addEventListener("change", () => {
+        syncMonthScopeControls();
       });
 
       document.getElementById("load-button").addEventListener("click", loadWorkbench);
@@ -744,7 +925,8 @@
           return;
         }
         monthInput.value = defaultMonthValue();
-        renderMonthCheckboxes(monthInput.value);
+        periodModeSelect.value = "month_window";
+        renderMonthCheckboxes(monthInput.value, []);
         await loadSuppliers();
         applyQueryState();
         await loadSuppliers();

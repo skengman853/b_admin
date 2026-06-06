@@ -502,6 +502,8 @@ else:
             self.assertEqual(parsed.invoice_references, ["9263312263"])
             self.assertEqual(parsed.payment_references, ["2503715694"])
             self.assertEqual(len(parsed.entries), 2)
+            self.assertEqual(parsed.entries[0].transaction_type, "Invoice")
+            self.assertEqual(parsed.entries[1].transaction_type, "Payment")
             self.assertEqual(str(parsed.entries[1].amount), "3945.57")
             self.assertIn("Structured AI extraction was used", parsed.note or "")
 
