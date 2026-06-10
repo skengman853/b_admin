@@ -24,9 +24,10 @@ _missing_dependencies: str | None = None
 
 try:
     import aiosqlite  # noqa: F401,E402
+    from sqlalchemy import select  # noqa: E402
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
     from app.api.transactions import get_transaction_review_queue  # noqa: E402
-    from app.models import Base, Document, Transaction, User  # noqa: E402
+    from app.models import Base, Document, ReconciliationSuggestion, ReconciliationSuggestionItem, Transaction, User  # noqa: E402
 except ModuleNotFoundError as exc:  # pragma: no cover - host Python may not have app deps
     _missing_dependencies = str(exc)
 
@@ -311,10 +312,10 @@ else:
                 )
 
             self.assertEqual(queue.total, 3)
-            self.assertEqual(queue.matched_transactions, 1)
+            self.assertEqual(queue.matched_transactions, 0)
             self.assertEqual(queue.partial_transactions, 1)
             self.assertEqual(queue.suggested_transactions, 1)
-            self.assertEqual(queue.unmatched_transactions, 3)
+            self.assertEqual(queue.unmatched_transactions, 1)
             self.assertEqual(queue.statuses, ["partial", "suggested", "unmatched"])
             self.assertEqual(queue.resolution_bucket_counts["confirm_match"], 1)
             self.assertEqual(queue.resolution_bucket_counts["complete_partial_match"], 1)
@@ -361,6 +362,98 @@ else:
                 [item.transaction.row_number for item in vat_period_queue.transactions],
                 [9, 11, 12, 13],
             )
+
+        async def test_review_queue_persists_reconciliation_suggestions(self) -> None:
+            async with self.session_factory() as session:
+                payload = await get_transaction_review_queue(
+                    month="2026-04",
+                    pub=None,
+                    status=None,
+                    annotated_only=True,
+                    persist_exact_matches=False,
+                    persist_suggestions=True,
+                    page=1,
+                    limit=20,
+                    user=self.user,
+                    db=session,
+                )
+                suggestions = (await session.execute(select(ReconciliationSuggestion))).scalars().all()
+                suggestion_items = (await session.execute(select(ReconciliationSuggestionItem))).scalars().all()
+
+            self.assertEqual(payload.total, 3)
+            self.assertGreaterEqual(len(suggestions), 3)
+            self.assertGreaterEqual(len(suggestion_items), 3)
+            self.assertTrue(any(suggestion.suggestion_type == "direct_invoice_match" for suggestion in suggestions))
+            self.assertTrue(all((suggestion.reason_json or {}).get("verifier_reasons") for suggestion in suggestions))
+
+        async def test_review_queue_prefers_persisted_primary_suggestion(self) -> None:
+            async with self.session_factory() as session:
+                transaction = await session.scalar(
+                    select(Transaction).where(
+                        Transaction.user_id == self.user.id,
+                        Transaction.row_number == 13,
+                    )
+                )
+                document = await session.scalar(
+                    select(Document).where(
+                        Document.user_id == self.user.id,
+                        Document.reference == "SG300",
+                    )
+                )
+                self.assertIsNotNone(transaction)
+                self.assertIsNotNone(document)
+
+                suggestion = ReconciliationSuggestion(
+                    user_id=self.user.id,
+                    transaction_id=transaction.id,
+                    suggestion_type="statement_settlement",
+                    status="suggested",
+                    confidence_score=0.91,
+                    reason_summary="Persisted supporting suggestion",
+                    reason_json={
+                        "resolution_bucket": "review_supporting_docs",
+                        "recommended_review_status": "supporting_docs_only",
+                        "status": "partial",
+                    },
+                    verifier_status="passed",
+                    extractor_version="test",
+                    matcher_version="test",
+                )
+                suggestion.items = [
+                    ReconciliationSuggestionItem(
+                        user_id=self.user.id,
+                        document_id=document.id,
+                        item_role="statement",
+                        reference=document.reference,
+                        amount=document.amount,
+                        signed_amount=document.amount,
+                    )
+                ]
+                session.add(suggestion)
+                await session.commit()
+
+            async with self.session_factory() as session:
+                queue = await get_transaction_review_queue(
+                    month="2026-04",
+                    pub=None,
+                    status=None,
+                    annotated_only=True,
+                    persist_exact_matches=False,
+                    persist_suggestions=False,
+                    page=1,
+                    limit=20,
+                    user=self.user,
+                    db=session,
+                )
+
+            item = next(entry for entry in queue.transactions if entry.transaction.row_number == 13)
+            self.assertEqual(item.status, "partial")
+            self.assertEqual(item.resolution_bucket, "review_supporting_docs")
+            self.assertEqual(item.recommended_review_status, "supporting_docs_only")
+            self.assertEqual(item.resolution_reason, "Persisted supporting suggestion")
+            self.assertIsNotNone(item.primary_suggestion)
+            self.assertEqual(item.primary_suggestion.suggestion_type, "statement_settlement")
+            self.assertEqual(item.primary_suggestion.verifier_status, "passed")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import uuid
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models import Document, Transaction, TransactionDocumentLink
 from app.services.document_ledger import (
@@ -24,6 +25,7 @@ from app.services.document_ledger import (
     build_statement_settlements,
     find_matching_ledger_entries,
 )
+from app.services.reconciliation_suggestions import sync_reconciliation_suggestions
 from app.services.supplier_profiles import (
     DOCUMENT_METADATA_PUB_ALIASES,
     DOCUMENT_RECIPIENT_PUB_ALIASES,
@@ -323,6 +325,7 @@ async def build_reconciliation_report(
     limit: int = 100,
     annotated_only: bool = True,
     persist_exact_matches: bool = False,
+    persist_suggestions: bool = False,
 ) -> ReconciliationReport:
     start, end = month_bounds(month)
 
@@ -402,6 +405,17 @@ async def build_reconciliation_report(
             document_ledgers=candidate_ledgers,
             supporting_document_ledgers=supporting_ledgers,
         )
+        if persist_suggestions:
+            await sync_reconciliation_suggestions(
+                db=db,
+                user_id=user_id,
+                transaction=transaction,
+                analysis=item,
+                candidate_documents=candidate_documents,
+                supporting_documents=supporting_documents,
+                candidate_ledgers=candidate_ledgers,
+                supporting_ledgers=supporting_ledgers,
+            )
         exact_matches_by_transaction[transaction.id] = item.exact_matches
         matched_document_ids.update(match.document_id for match in item.exact_matches)
         suggested_document_ids.update(match.document_id for match in item.suggested_matches)
@@ -493,6 +507,7 @@ async def build_transaction_review_queue(
     review_statuses: list[str] | None = None,
     annotated_only: bool = True,
     persist_exact_matches: bool = False,
+    persist_suggestions: bool = False,
     window_months: int = 0,
     page: int = 1,
     limit: int = 50,
@@ -551,16 +566,27 @@ async def build_transaction_review_queue(
     candidate_ledgers = build_document_ledgers(candidate_documents)
     supporting_ledgers = build_document_ledgers(supporting_documents)
 
-    items: list[ReconciliationTransactionItem] = [
-        build_transaction_reconciliation_item(
+    items: list[ReconciliationTransactionItem] = []
+    for transaction in review_transactions:
+        item = build_transaction_reconciliation_item(
             transaction=transaction,
             documents=candidate_documents,
             supporting_documents=supporting_documents,
             document_ledgers=candidate_ledgers,
             supporting_document_ledgers=supporting_ledgers,
         )
-        for transaction in review_transactions
-    ]
+        items.append(item)
+        if persist_suggestions:
+            await sync_reconciliation_suggestions(
+                db=db,
+                user_id=user_id,
+                transaction=transaction,
+                analysis=item,
+                candidate_documents=candidate_documents,
+                supporting_documents=supporting_documents,
+                candidate_ledgers=candidate_ledgers,
+                supporting_ledgers=supporting_ledgers,
+            )
 
     exact_matches_by_transaction = {
         item.transaction_id: item.exact_matches
@@ -633,7 +659,9 @@ async def load_candidate_documents_for_period(
     end: date,
 ) -> list[Document]:
     candidate_document_result = await db.execute(
-        select(Document).where(
+        select(Document)
+        .options(selectinload(Document.financial_fact), selectinload(Document.financial_rows))
+        .where(
             Document.user_id == user_id,
             Document.document_type == "invoice",
             Document.document_date >= start - timedelta(days=90),
@@ -655,7 +683,9 @@ async def load_supporting_documents_for_period(
     end: date,
 ) -> list[Document]:
     supporting_document_result = await db.execute(
-        select(Document).where(
+        select(Document)
+        .options(selectinload(Document.financial_fact), selectinload(Document.financial_rows))
+        .where(
             Document.user_id == user_id,
             Document.document_date >= start - timedelta(days=90),
             Document.document_date < end + timedelta(days=31),
@@ -1507,11 +1537,20 @@ def _find_single_document_suggestions(
             elif statement_context["due_date_difference"] is not None and statement_context["due_date_difference"] <= 7:
                 score += Decimal("0.03")
 
+        if transaction.source_type == BANK_STATEMENT_SOURCE_TYPE and document_date > transaction.transaction_date:
+            score -= Decimal("0.18")
+            if statement_context is None or (
+                statement_context["due_date_difference"] is not None and statement_context["due_date_difference"] > 7
+            ):
+                score -= Decimal("0.08")
+
         if float(score) < 0.55:
             continue
 
         reason_parts = ["Amount matches exactly"]
         reason_parts.append(f"Invoice date is {date_difference} day(s) from the bank transaction")
+        if transaction.source_type == BANK_STATEMENT_SOURCE_TYPE and document_date > transaction.transaction_date:
+            reason_parts.append("Invoice date is after the bank transaction")
         if overlap:
             reason_parts.append("Supplier or file metadata overlaps with transaction text")
         elif supplier_reason:
@@ -2761,8 +2800,8 @@ def _next_step_for_flow(
 
 def _flow_role_rank(role: str | None) -> int:
     return {
-        "invoice_candidate": 0,
-        "persisted_link": 1,
+        "persisted_link": 0,
+        "invoice_candidate": 1,
         "statement_reference": 2,
         "statement_credit_reference": 3,
     }.get(role or "", 3)

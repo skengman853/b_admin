@@ -1465,6 +1465,7 @@ To Pay Directly into Bank Name: Connacht Bottlers. Account: 43232127 Bank: BANK 
                     user_id=self.user.id,
                     month="2026-04",
                     source_type="bank_statement",
+                    annotated_only=False,
                     limit=20,
                 )
 
@@ -1473,6 +1474,125 @@ To Pay Directly into Bank Name: Connacht Bottlers. Account: 43232127 Bank: BANK 
             self.assertEqual([match.reference for match in item.suggested_matches[:2]], ["4112987", "4150707"])
             self.assertIn("Supporting statement references this invoice", item.suggested_matches[0].reason)
             self.assertIn("Statement due date matches the bank transaction date", item.suggested_matches[0].reason)
+            self.assertIn("Invoice date is after the bank transaction", item.suggested_matches[1].reason)
+
+        async def test_confirmed_persisted_invoice_link_is_primary_component_context(self) -> None:
+            async with self.session_factory() as session:
+                statement = Document(
+                    user_id=self.user.id,
+                    gmail_message_id="doc-bulmers-statement-flow",
+                    attachment_index=0,
+                    attachment_name="bulmers_statement.pdf",
+                    supplier="Bulmers",
+                    document_type="statement",
+                    document_date=date(2026, 4, 30),
+                    amount=Decimal("0.00"),
+                    confidence_score=0.99,
+                    extraction_status="extracted",
+                    local_path="Documents/Bulmers/statement.pdf",
+                    needs_review=False,
+                    review_reasons=[],
+                    source_email_subject="Bulmers Careys Statement",
+                    source_email_sender="Bulmers <accounts@bulmers.ie>",
+                    extracted_text=BULMERS_ACCOUNT_STATEMENT_TEXT,
+                )
+                march_invoice = Document(
+                    user_id=self.user.id,
+                    gmail_message_id="doc-bulmers-mar-flow",
+                    attachment_index=0,
+                    attachment_name="Careys Bar - Bulmers Ireland - Inv 099 - 4112987 - Date 25-03-2026.pdf",
+                    supplier="Bulmers",
+                    document_type="invoice",
+                    document_date=date(2026, 3, 25),
+                    reference="4112987",
+                    amount=Decimal("18.00"),
+                    vat_amount=Decimal("0.00"),
+                    confidence_score=0.8,
+                    extraction_status="review",
+                    local_path="Documents/Bulmers/4112987.pdf",
+                    needs_review=True,
+                    review_reasons=["suspicious_amounts"],
+                    source_email_subject="Bulmers Ireland/Invoices/Careys Bar/Bulmers Ireland - Inv 099 - 4112987 - Date 25-03-2026.pdf",
+                    source_email_sender="local-archive",
+                    extracted_text="Invoice Number 4112987 Total € 18.00",
+                )
+                april_invoice = Document(
+                    user_id=self.user.id,
+                    gmail_message_id="doc-bulmers-apr-flow",
+                    attachment_index=0,
+                    attachment_name="Careys Bar - Bulmers Ireland - Inv 106 - 4150707 - Date 15-04-2026.pdf",
+                    supplier="Bulmers",
+                    document_type="invoice",
+                    document_date=date(2026, 4, 15),
+                    reference="4150707",
+                    amount=Decimal("18.00"),
+                    vat_amount=Decimal("0.00"),
+                    confidence_score=0.8,
+                    extraction_status="review",
+                    local_path="Documents/Bulmers/4150707.pdf",
+                    needs_review=True,
+                    review_reasons=["suspicious_amounts"],
+                    source_email_subject="Bulmers Ireland/Invoices/Careys Bar/Bulmers Ireland - Inv 106 - 4150707 - Date 15-04-2026.pdf",
+                    source_email_sender="local-archive",
+                    extracted_text="Invoice Number 4150707 Total € 18.00",
+                )
+                transaction = Transaction(
+                    user_id=self.user.id,
+                    source_type="bank_statement",
+                    source_file="bankstatements/sample.pdf",
+                    source_sheet="53747-031",
+                    row_number=203,
+                    posted_account="93-22-64 - 53747-031",
+                    pub="Careys",
+                    transaction_date=date(2026, 4, 7),
+                    description1="D/D M AND J GLEESO",
+                    description2="IE26040145489598",
+                    debit_amount=Decimal("18.00"),
+                    transaction_type="Debit",
+                    category=None,
+                    annotation_types=[],
+                    annotation_notes=[],
+                    has_linked_annotation=False,
+                    expected_supplier="Bulmers",
+                    raw_row_json={},
+                )
+                session.add_all([statement, march_invoice, april_invoice, transaction])
+                await session.flush()
+
+                persisted_link = TransactionDocumentLink(
+                    user_id=self.user.id,
+                    transaction_id=transaction.id,
+                    document_id=march_invoice.id,
+                    role="invoice",
+                    status="confirmed",
+                    score=1.0,
+                    match_reason="Confirmed invoice link",
+                )
+                persisted_link.document = march_invoice
+
+                invoice_docs = [march_invoice, april_invoice]
+                support_docs = [statement]
+                invoice_ledgers = build_document_ledgers(invoice_docs)
+                support_ledgers = build_document_ledgers(support_docs)
+                analysis = build_transaction_reconciliation_item(
+                    transaction=transaction,
+                    documents=invoice_docs,
+                    supporting_documents=support_docs,
+                    document_ledgers=invoice_ledgers,
+                    supporting_document_ledgers=support_ledgers,
+                )
+                flow = build_transaction_reconciliation_flow(
+                    transaction=transaction,
+                    analysis=analysis,
+                    invoice_documents=invoice_docs,
+                    supporting_documents=support_docs,
+                    invoice_ledgers=invoice_ledgers,
+                    supporting_ledgers=support_ledgers,
+                    persisted_links=[persisted_link],
+                )
+
+            component_stage = next(stage for stage in flow.stages if stage.key == "components")
+            self.assertEqual(component_stage.documents[0].reference, "4112987")
 
         async def test_connacht_statement_line_amount_can_drive_support_analysis(self) -> None:
             async with self.session_factory() as session:

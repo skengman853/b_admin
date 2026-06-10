@@ -653,6 +653,77 @@
         }[kind || "statement"] || "Statement";
       }
 
+      function primarySuggestionLabel(primary) {
+        if (!primary) return "No persisted suggestion";
+        return {
+          direct_invoice_match: "Direct invoice match",
+          statement_settlement: "Statement settlement",
+          supporting_docs_only: "Supporting docs only",
+          rule_resolution: "Rule resolution",
+        }[primary.suggestion_type] || primary.suggestion_type || "Suggestion";
+      }
+
+      function primarySuggestionSummary(primary) {
+        if (!primary) return "";
+        const parts = [primarySuggestionLabel(primary)];
+        if (primary.verifier_status) {
+          parts.push(primary.verifier_status);
+        }
+        if (primary.document_count) {
+          parts.push(`${primary.document_count} doc${primary.document_count === 1 ? "" : "s"}`);
+        }
+        return parts.join(" · ");
+      }
+
+      function suggestionActionLabel(primary, fallbackReviewStatus, fallbackBucket) {
+        if (!primary) {
+          return statusLabels[fallbackReviewStatus] || bucketLabels[fallbackBucket] || "Manual review";
+        }
+        if (primary.suggestion_type === "direct_invoice_match") {
+          if (primary.verifier_status === "partial") return "Needs exact invoice confirmation";
+          if (primary.verifier_status === "failed") return "Needs invoice match review";
+          return "Confirm exact invoice chain";
+        }
+        if (primary.suggestion_type === "statement_settlement") {
+          if (primary.verifier_status === "partial") {
+            const firstReason = (primary.verifier_reasons || [])[0] || "";
+            if (firstReason.toLowerCase().includes("components are incomplete")) {
+              return "Needs linked statement components";
+            }
+            return "Needs settlement group recovery";
+          }
+          if (primary.verifier_status === "failed") return "Needs statement settlement review";
+          return "Confirm statement settlement";
+        }
+        if (primary.suggestion_type === "supporting_docs_only") {
+          return "Support docs present, no settlement group";
+        }
+        if (primary.suggestion_type === "rule_resolution") {
+          return statusLabels[fallbackReviewStatus] || "Rule resolution";
+        }
+        return statusLabels[fallbackReviewStatus] || bucketLabels[fallbackBucket] || "Manual review";
+      }
+
+      function suggestionActionReason(primary, fallbackReason, fallbackAnalysis) {
+        const verifierReasons = (primary?.verifier_reasons || []).filter(Boolean);
+        if (["partial", "failed"].includes(primary?.verifier_status || "") && verifierReasons.length) {
+          return verifierReasons[0];
+        }
+        return primary?.reason_summary || fallbackReason || fallbackAnalysis || "";
+      }
+
+      function renderPrimarySuggestionReason(primary) {
+        if (!primary) return "";
+        if (!["partial", "failed"].includes(primary.verifier_status || "")) {
+          return "";
+        }
+        const reasons = (primary.verifier_reasons || []).filter(Boolean);
+        if (!reasons.length) {
+          return "";
+        }
+        return `<div class="small-note">${escapeHtml(reasons[0])}</div>`;
+      }
+
       function documentAuditTitle(document) {
         if (!document) return "Document";
         if (document.document_type === "statement") {
@@ -805,6 +876,17 @@
               </div>
             </div>
             <div class="small-note">${escapeHtml(supplierLabel)}</div>
+            ${detail?.primary_suggestion ? `<div class="small-note">Primary suggestion · ${escapeHtml(primarySuggestionSummary(detail.primary_suggestion))}</div>${renderPrimarySuggestionReason(detail.primary_suggestion)}` : ""}
+            ${!ownerHandled ? `<div class="small-note">Action · ${escapeHtml(
+              suggestionActionLabel(
+                detail?.primary_suggestion,
+                detail?.recommended_review_status,
+                item.resolution_bucket,
+              )
+            )}</div>` : ""}
+            ${!ownerHandled && suggestionActionReason(detail?.primary_suggestion, detail?.resolution_reason, detail?.analysis_note)
+              ? `<div class="small-note">${escapeHtml(suggestionActionReason(detail?.primary_suggestion, detail?.resolution_reason, detail?.analysis_note))}</div>`
+              : ""}
             <div class="doc-grid">
               ${
                 ownerHandled

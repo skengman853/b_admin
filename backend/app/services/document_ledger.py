@@ -6,6 +6,9 @@ from decimal import Decimal
 from itertools import combinations
 import uuid
 
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm.attributes import NO_VALUE
+
 from app.models import Document
 from app.services.supplier_statement_parser import (
     ParsedSupplierStatement,
@@ -71,6 +74,10 @@ class LedgerSettlement:
 
 
 def build_document_ledger(document: Document) -> ParsedDocumentLedger | None:
+    persisted_ledger = _build_persisted_document_ledger(document)
+    if persisted_ledger is not None:
+        return persisted_ledger
+
     if document.document_type == "statement":
         parsed_statement = parse_supplier_statement(document)
         if parsed_statement is None:
@@ -235,6 +242,78 @@ def _build_statement_ledger(
         period_start=parsed_statement.period_start,
         period_end=parsed_statement.period_end,
         note=parsed_statement.note,
+        entries=entries,
+    )
+
+
+def _build_persisted_document_ledger(document: Document) -> ParsedDocumentLedger | None:
+    state = sa_inspect(document)
+    fact_attr = state.attrs.financial_fact
+    rows_attr = state.attrs.financial_rows
+    if fact_attr.loaded_value is NO_VALUE or rows_attr.loaded_value is NO_VALUE:
+        return None
+
+    fact = fact_attr.loaded_value
+    if fact is None:
+        return None
+
+    persisted_rows = sorted(rows_attr.loaded_value or [], key=lambda row: row.row_index)
+    entries = [
+        ParsedLedgerEntry(
+            document_id=document.id,
+            document_type=document.document_type,
+            supplier=document.supplier,
+            entry_kind=row.row_type,
+            event_date=row.event_date,
+            due_date=row.due_date,
+            reference=row.reference,
+            related_reference=row.clearing_reference,
+            amount=row.amount,
+            signed_amount=row.signed_amount,
+            vat_amount=fact.vat_amount if len(persisted_rows) == 1 else None,
+            currency=row.currency or fact.currency,
+            is_financial=row.is_financial,
+            statement_kind=fact.statement_kind,
+            account_number=fact.account_number,
+            account_name=fact.account_name,
+            raw_text=row.raw_text,
+        )
+        for row in persisted_rows
+    ]
+
+    if not entries:
+        entry_kind = _document_entry_kind(fact.document_type)
+        if entry_kind is not None and fact.amount is not None:
+            entries.append(
+                ParsedLedgerEntry(
+                    document_id=document.id,
+                    document_type=document.document_type,
+                    supplier=document.supplier,
+                    entry_kind=entry_kind,
+                    event_date=fact.document_date,
+                    reference=fact.reference,
+                    amount=fact.amount,
+                    signed_amount=_signed_amount(entry_kind, fact.amount),
+                    vat_amount=fact.vat_amount,
+                    currency=fact.currency,
+                    is_financial=fact.is_financial,
+                    statement_kind=fact.statement_kind,
+                    account_number=fact.account_number,
+                    account_name=fact.account_name,
+                )
+            )
+
+    return ParsedDocumentLedger(
+        document_id=document.id,
+        supplier=document.supplier,
+        document_type=document.document_type,
+        is_financial=fact.is_financial,
+        source_text=document.extracted_text,
+        statement_kind=fact.statement_kind,
+        account_number=fact.account_number,
+        account_name=fact.account_name,
+        period_start=fact.period_start,
+        period_end=fact.period_end,
         entries=entries,
     )
 

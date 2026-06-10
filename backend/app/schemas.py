@@ -491,6 +491,27 @@ class DocumentExtractionResponse(BaseModel):
     results: list[DocumentExtractionItem] = Field(default_factory=list)
 
 
+class DocumentFinancialBackfillRequest(BaseModel):
+    limit: int = Field(default=100, ge=1, le=1000)
+    document_ids: list[uuid.UUID] = Field(default_factory=list)
+    force: bool = False
+
+
+class DocumentFinancialBackfillItem(BaseModel):
+    document_id: uuid.UUID
+    status: str
+    reason: str | None = None
+    document_type: str
+    supplier: str
+
+
+class DocumentFinancialBackfillResponse(BaseModel):
+    requested: int
+    backfilled: int
+    skipped: int
+    results: list[DocumentFinancialBackfillItem] = Field(default_factory=list)
+
+
 class LocalDocumentImportRequest(BaseModel):
     source_path: str
     limit: int = Field(default=250, ge=1, le=2000)
@@ -699,6 +720,20 @@ class TransactionFlowResponse(BaseModel):
     settlements: list[TransactionFlowSettlementResponse] = Field(default_factory=list)
 
 
+class TransactionPrimarySuggestionResponse(BaseModel):
+    suggestion_type: str
+    status: str
+    verifier_status: str | None = None
+    confidence_score: float | None = None
+    reason_summary: str | None = None
+    resolution_bucket: str | None = None
+    recommended_review_status: str | None = None
+    matcher_status: str | None = None
+    item_count: int = 0
+    document_count: int = 0
+    verifier_reasons: list[str] = Field(default_factory=list)
+
+
 class TransactionReconciliationItemResponse(BaseModel):
     transaction_id: uuid.UUID
     source_type: str
@@ -719,6 +754,7 @@ class TransactionReconciliationItemResponse(BaseModel):
     resolution_bucket: str
     recommended_review_status: str | None = None
     resolution_reason: str | None = None
+    primary_suggestion: TransactionPrimarySuggestionResponse | None = None
     exact_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
     suggested_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
     supporting_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
@@ -796,6 +832,7 @@ class TransactionLinksResponse(BaseModel):
     resolution_bucket: str
     recommended_review_status: str | None = None
     resolution_reason: str | None = None
+    primary_suggestion: TransactionPrimarySuggestionResponse | None = None
     persisted_links: list[TransactionLinkResponse] = Field(default_factory=list)
     exact_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
     suggested_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
@@ -809,6 +846,7 @@ class TransactionDetailResponse(BaseModel):
     resolution_bucket: str
     recommended_review_status: str | None = None
     resolution_reason: str | None = None
+    primary_suggestion: TransactionPrimarySuggestionResponse | None = None
     reconciliation_flow: TransactionFlowResponse | None = None
     history_count: int = 0
     persisted_links: list[TransactionLinkResponse] = Field(default_factory=list)
@@ -830,6 +868,7 @@ class TransactionReviewQueueItemResponse(BaseModel):
     resolution_bucket: str
     recommended_review_status: str | None = None
     resolution_reason: str | None = None
+    primary_suggestion: TransactionPrimarySuggestionResponse | None = None
     persisted_links: list[TransactionLinkResponse] = Field(default_factory=list)
     exact_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)
     suggested_matches: list[TransactionDocumentMatchResponse] = Field(default_factory=list)

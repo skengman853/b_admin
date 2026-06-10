@@ -1,54 +1,117 @@
-# Invoice Auto-Organizer
+# B Admin Reconciliation Engine
 
-Collect invoice-related documents from Gmail, classify them, and store them cleanly.
-The build now follows a local-pipeline-first approach:
+This repo is now a **document-first reconciliation system** for month-close bookkeeping.
 
-`Gmail -> PDF -> classify -> local folders -> Drive -> extracted data -> Excel matching -> UI`
+It is built to answer one question well:
+
+> what document chain explains this transaction?
+
+The system is no longer just a Gmail downloader or folder organizer. It now imports documents and transactions, extracts structured financial data, stores statement rows and reconciliation suggestions, and gives an operator a fast audit/review flow.
+
+## What The System Is
+
+The current product has five layers:
+
+1. `Ingestion`
+- Gmail document ingestion
+- staged local archive import from `backend/import_sources/`
+- bank-statement import
+- VAT-book import
+
+2. `Storage`
+- metadata in Postgres
+- PDFs in local storage and Cloudflare R2
+- extraction history, financial facts, financial rows, and persisted suggestions in the DB
+
+3. `Extraction`
+- invoices, credit notes, receipts, and statements become structured data
+- statement extraction is now moving to an **AI-first** path
+- extracted facts and rows are stored permanently so the app does not need to rethink the same PDF from scratch every time
+
+4. `Reconciliation`
+- documents are normalized into a shared ledger shape
+- transactions are compared against stored financial rows and persisted suggestions
+- deterministic verifier checks keep suggestions explainable
+
+5. `Operator Workflow`
+- `/month-audit` for fast monthly scanning
+- `/review` for final row resolution
+- `/supplier-documents` for document inventory and repair
+- `/statement-workbench` for statement-first investigation
+
+## Core Flow
+
+`Document -> Extraction Run -> Financial Facts -> Financial Rows -> Reconciliation Suggestion -> Verifier -> Audit/Review UI`
+
+That is the direction of the system now.
+
+## Main Pages
+
+- `/month-audit`
+  - compact monthly ledger
+  - main operator page
+- `/review`
+  - full reconciliation detail and final actions
+- `/supplier-documents`
+  - supplier document inventory
+  - inline inspect / re-extract
+- `/statement-workbench`
+  - statement-first view
+  - statement refs, settlement groups, missing pieces
+
+## Current Data Layer
+
+Important persisted models now include:
+
+- `documents`
+- `transactions`
+- `transaction_document_links`
+- `transaction_rules`
+- `document_extraction_runs`
+- `document_financial_facts`
+- `document_financial_rows`
+- `reconciliation_suggestions`
+- `reconciliation_suggestion_items`
+
+This means the app is moving away from raw PDF text and ad hoc page-time parsing, and toward a proper stored reconciliation engine.
 
 ## Current Direction
 
-- Phase 1 proves the document pipeline locally
-- Phase 2 syncs the organized files to Google Drive
-- Phase 3 extracts structured document data
-- Phase 4 matches documents to Excel or VAT records
-- Phase 5 adds a usable UI
-- Phase 6 hardens the system for multi-user SaaS use
+The main strategy is:
 
-Current status:
-- Phase 1 is complete
-- completion note: [docs/14-phase-1-completion.md](docs/14-phase-1-completion.md)
-- Phase 2 MVP is complete
-- completion note: [docs/15-phase-2-completion.md](docs/15-phase-2-completion.md)
+1. import the document archive
+2. extract structured rows reliably
+3. persist match suggestions
+4. verify those suggestions deterministically
+5. keep the UI simple for the operator
 
-The current repo still contains backend auth, database, and Gmail OAuth scaffolding from an earlier direction. That scaffolding is useful, but it is no longer the primary definition of success.
+The biggest remaining product problem is still **statement extraction quality**, especially for suppliers like:
+
+- `Diageo`
+- `Heineken`
+- `Connacht Bottlers`
+- `Bulmers`
 
 ## Quick Start
 
-1. Create a local `.env` file with the settings the backend expects
-2. Start the stack
-3. Run migrations
-4. Create a test user and connect Gmail
-5. Start building the local document pipeline
-
 ```bash
 # Start everything
-docker compose up -d --build
+ docker compose up -d --build
 
-# Run database migrations
-docker compose exec api alembic upgrade head
+# Run migrations
+ docker compose exec api alembic upgrade head
 
-# Health check
-curl http://localhost:8000/health
+# Health checks
+ curl http://localhost:8000/health
+ curl http://localhost:8000/ready
 ```
 
 ## Production Baseline
 
-The repo now has a separate production compose file:
-
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml exec api alembic upgrade head
-curl http://localhost:8000/ready
+ docker compose -f docker-compose.prod.yml up -d --build
+ docker compose -f docker-compose.prod.yml exec api alembic upgrade head
+ curl http://localhost:8000/ready
 ```
 
 Minimum production env expectations:
@@ -61,139 +124,31 @@ frontend_url=https://your-frontend.example.com
 google_redirect_uri=https://your-api.example.com/api/gmail/callback
 ```
 
-In `production`, the API now fails fast on unsafe defaults like:
-- placeholder JWT or encryption secrets
-- localhost frontend origins
-- localhost Google OAuth redirect URI
-- incomplete S3/R2 config when `document_storage_backend=s3`
-
 ## Useful Commands
 
 ```bash
 # API logs
-docker compose logs -f api
+ docker compose logs -f api
 
-# Restart the API after env changes
-docker compose restart api
+# Restart API after env changes
+ docker compose restart api
 
-# Open Postgres shell
-docker compose exec db psql -U postgres -d invoice_organizer
+# Postgres shell
+ docker compose exec db psql -U postgres -d invoice_organizer
 
-# Open Redis CLI
-docker compose exec redis redis-cli
+# Redis CLI
+ docker compose exec redis redis-cli
 ```
 
-Postgres and Redis are only exposed inside the Compose network by default, which avoids conflicts with local services already using `5432` or `6379`.
+## Recommended Docs
 
-## Gmail OAuth Smoke Test
+Start here:
 
-After creating a user and exporting a JWT token:
+- system overview: [docs/23-system-overview.md](docs/23-system-overview.md)
+- roadmap ahead: [docs/24-roadmap-ahead.md](docs/24-roadmap-ahead.md)
+- current product state: [docs/16-current-product.md](docs/16-current-product.md)
+- architecture: [docs/03-architecture.md](docs/03-architecture.md)
+- data model: [docs/04-database-schema.md](docs/04-database-schema.md)
+- AI reconciliation data plan: [docs/22-ai-reconciliation-data-plan.md](docs/22-ai-reconciliation-data-plan.md)
 
-```bash
-curl -s http://localhost:8000/api/gmail/auth-url \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Open the returned Google URL in a browser, complete consent, then verify:
-
-```bash
-curl -s http://localhost:8000/api/auth/me \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-You want `"gmail_connected": true`.
-
-## What Success Looks Like Now
-
-The immediate goal is not a polished dashboard. The immediate goal is a reliable pipeline that:
-
-- scans recent Gmail messages
-- downloads relevant PDFs
-- classifies them as invoice, statement, credit note, receipt, or review-needed
-- routes them into a clean local folder structure
-- records what has already been processed
-- persists document rows in the database
-- syncs documents into Google Drive
-- stores reusable Drive links
-
-## Current Pipeline Checks
-
-Run a scan:
-
-```bash
-curl -s -X POST http://localhost:8000/api/pipeline/scan-recent \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"days":30,"max_messages":25,"force":true}'
-```
-
-Check the accumulated pipeline summary:
-
-```bash
-curl -s http://localhost:8000/api/pipeline/summary \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Check files that need manual review:
-
-```bash
-curl -s http://localhost:8000/api/pipeline/review-queue \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Check stored document records:
-
-```bash
-curl -s http://localhost:8000/api/documents \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Manual Drive sync is still available if needed:
-
-```bash
-curl -s -X POST http://localhost:8000/api/documents/sync-drive \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"limit":100}'
-```
-
-## Object Storage Setup
-
-The app now supports S3-compatible document storage while keeping local fallback for the current review flow.
-
-Add these to `.env`:
-
-```env
-document_storage_backend=s3
-s3_bucket=your-bucket-name
-s3_region=eu-west-1
-s3_endpoint_url=
-s3_access_key_id=...
-s3_secret_access_key=...
-s3_prefix=documents
-s3_force_path_style=true
-```
-
-Then rebuild or restart the containers so the new env vars and dependency load:
-
-```bash
-docker compose up -d --build
-docker compose exec api alembic upgrade head
-```
-
-To backfill existing PDFs from local disk into the bucket:
-
-```bash
-curl -s -X POST http://localhost:8000/api/documents/sync-storage \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"limit":500}'
-```
-
-New imports will also attempt to sync to the configured bucket automatically.
-
-## Roadmap
-
-The current execution roadmap is [docs/20-execution-roadmap.md](docs/20-execution-roadmap.md).
-
-The next product-quality roadmap is [docs/21-great-tool-roadmap.md](docs/21-great-tool-roadmap.md).
+The older phase docs are still useful as history, but they are no longer the best description of the current system.

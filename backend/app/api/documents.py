@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db import get_db
 from app.deps import get_current_user
@@ -24,6 +25,8 @@ from app.schemas import (
     DocumentStatementEntryResponse,
     DocumentExtractionRequest,
     DocumentExtractionResponse,
+    DocumentFinancialBackfillRequest,
+    DocumentFinancialBackfillResponse,
     LocalDocumentImportRequest,
     LocalDocumentImportResponse,
     StatementContextImportRequest,
@@ -35,6 +38,7 @@ from app.schemas import (
 )
 from app.services.document_candidates import extract_multi_invoice_candidates
 from app.services.document_extraction import extract_documents
+from app.services.document_financial_backfill import backfill_document_financial_state
 from app.services.document_ledger import build_document_ledger, build_statement_settlements
 from app.services.local_document_import import (
     import_documents_from_local_archive,
@@ -305,7 +309,9 @@ async def get_document(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Document).where(Document.id == document_id, Document.user_id == user.id)
+        select(Document)
+        .options(selectinload(Document.financial_fact), selectinload(Document.financial_rows))
+        .where(Document.id == document_id, Document.user_id == user.id)
     )
     document = result.scalar_one_or_none()
     if not document:
@@ -533,6 +539,22 @@ async def extract_document_data(
         force=body.force,
     )
     return DocumentExtractionResponse.model_validate(summary)
+
+
+@router.post("/backfill-financial-state", response_model=DocumentFinancialBackfillResponse)
+async def backfill_document_financial_data(
+    body: DocumentFinancialBackfillRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    summary = await backfill_document_financial_state(
+        user=user,
+        db=db,
+        limit=body.limit,
+        document_ids=body.document_ids,
+        force=body.force,
+    )
+    return DocumentFinancialBackfillResponse.model_validate(summary)
 
 
 @router.post("/import-local", response_model=LocalDocumentImportResponse)

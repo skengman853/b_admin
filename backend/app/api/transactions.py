@@ -35,6 +35,7 @@ from app.schemas import (
     TransactionReviewUpdateRequest,
     TransactionLinkUpdateRequest,
     TransactionListResponse,
+    TransactionPrimarySuggestionResponse,
     TransactionReconciliationItemResponse,
     TransactionReconciliationReportResponse,
     TransactionReviewQueueItemResponse,
@@ -54,6 +55,13 @@ from app.services.transaction_reconciliation import (
     sync_exact_transaction_document_links,
 )
 from app.services.document_ledger import build_document_ledgers
+from app.services.reconciliation_suggestions import (
+    apply_primary_suggestion_to_analysis,
+    build_match_lists_from_persisted_suggestions,
+    load_active_reconciliation_suggestions,
+    select_primary_reconciliation_suggestion,
+    sync_reconciliation_suggestions,
+)
 from app.services.transaction_rules import (
     RULE_MATCH_FIELD_COUNTERPARTY,
     RULE_REVIEW_STATUS_HANDLED,
@@ -371,7 +379,25 @@ def _build_match_response(match) -> TransactionDocumentMatchResponse:
     )
 
 
-def _build_reconciliation_item_response(item) -> TransactionReconciliationItemResponse:
+def _build_primary_suggestion_response(primary) -> TransactionPrimarySuggestionResponse | None:
+    if primary is None:
+        return None
+    return TransactionPrimarySuggestionResponse(
+        suggestion_type=primary.suggestion_type,
+        status=primary.status,
+        verifier_status=primary.verifier_status,
+        confidence_score=primary.confidence_score,
+        reason_summary=primary.reason_summary,
+        resolution_bucket=primary.resolution_bucket,
+        recommended_review_status=primary.recommended_review_status,
+        matcher_status=primary.matcher_status,
+        item_count=primary.item_count,
+        document_count=primary.document_count,
+        verifier_reasons=primary.verifier_reasons,
+    )
+
+
+def _build_reconciliation_item_response(item, *, primary_suggestion=None) -> TransactionReconciliationItemResponse:
     return TransactionReconciliationItemResponse(
         transaction_id=item.transaction_id,
         source_type=item.source_type,
@@ -392,10 +418,17 @@ def _build_reconciliation_item_response(item) -> TransactionReconciliationItemRe
         resolution_bucket=item.resolution_bucket,
         recommended_review_status=item.recommended_review_status,
         resolution_reason=item.resolution_reason,
+        primary_suggestion=_build_primary_suggestion_response(primary_suggestion),
         exact_matches=[_build_match_response(match) for match in item.exact_matches],
         suggested_matches=[_build_match_response(match) for match in item.suggested_matches],
         supporting_matches=[_build_match_response(match) for match in item.supporting_matches],
     )
+
+
+def _resolve_match_lists(*, analysis, persisted_suggestions: list | None):
+    if persisted_suggestions:
+        return build_match_lists_from_persisted_suggestions(persisted_suggestions)
+    return analysis.exact_matches, analysis.suggested_matches, analysis.supporting_matches
 
 
 def _build_flow_document_response(document) -> TransactionFlowDocumentResponse:
@@ -551,6 +584,7 @@ async def _build_transaction_detail_response(
     user: User,
     transaction: Transaction,
     persist_exact_matches: bool,
+    persist_suggestions: bool,
 ) -> TransactionDetailResponse:
     link_result = await db.execute(
         select(TransactionDocumentLink)
@@ -590,6 +624,17 @@ async def _build_transaction_detail_response(
         document_ledgers=candidate_ledgers,
         supporting_document_ledgers=supporting_ledgers,
     )
+    if persist_suggestions:
+        await sync_reconciliation_suggestions(
+            db=db,
+            user_id=user.id,
+            transaction=transaction,
+            analysis=analysis,
+            candidate_documents=candidate_documents,
+            supporting_documents=supporting_documents,
+            candidate_ledgers=candidate_ledgers,
+            supporting_ledgers=supporting_ledgers,
+        )
 
     if persist_exact_matches and analysis.exact_matches:
         await sync_exact_transaction_document_links(
@@ -608,6 +653,18 @@ async def _build_transaction_detail_response(
             .order_by(TransactionDocumentLink.status.asc(), TransactionDocumentLink.created_at.asc())
         )
         persisted_links = list(link_result.scalars().all())
+    suggestion_map = await load_active_reconciliation_suggestions(
+        db=db,
+        user_id=user.id,
+        transaction_ids=[transaction.id],
+    )
+    primary_suggestion = select_primary_reconciliation_suggestion(
+        suggestion_map.get(transaction.id)
+    )
+    apply_primary_suggestion_to_analysis(
+        analysis=analysis,
+        primary=primary_suggestion,
+    )
     flow = build_transaction_reconciliation_flow(
         transaction=transaction,
         analysis=analysis,
@@ -630,6 +687,10 @@ async def _build_transaction_detail_response(
         recommended_review_status=analysis.recommended_review_status,
         resolution_reason=analysis.resolution_reason,
     )
+    exact_matches, suggested_matches, supporting_matches = _resolve_match_lists(
+        analysis=analysis,
+        persisted_suggestions=suggestion_map.get(transaction.id),
+    )
 
     return TransactionDetailResponse(
         transaction=_build_transaction_response(transaction),
@@ -638,12 +699,13 @@ async def _build_transaction_detail_response(
         resolution_bucket=analysis.resolution_bucket,
         recommended_review_status=effective_review_status,
         resolution_reason=effective_resolution_reason,
+        primary_suggestion=_build_primary_suggestion_response(primary_suggestion),
         reconciliation_flow=_build_flow_response(flow),
         history_count=history_count or 0,
         persisted_links=[_build_transaction_link_response(link) for link in persisted_links],
-        exact_matches=[_build_match_response(match) for match in analysis.exact_matches],
-        suggested_matches=[_build_match_response(match) for match in analysis.suggested_matches],
-        supporting_matches=[_build_match_response(match) for match in analysis.supporting_matches],
+        exact_matches=[_build_match_response(match) for match in exact_matches],
+        suggested_matches=[_build_match_response(match) for match in suggested_matches],
+        supporting_matches=[_build_match_response(match) for match in supporting_matches],
     )
 
 
@@ -793,6 +855,7 @@ async def get_transaction_review_queue(
     review_status: str | None = None,
     annotated_only: bool | None = None,
     persist_exact_matches: bool = True,
+    persist_suggestions: bool = True,
     window_months: int = 0,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
@@ -827,11 +890,12 @@ async def get_transaction_review_queue(
         review_statuses=requested_review_statuses,
         annotated_only=effective_annotated_only,
         persist_exact_matches=persist_exact_matches,
+        persist_suggestions=persist_suggestions,
         window_months=window_months,
         page=page,
         limit=limit,
     )
-    if persist_exact_matches:
+    if persist_exact_matches or persist_suggestions:
         await db.commit()
 
     transaction_map = {
@@ -850,11 +914,27 @@ async def get_transaction_review_queue(
         user_id=user.id,
         transaction_ids=list(transaction_map),
     )
+    suggestions_by_transaction = await load_active_reconciliation_suggestions(
+        db=db,
+        user_id=user.id,
+        transaction_ids=list(transaction_map),
+    )
 
     items = []
     for item in queue.transactions:
         transaction = transactions_by_id[item.transaction_id]
         persisted_links = links_by_transaction.get(item.transaction_id, [])
+        primary_suggestion = select_primary_reconciliation_suggestion(
+            suggestions_by_transaction.get(item.transaction_id)
+        )
+        apply_primary_suggestion_to_analysis(
+            analysis=item,
+            primary=primary_suggestion,
+        )
+        exact_matches, suggested_matches, supporting_matches = _resolve_match_lists(
+            analysis=item,
+            persisted_suggestions=suggestions_by_transaction.get(item.transaction_id),
+        )
         effective_review_status, effective_resolution_reason = _effective_review_outcome(
             review_status=transaction.review_status,
             category=transaction.category,
@@ -874,12 +954,24 @@ async def get_transaction_review_queue(
                 resolution_bucket=item.resolution_bucket,
                 recommended_review_status=effective_review_status,
                 resolution_reason=effective_resolution_reason,
+                primary_suggestion=_build_primary_suggestion_response(primary_suggestion),
                 persisted_links=[_build_transaction_link_response(link) for link in persisted_links],
-                exact_matches=[_build_match_response(match) for match in item.exact_matches],
-                suggested_matches=[_build_match_response(match) for match in item.suggested_matches],
-                supporting_matches=[_build_match_response(match) for match in item.supporting_matches],
+                exact_matches=[_build_match_response(match) for match in exact_matches],
+                suggested_matches=[_build_match_response(match) for match in suggested_matches],
+                supporting_matches=[_build_match_response(match) for match in supporting_matches],
             )
         )
+
+    response_status_counts = {
+        "matched": 0,
+        "partial": 0,
+        "suggested": 0,
+        "unmatched": 0,
+    }
+    response_bucket_counts: dict[str, int] = {}
+    for item in items:
+        response_status_counts[item.status] = response_status_counts.get(item.status, 0) + 1
+        response_bucket_counts[item.resolution_bucket] = response_bucket_counts.get(item.resolution_bucket, 0) + 1
 
     return TransactionReviewQueueResponse(
         month=queue.month,
@@ -891,11 +983,11 @@ async def get_transaction_review_queue(
         total=queue.total,
         page=queue.page,
         pages=queue.pages,
-        matched_transactions=queue.matched_transactions,
-        partial_transactions=queue.partial_transactions,
-        suggested_transactions=queue.suggested_transactions,
-        unmatched_transactions=queue.unmatched_transactions,
-        resolution_bucket_counts=queue.resolution_bucket_counts,
+        matched_transactions=response_status_counts["matched"],
+        partial_transactions=response_status_counts["partial"],
+        suggested_transactions=response_status_counts["suggested"],
+        unmatched_transactions=response_status_counts["unmatched"],
+        resolution_bucket_counts=response_bucket_counts,
         transactions=items,
     )
 
@@ -947,6 +1039,7 @@ async def list_transaction_rules(
 async def get_transaction_detail(
     transaction_id: uuid.UUID,
     persist_exact_matches: bool = False,
+    persist_suggestions: bool = True,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -957,12 +1050,16 @@ async def get_transaction_detail(
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    return await _build_transaction_detail_response(
+    detail = await _build_transaction_detail_response(
         db=db,
         user=user,
         transaction=transaction,
         persist_exact_matches=persist_exact_matches,
+        persist_suggestions=persist_suggestions,
     )
+    if persist_exact_matches or persist_suggestions:
+        await db.commit()
+    return detail
 
 
 @router.get("/{transaction_id}/history", response_model=TransactionHistoryResponse)
@@ -988,6 +1085,7 @@ async def get_transaction_history(
 async def get_transaction_links(
     transaction_id: uuid.UUID,
     persist_exact_matches: bool = False,
+    persist_suggestions: bool = True,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1003,7 +1101,10 @@ async def get_transaction_links(
         user=user,
         transaction=transaction,
         persist_exact_matches=persist_exact_matches,
+        persist_suggestions=persist_suggestions,
     )
+    if persist_exact_matches or persist_suggestions:
+        await db.commit()
 
     return TransactionLinksResponse(
         transaction=detail.transaction,
@@ -1012,6 +1113,7 @@ async def get_transaction_links(
         resolution_bucket=detail.resolution_bucket,
         recommended_review_status=detail.recommended_review_status,
         resolution_reason=detail.resolution_reason,
+        primary_suggestion=detail.primary_suggestion,
         persisted_links=detail.persisted_links,
         exact_matches=detail.exact_matches,
         suggested_matches=detail.suggested_matches,
@@ -1477,6 +1579,7 @@ async def get_reconciliation_report(
     pub: str | None = None,
     annotated_only: bool | None = None,
     persist_exact_matches: bool = True,
+    persist_suggestions: bool = True,
     limit: int = Query(100, ge=1, le=500),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -1497,9 +1600,30 @@ async def get_reconciliation_report(
         limit=limit,
         annotated_only=effective_annotated_only,
         persist_exact_matches=persist_exact_matches,
+        persist_suggestions=persist_suggestions,
     )
-    if persist_exact_matches:
+    if persist_exact_matches or persist_suggestions:
         await db.commit()
+    suggestions_by_transaction = await load_active_reconciliation_suggestions(
+        db=db,
+        user_id=user.id,
+        transaction_ids=[item.transaction_id for item in report.transactions],
+    )
+    response_transactions = []
+    for item in report.transactions:
+        primary_suggestion = select_primary_reconciliation_suggestion(
+            suggestions_by_transaction.get(item.transaction_id)
+        )
+        apply_primary_suggestion_to_analysis(
+            analysis=item,
+            primary=primary_suggestion,
+        )
+        response_transactions.append(
+            _build_reconciliation_item_response(
+                item,
+                primary_suggestion=primary_suggestion,
+            )
+        )
 
     return TransactionReconciliationReportResponse(
         month=report.month,
@@ -1515,6 +1639,6 @@ async def get_reconciliation_report(
         invoice_documents_in_month=report.invoice_documents_in_month,
         unmatched_invoice_documents=report.unmatched_invoice_documents,
         resolution_bucket_counts=report.resolution_bucket_counts,
-        transactions=[_build_reconciliation_item_response(item) for item in report.transactions],
+        transactions=response_transactions,
         unmatched_documents=[_build_match_response(match) for match in report.unmatched_documents],
     )

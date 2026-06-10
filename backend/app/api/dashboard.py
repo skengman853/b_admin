@@ -6,6 +6,7 @@ import re
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db import get_db
 from app.deps import get_current_user
@@ -439,7 +440,9 @@ async def get_statement_workbench(
         )
 
     document_result = await db.execute(
-        document_query.order_by(Document.document_date.asc().nulls_last(), Document.created_at.asc())
+        document_query
+        .options(selectinload(Document.financial_fact), selectinload(Document.financial_rows))
+        .order_by(Document.document_date.asc().nulls_last(), Document.created_at.asc())
     )
     transaction_result = await db.execute(
         transaction_query.order_by(Transaction.transaction_date.asc().nulls_last(), Transaction.row_number.asc())

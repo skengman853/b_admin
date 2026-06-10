@@ -34,7 +34,7 @@ try:
         list_transaction_rules,
         update_transaction_review,
     )  # noqa: E402
-    from app.models import Base, Transaction, TransactionReviewEvent, TransactionRule, User  # noqa: E402
+    from app.models import Base, ReconciliationSuggestion, Transaction, TransactionReviewEvent, TransactionRule, User  # noqa: E402
     from app.schemas import (
         TransactionReviewUpdateRequest,
         TransactionRuleApplyRequest,
@@ -187,6 +187,45 @@ else:
             self.assertEqual(len(history.events), 1)
             self.assertEqual(history.events[0].event_type, "review_updated")
 
+        async def test_detail_prefers_persisted_primary_suggestion(self) -> None:
+            async with self.session_factory() as session:
+                session.add(
+                    ReconciliationSuggestion(
+                        user_id=self.user.id,
+                        transaction_id=self.transaction.id,
+                        suggestion_type="rule_resolution",
+                        status="suggested",
+                        confidence_score=1.0,
+                        reason_summary="No document expected for this transaction",
+                        reason_json={
+                            "resolution_bucket": "no_document_expected",
+                            "recommended_review_status": "no_document_expected",
+                            "status": "matched",
+                        },
+                        verifier_status="passed",
+                        extractor_version="test",
+                        matcher_version="test",
+                    )
+                )
+                await session.commit()
+
+            async with self.session_factory() as session:
+                detail = await get_transaction_detail(
+                    transaction_id=self.transaction.id,
+                    persist_exact_matches=False,
+                    persist_suggestions=False,
+                    user=self.user,
+                    db=session,
+                )
+
+            self.assertEqual(detail.status, "matched")
+            self.assertEqual(detail.resolution_bucket, "no_document_expected")
+            self.assertEqual(detail.recommended_review_status, "no_document_expected")
+            self.assertEqual(detail.resolution_reason, "No document expected for this transaction")
+            self.assertIsNotNone(detail.primary_suggestion)
+            self.assertEqual(detail.primary_suggestion.suggestion_type, "rule_resolution")
+            self.assertEqual(detail.primary_suggestion.verifier_status, "passed")
+
         async def test_create_transaction_rule_updates_similar_transactions(self) -> None:
             async with self.session_factory() as session:
                 result = await create_transaction_rule(
@@ -221,7 +260,10 @@ else:
             self.assertEqual(len(rules), 1)
             self.assertEqual(rules[0].category_override, "Wages")
             self.assertEqual(rules[0].review_status, "handled_by_rule")
-            self.assertTrue(all(transaction.review_status == "handled_by_rule" for transaction in refreshed_transactions))
+            self.assertEqual(
+                [transaction.review_status for transaction in refreshed_transactions],
+                ["handled_by_rule", "handled_by_rule", "pending"],
+            )
 
         async def test_list_and_apply_existing_transaction_rule_as_template(self) -> None:
             async with self.session_factory() as session:

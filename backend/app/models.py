@@ -25,6 +25,11 @@ class User(Base):
     transaction_document_links: Mapped[list["TransactionDocumentLink"]] = relationship(back_populates="user")
     transaction_review_events: Mapped[list["TransactionReviewEvent"]] = relationship(back_populates="user")
     transaction_rules: Mapped[list["TransactionRule"]] = relationship(back_populates="user")
+    document_extraction_runs: Mapped[list["DocumentExtractionRun"]] = relationship(back_populates="user")
+    document_financial_facts: Mapped[list["DocumentFinancialFact"]] = relationship(back_populates="user")
+    document_financial_rows: Mapped[list["DocumentFinancialRow"]] = relationship(back_populates="user")
+    reconciliation_suggestions: Mapped[list["ReconciliationSuggestion"]] = relationship(back_populates="user")
+    reconciliation_suggestion_items: Mapped[list["ReconciliationSuggestionItem"]] = relationship(back_populates="user")
 
 
 class GmailConnection(Base):
@@ -144,6 +149,129 @@ class Document(Base):
         "TransactionDocumentLink",
         back_populates="document",
     )
+    extraction_runs: Mapped[list["DocumentExtractionRun"]] = relationship(
+        "DocumentExtractionRun",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+    financial_fact: Mapped["DocumentFinancialFact | None"] = relationship(
+        "DocumentFinancialFact",
+        back_populates="document",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    financial_rows: Mapped[list["DocumentFinancialRow"]] = relationship(
+        "DocumentFinancialRow",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+    reconciliation_suggestion_items: Mapped[list["ReconciliationSuggestionItem"]] = relationship(
+        "ReconciliationSuggestionItem",
+        back_populates="document",
+    )
+
+
+class DocumentExtractionRun(Base):
+    __tablename__ = "document_extraction_runs"
+    __table_args__ = (
+        Index("idx_document_extraction_runs_document", "document_id", "created_at"),
+        Index("idx_document_extraction_runs_user", "user_id", "created_at"),
+        Index("idx_document_extraction_runs_status", "status", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    extractor_family: Mapped[str] = mapped_column(String(50), nullable=False)
+    extractor_profile: Mapped[str | None] = mapped_column(String(100))
+    extractor_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="rules")
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    confidence_score: Mapped[float | None] = mapped_column(Float)
+    review_reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
+    raw_payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="document_extraction_runs")
+    document: Mapped["Document"] = relationship(back_populates="extraction_runs")
+    financial_facts: Mapped[list["DocumentFinancialFact"]] = relationship(back_populates="extraction_run")
+    financial_rows: Mapped[list["DocumentFinancialRow"]] = relationship(back_populates="extraction_run")
+
+
+class DocumentFinancialFact(Base):
+    __tablename__ = "document_financial_facts"
+    __table_args__ = (
+        UniqueConstraint("document_id", name="uq_document_financial_facts_document"),
+        Index("idx_document_financial_facts_user_type_date", "user_id", "document_type", "document_date"),
+        Index("idx_document_financial_facts_supplier_date", "supplier_canonical", "document_date"),
+        Index("idx_document_financial_facts_run", "extraction_run_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    extraction_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("document_extraction_runs.id", ondelete="SET NULL")
+    )
+    supplier_canonical: Mapped[str] = mapped_column(String(255), nullable=False)
+    pub_hint: Mapped[str | None] = mapped_column(String(255))
+    document_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    statement_kind: Mapped[str | None] = mapped_column(String(100))
+    reference: Mapped[str | None] = mapped_column(String(255))
+    document_date: Mapped[date | None] = mapped_column(Date)
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    amount: Mapped[Decimal | None] = mapped_column()
+    vat_amount: Mapped[Decimal | None] = mapped_column()
+    currency: Mapped[str | None] = mapped_column(String(3))
+    account_number: Mapped[str | None] = mapped_column(String(255))
+    account_name: Mapped[str | None] = mapped_column(String(255))
+    is_financial: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_primary_version: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="document_financial_facts")
+    document: Mapped["Document"] = relationship(back_populates="financial_fact")
+    extraction_run: Mapped["DocumentExtractionRun | None"] = relationship(back_populates="financial_facts")
+
+
+class DocumentFinancialRow(Base):
+    __tablename__ = "document_financial_rows"
+    __table_args__ = (
+        UniqueConstraint("extraction_run_id", "row_index", name="uq_document_financial_rows_run_row"),
+        Index("idx_document_financial_rows_document", "document_id", "row_index"),
+        Index("idx_document_financial_rows_run", "extraction_run_id", "row_index"),
+        Index("idx_document_financial_rows_reference", "reference"),
+        Index("idx_document_financial_rows_clearing_reference", "clearing_reference"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    extraction_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_extraction_runs.id", ondelete="CASCADE"))
+    row_index: Mapped[int] = mapped_column(nullable=False)
+    row_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(255))
+    clearing_reference: Mapped[str | None] = mapped_column(String(255))
+    event_date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    amount: Mapped[Decimal | None] = mapped_column()
+    signed_amount: Mapped[Decimal | None] = mapped_column()
+    currency: Mapped[str | None] = mapped_column(String(3))
+    description: Mapped[str | None] = mapped_column(Text)
+    raw_text: Mapped[str | None] = mapped_column(Text)
+    confidence_score: Mapped[float | None] = mapped_column(Float)
+    is_financial: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="document_financial_rows")
+    document: Mapped["Document"] = relationship(back_populates="financial_rows")
+    extraction_run: Mapped["DocumentExtractionRun"] = relationship(back_populates="financial_rows")
+    reconciliation_suggestion_items: Mapped[list["ReconciliationSuggestionItem"]] = relationship(
+        "ReconciliationSuggestionItem",
+        back_populates="financial_row",
+    )
 
 
 class Transaction(Base):
@@ -196,6 +324,69 @@ class Transaction(Base):
         back_populates="transaction",
         cascade="all, delete-orphan",
     )
+    reconciliation_suggestions: Mapped[list["ReconciliationSuggestion"]] = relationship(
+        "ReconciliationSuggestion",
+        back_populates="transaction",
+        cascade="all, delete-orphan",
+    )
+
+
+class ReconciliationSuggestion(Base):
+    __tablename__ = "reconciliation_suggestions"
+    __table_args__ = (
+        Index("idx_reconciliation_suggestions_transaction", "transaction_id", "status", "created_at"),
+        Index("idx_reconciliation_suggestions_user", "user_id", "status", "created_at"),
+        Index("idx_reconciliation_suggestions_type", "suggestion_type", "status", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    transaction_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"))
+    suggestion_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="suggested")
+    confidence_score: Mapped[float | None] = mapped_column(Float)
+    reason_summary: Mapped[str | None] = mapped_column(Text)
+    reason_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    verifier_status: Mapped[str | None] = mapped_column(String(20))
+    extractor_version: Mapped[str | None] = mapped_column(String(50))
+    matcher_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="reconciliation_suggestions")
+    transaction: Mapped["Transaction"] = relationship(back_populates="reconciliation_suggestions")
+    items: Mapped[list["ReconciliationSuggestionItem"]] = relationship(
+        "ReconciliationSuggestionItem",
+        back_populates="suggestion",
+        cascade="all, delete-orphan",
+    )
+
+
+class ReconciliationSuggestionItem(Base):
+    __tablename__ = "reconciliation_suggestion_items"
+    __table_args__ = (
+        Index("idx_reconciliation_suggestion_items_suggestion", "suggestion_id", "item_role"),
+        Index("idx_reconciliation_suggestion_items_document", "document_id"),
+        Index("idx_reconciliation_suggestion_items_financial_row", "financial_row_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    suggestion_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("reconciliation_suggestions.id", ondelete="CASCADE"))
+    document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"))
+    financial_row_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("document_financial_rows.id", ondelete="SET NULL")
+    )
+    item_role: Mapped[str] = mapped_column(String(50), nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(255))
+    amount: Mapped[Decimal | None] = mapped_column()
+    signed_amount: Mapped[Decimal | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="reconciliation_suggestion_items")
+    suggestion: Mapped["ReconciliationSuggestion"] = relationship(back_populates="items")
+    document: Mapped["Document | None"] = relationship(back_populates="reconciliation_suggestion_items")
+    financial_row: Mapped["DocumentFinancialRow | None"] = relationship(back_populates="reconciliation_suggestion_items")
 
 
 class TransactionDocumentLink(Base):
