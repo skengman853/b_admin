@@ -1,5 +1,12 @@
 # 20 — Execution Roadmap
 
+This document is still useful as a historical execution plan.
+
+For the current high-level direction, start with:
+
+- [23-system-overview.md](23-system-overview.md)
+- [24-roadmap-ahead.md](24-roadmap-ahead.md)
+
 ## Product Definition
 
 This product is not a general accounting system.

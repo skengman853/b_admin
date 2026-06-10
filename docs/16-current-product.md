@@ -1,339 +1,169 @@
 # 16 — Current Product State
 
-## What This Product Is Now
+## What The Product Is Now
 
-The system is now a working finance-document ingestion and reconciliation tool.
+The product is now a **month-close reconciliation workbench**.
 
-It is no longer just:
+It is built for this job:
 
-- Gmail download automation
-- or a folder organizer
+> show the document chain that explains each transaction, let an operator trust it, and let the operator resolve or defer it
 
-It now covers the full path from inbound documents to a real transaction review queue.
+It is no longer best described as:
 
-## Current Core Workflow
+- a Gmail automation tool
+- a PDF organizer
+- an invoice-only dashboard
 
-### 1. Document Ingestion
+Those are supporting parts now, not the product definition.
 
-The backend can:
+## What Is Working
 
-- connect to Gmail
-- scan recent emails
-- filter for finance-related PDF attachments
-- classify documents by supplier and type
-- store them locally in a structured folder tree
-- sync them to Google Drive
-- import staged local supplier archives from inside `backend/`
+### Document Ingestion
 
-#### Local Archive Import
+The system can ingest:
 
-The backend now also supports importing a downloaded supplier archive through:
+- Gmail attachments
+- staged local archive folders
+- historical supplier backfills
 
-- `POST /api/documents/import-local`
+The local archive import is now the main way to bring in large supplier history cleanly.
 
-This is intended for cases where documents already exist outside Gmail, for example:
+### Transaction Ingestion
 
-- a downloaded Google Drive archive
-- a manually maintained supplier folder tree
-- historical invoice backfills
+The system supports:
 
-The importer:
+- bank statement imports
+- VAT-book imports
 
-- walks a staged path under `backend/import_sources/`
-- infers supplier and document type from the folder structure
-- filters by supplier, pub, month, and archive-folder inclusion
-- dedupes linked/unlinked file twins such as `file.pdf` and `file - Linked.pdf`
-- runs the normal extraction + invoice projection flow after import
+### Extraction
 
-The backend also supports statement-context import through:
-
-- `POST /api/documents/import-statement-context`
-
-This is the standardized way to preload statement-family suppliers for a review month. It looks at the transactions in that month, detects suppliers like `Heineken`, `Diageo`, `Bulmers`, and `Connacht Bottlers`, then imports their statement PDFs from the previous, current, and next months so the review queue is not dependent on manual one-off imports.
-
-### 2. Document Extraction
-
-The backend can extract and persist:
+The system can extract and persist:
 
 - supplier
 - document type
 - document date
-- reference / invoice number
-- gross amount
+- reference
+- amount
 - VAT amount
-- currency
-- confidence score
+- confidence and review flags
 
-The extractor also supports:
+It now also persists:
 
-- review flags for uncertain records
-- multi-invoice packet detection
-- packet splitting into child document rows
+- extraction runs
+- financial facts
+- financial rows
 
-### 3. Invoice Projection
+Statements are moving to an **AI-first** extraction path.
 
-Invoice-type documents are projected into the invoice layer so:
+### Reconciliation
 
-- `/api/invoices` shows extracted invoice records
-- split child invoices behave like real invoices
-- dashboard totals use the projected invoice set
+The reconciliation layer now has:
 
-### 4. Transaction Ingestion
+- stored financial rows
+- persisted reconciliation suggestions
+- verifier pass / partial / fail states
+- reusable transaction rules
 
-The backend now supports two transaction sources:
+This means the system is moving away from page-time heuristics and toward a stored reconciliation engine.
 
-- `vatbook`
-- `bank_statement`
+### Operator Workflow
 
-#### VAT Book Import
+The main operator surfaces are now:
 
-The VAT workbook importer can parse the current mixed-sheet layout where:
-
-- bookkeeping transactions are the main rows
-- invoice / statement / receipt notes are attached underneath
-
-#### Bank Statement Import
-
-The bank statement importer can parse AIB text PDFs and store:
-
-- debit / credit rows
-- payee details
-- reference details
-- account metadata
-- pub inference where possible
-
-### 5. Reconciliation Layer
-
-Transactions can now be compared to extracted documents with:
-
-- exact reference-note matches
-- supplier-aware invoice suggestions
-- grouped invoice suggestions
-- supporting document suggestions such as statements or credit notes
-- resolution buckets that turn unresolved rows into actionable bookkeeping categories
-
-Under the hood, invoices, credit notes, receipts, and parsed supplier-statement lines are now normalized into one shared ledger-entry model before reconciliation.
-
-The operator review layer now also has a locked category/outcome set for the common month-close decisions:
-
-- `Wages`
-- `Contract`
-- `Hard Copy Available`
-- `No Document Expected`
-- `Invoice Match`
-- `Statement Settlement`
-
-That means the engine can reason about:
-
-- direct invoice matches
-- invoice minus credit-note settlements
-- statement payment rows that explain bank debits
-- support-document-only rows where the statement is the real settlement record
-
-This is exposed through:
-
-- `/api/transactions/reconciliation-report`
-- `/api/transactions/review-queue`
-- `/api/transactions/{id}/links`
-
-### 6. Review Workflow
-
-Transactions now have a persistent review state.
-
-Supported `review_status` values:
-
-- `pending`
-- `linked`
-- `supporting_docs_only`
-- `hard_copy_available`
-- `handled_by_rule`
-- `awaiting_document`
-- `no_document_expected`
-
-This means the queue is now more than analysis output. It can hold actual bookkeeping decisions.
-
-It also now supports reusable transaction-handling rules, so an operator can:
-
-- save a rule such as `Wages` or `Contract`
-- bulk-apply it to similar existing rows
-- reuse that same rule later from the review UI on one transaction at a time
-
-It also now classifies queue rows into action buckets such as:
-
-- `confirm_match`
-- `review_supporting_docs`
-- `awaiting_document`
-- `needs_matcher_improvement`
-
-### 7. Review UI
-
-The backend now also serves a thin reconciliation workbench at:
-
+- `/month-audit`
 - `/review`
-
-This UI is intended for operator review work, not a polished end-user product.
-
-It currently supports:
-
-- email/password login
-- month/source/pub queue filters
-- resolution-bucket queue filtering
-- a standardized reconciliation flow per row
-  - supplier
-  - statement
-  - invoices / credit notes
-  - resolve
-- transaction detail inspection
-- transaction audit/history inspection through the API
-- confirming suggested invoice matches
-- linking supporting documents and resolving rows
-- setting review states such as `awaiting_document` or `no_document_expected`
-- inspecting normalized ledger entries for invoices and statements
-
-The backend also serves a separate supplier-document visibility page at:
-
 - `/supplier-documents`
-
-That page is meant to answer:
-
-- what documents does the DB actually have for this supplier?
-- which months are covered?
-- are the files local only, in R2, in Drive, or in both?
-
-The backend now also serves a statement-first supplier review page at:
-
 - `/statement-workbench`
 
-That page is meant to answer:
+Recommended use:
 
-- what does this supplier statement actually contain?
-- which invoice / credit refs are already imported?
-- which refs are still missing?
-- which bank transactions does this statement likely explain?
+- `/month-audit` first
+- `/review` only to finalize rows
+- `/supplier-documents` to verify inventory and repair docs
+- `/statement-workbench` for hard statement suppliers
 
-## What Works Well Right Now
+## What The Data Layer Looks Like Now
 
-- Gmail-to-document ingestion works
-- staged local-archive import works
-- document extraction works on real supplier data
-- multi-invoice Lovell packet splitting works
-- invoice projection is live
-- VAT book import works for the current workbook format
-- AIB bank statement import works for the current PDF format
-- the reconciliation queue is now supplier-aware enough to avoid obvious amount-only false positives
-- the backend now has one common parsed-entry model for invoices and statement-led supplier settlements
+The important persisted layers now are:
 
-## What The System Can Do Operationally
+- `documents`
+- `transactions`
+- `transaction_document_links`
+- `transaction_rules`
+- `document_extraction_runs`
+- `document_financial_facts`
+- `document_financial_rows`
+- `reconciliation_suggestions`
+- `reconciliation_suggestion_items`
 
-For a real month such as April 2026, you can now:
+This is the real backbone of the product now.
 
-1. ingest supplier documents from Gmail
-2. import staged local supplier folders from a downloaded archive
-3. extract invoice data
-4. split packet PDFs into child invoices
-5. import VAT workbook rows
-6. import bank statement PDFs
-7. compare transactions against extracted documents
-8. inspect invoice suggestions and support documents
-9. manually link documents to transactions
-10. mark transactions as awaiting documents or resolved without documents
-11. inspect canonical transaction detail and review-history payloads through the API
+## Current Archive Position
 
-## Operator API Layer
+The staged local archive is now mostly imported.
 
-The backend now has the start of the operator-safe API layer needed for the Claude and QuickBooks roadmap.
+Current broad position:
 
-That currently includes:
+- total docs in DB: roughly `2964`
+- local-archive docs: roughly `2880`
 
-- canonical transaction detail at `GET /api/transactions/{transaction_id}/detail`
-- canonical document inspection at `GET /api/documents/{document_id}`
-- transaction review history at `GET /api/transactions/{transaction_id}/history`
-- persisted audit events for review and link actions
+So the system now has most of the supplier archive in it, not just a thin working slice.
 
-This means operator and future Claude actions are no longer just changing live state. They are also leaving an audit trail.
+## Current Working Supplier Position
 
-## Current Weak Points
+The main March-May statement suppliers have been re-extracted recently:
 
-The main bottleneck is no longer API structure.
-
-The main bottlenecks are:
-
-- supplier-specific OCR/layout extraction coverage for missing suppliers
-- missing source documents for some real bank transactions
-- unresolved transaction rows where the supplier exists in the bank statement but the corresponding invoice is not yet in the document set
-
-Examples from current April testing:
-
-- `Diageo`
-- `M&J Gleeson`
-- `Athlone Furnit`
-- `Topline Heavin`
-
-## Latest April Calibration Result
-
-April 2026 has now been worked with:
-
-- Gmail-ingested documents
-- bank-statement imports
-- VAT-book imports
-- staged local-archive backfills from the downloaded supplier folders
-
-The local archive backfill has already imported two useful slices:
-
-### Batch 1
-
-- `Diageo`
-- `Little Luxuries`
-- `Automatic Amusements` (via `MoodMaster`)
-
-Result:
-
-- `19` unique April documents imported
-- `19` extracted
-
-### Batch 2
-
-- `BOC Gases`
-- `EIR`
+- `Bulmers`
 - `Heineken`
-- `JJ Mahon and Sons`
-- `Bulmers Ireland`
-- `Cosmic Algorithm`
-- `Dojo`
+- `Connacht Bottlers`
+- `Diageo`
 
-Result:
+Operationally:
 
-- `39` April documents imported
-- `39` extracted
-- `13` linked/unlinked archive twins deduped cleanly
+- `Bulmers`, `Heineken`, and `Connacht Bottlers` are in much better shape
+- `Diageo` is still the weakest statement family
 
-### Current April Bank-Statement Position
+## What Still Feels Weak
 
-After the latest archive import and matcher improvements, the April 2026 bank-statement reconciliation is now showing:
+The main bottleneck is now clearly:
 
-- `12` suggested rows
-- `81` unmatched rows
-- `89` invoice documents in the selected month
+- statement extraction quality
 
-Important product learning:
+Not:
 
-- importing missing supplier folders does materially improve live coverage
-- statement-led suppliers can now move from dead-end unmatched rows into useful suggestions
-- `Heineken` is now producing real bank-to-invoice suggestions
-- `Diageo` rows are now treated as likely statement/account-settlement cases rather than forced one-invoice matches
-- some suppliers still remain unresolved because the available documents do not support a clean one-to-one invoice match
+- basic storage
+- basic import
+- basic UI routing
 
-## Product Positioning
+More specifically:
 
-The product is now best described as:
+- `Diageo` still needs stronger statement row recovery
+- some statement-heavy rows still fall back to support-only because the line-level math is incomplete
+- the UI still depends on a few old concepts and can be tightened further as the stored suggestion layer becomes dominant
 
-> a document-first bookkeeping reconciliation assistant
+## Current Product Direction
 
-It is not yet a finished accounting system or a polished SaaS product.
+The direction is now:
 
-Its current strength is:
+1. import documents and transactions
+2. extract structured rows reliably
+3. persist suggestions
+4. verify those suggestions
+5. keep the audit flow simple
 
-- collecting the right documents
-- structuring them
-- projecting invoice data
-- helping reconcile real transaction activity against that document set
+That is the current product direction.
+
+## What The Product Is Not Yet
+
+It is not yet:
+
+- a finished accounting platform
+- a fully autonomous reconciliation engine
+- a polished multi-tenant SaaS product
+
+It is already:
+
+- a serious bookkeeping reconciliation system
+- with a real data model
+- a real operator workflow
+- and a credible path to AI-assisted reconciliation

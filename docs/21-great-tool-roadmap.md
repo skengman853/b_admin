@@ -1,5 +1,11 @@
 # 21 — Great Tool Roadmap
 
+This document is still useful as a product-quality roadmap layer.
+
+For the current consolidated roadmap, start with:
+
+- [24-roadmap-ahead.md](24-roadmap-ahead.md)
+
 ## Goal
 
 Make the product great at one thing:
@@ -61,6 +67,10 @@ Work:
   - due date
   - amount
 - reduce false “support-only” states where the statement really contains enough math
+
+Implementation detail:
+
+- use the structured data build plan in `docs/22-ai-reconciliation-data-plan.md`
 
 Success signal:
 

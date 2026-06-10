@@ -1,170 +1,173 @@
 # 03 — Architecture
 
-## Architecture Principle
+## Core Principle
 
-The architecture should follow the problem sequence:
+The architecture now follows this sequence:
 
-`collect -> classify -> store -> extract -> match -> present`
+`import -> extract -> store -> suggest -> verify -> resolve`
 
 Not:
 
-`auth -> dashboard -> polish`
+`download PDFs -> guess on the page -> resolve manually`
 
-## Phase 1 Architecture
+The system is now built as a **reconciliation engine with a stored data layer**, not just a document pipeline.
 
-```text
-Google Account
-     |
-     v
-Gmail API
-     |
-     v
-Fetch recent messages
-     |
-     v
-Filter likely document emails
-     |
-     v
-Download PDF attachments
-     |
-     v
-Classify by supplier and type
-     |
-     v
-Rename and save locally
-     |
-     v
-Record processed message IDs
-```
+## Product Shape
 
-## What Matters in Phase 1
+The product has five main layers:
 
-- Gmail connectivity
-- message filtering
-- attachment download
-- simple classification
-- local filesystem storage
-- duplicate protection
+### 1. Ingestion
 
-## What Does Not Matter Yet
+Inputs:
 
-- polished frontend flows
-- advanced async orchestration
-- full SaaS tenancy
-- rich dashboards
-- AI-first extraction
+- Gmail attachments
+- staged local archive folders under `backend/import_sources/`
+- bank statement imports
+- VAT-book imports
 
-## Current Repo Reality
+Outputs:
 
-The current codebase already has:
+- `documents`
+- `transactions`
 
-- JWT auth
-- Gmail OAuth endpoints
-- database models
-- invoice and dashboard endpoints
-- Celery scaffolding
+### 2. Document Storage
 
-Those pieces are useful, but they are supporting infrastructure, not the primary product proof.
+The file and metadata layers are separated.
 
-## Component Responsibilities
+- PDFs live in local storage and Cloudflare R2
+- document metadata lives in Postgres
 
-### Gmail Connector
+This keeps the review flow fast and avoids treating the DB as a blob store.
 
-- authenticate with Gmail
-- list recent messages
-- retrieve message metadata
-- download attachment payloads
+### 3. Extraction Layer
 
-### Filter / Classifier
+Each document is extracted into structured bookkeeping data.
 
-- decide whether an email is relevant
-- detect supplier
-- detect document type
-- assign output folder
+Current direction:
 
-### Local Storage Layer
+- invoices / credit notes / receipts use rule extraction with AI help when needed
+- statements are moving to an **AI-first** extraction path
 
-- create local folders if missing
-- save renamed files
-- avoid filename collisions
-- maintain a local processed-message record
+Each extraction attempt is persisted in:
 
-### Later Drive Storage Layer
+- `document_extraction_runs`
 
-- mirror the local document structure in Drive
-- upload files
-- return shareable links
+The current extracted state is persisted in:
 
-### Later Extraction Layer
+- `document_financial_facts`
+- `document_financial_rows`
 
-- read text from PDFs
-- extract fields like date, amount, VAT, and reference
-- store structured metadata
+This is the key architecture shift. The system should not need to rethink the same PDF from scratch every time a user opens a page.
 
-### Later Matching Layer
+### 4. Reconciliation Layer
 
-- import bookkeeping records
-- suggest document-to-transaction matches
-- score confidence
+Documents are normalized into a shared ledger model.
 
-### Later UI Layer
+Examples:
 
-- browse documents
-- inspect supplier groupings
-- review unmatched transactions
-- open files and links quickly
+- invoice
+- credit note
+- payment
+- receipt
+- statement row
 
-## Recommended Request / Job Flow
+Transactions are then compared against:
 
-### Phase 1 Local Run
+- financial facts
+- financial rows
+- persisted document links
+- persisted reconciliation suggestions
+- transaction rules
 
-```text
-1. User connects Gmail
-2. System fetches recent messages
-3. Non-matching emails are skipped
-4. PDFs are downloaded from matching emails
-5. Supplier and type are inferred
-6. Files are renamed and stored locally
-7. Processed message IDs are recorded
-```
+Suggestions are stored in:
 
-### Phase 2 Cloud Storage
+- `reconciliation_suggestions`
+- `reconciliation_suggestion_items`
 
-```text
-1. Local file exists
-2. Drive folder path is resolved
-3. File uploads to Drive
-4. Link is stored alongside metadata
-```
+The verifier layer then checks whether the suggestion math and evidence actually hold.
 
-### Phase 3 Extraction
+### 5. Operator Layer
 
-```text
-1. Stored PDF is read
-2. Raw text is extracted
-3. Rules parse fields
-4. Uncertain cases are flagged
-```
+The UI is intentionally split by job:
 
-### Phase 4 Matching
+- `/month-audit`
+  - fast monthly scan
+- `/review`
+  - full row resolution
+- `/supplier-documents`
+  - inventory and repair
+- `/statement-workbench`
+  - statement-first investigation
 
-```text
-1. Excel or VAT sheet is imported
-2. Transactions are normalized
-3. Documents are compared on amount, date, and supplier
-4. Suggested matches are scored
-```
+The UI should become thinner over time, because more of the reasoning is being pushed into stored rows and persisted suggestions.
 
-## Proposed Evolution
+## Current Pipeline
 
-### First
+### Document Pipeline
 
-Keep the system understandable and manual enough to debug quickly.
+`PDF -> extraction run -> financial facts -> financial rows`
 
-### Then
+### Transaction Pipeline
 
-Add more persistence, more extraction accuracy, and more automation.
+`transaction import -> reconciliation suggestion -> verifier -> operator resolution`
 
-### Last
+### Final Resolution
 
-Turn the proven workflow into a proper product.
+Transactions are finalized into persistent states such as:
+
+- `linked`
+- `supporting_docs_only`
+- `hard_copy_available`
+- `handled_by_rule`
+- `awaiting_document`
+- `no_document_expected`
+
+## Why The Architecture Changed
+
+The older shape was too dependent on:
+
+- raw PDF text
+- one-off parser output
+- page-time heuristics
+
+That made it hard to:
+
+- improve extraction safely
+- compare old vs new extraction
+- explain why a match was suggested
+- keep the UI simple
+
+The new shape fixes that by storing:
+
+- extraction history
+- structured financial rows
+- persisted suggestion groups
+- deterministic verifier results
+
+## Statement Strategy
+
+The matching logic should stay general.
+
+Supplier differences should mostly be handled in extraction.
+
+That means:
+
+- AI can be supplier-family aware for statement layout recovery
+- the matcher should still work over one common row schema
+
+So the architecture is:
+
+- supplier-aware extraction
+- general reconciliation
+
+Not:
+
+- supplier-specific accounting rules everywhere
+
+## What The Architecture Is Optimizing For
+
+The system is trying to make one thing easy:
+
+> show one trustworthy evidence chain for each transaction quickly enough that month close stops feeling forensic
+
+That is the real architecture target.

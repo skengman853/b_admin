@@ -1,164 +1,270 @@
 # 04 — Data Model & Persistence
 
-## Key Shift
+## Purpose
 
-Phase 1 does not require a database to prove value.
+The database is now the system of record for:
 
-The first proof is:
+- document metadata
+- transaction imports
+- extraction history
+- structured financial rows
+- reconciliation suggestions
+- operator decisions
 
-- Gmail messages can be scanned
-- PDFs can be downloaded
-- documents can be classified
-- files can be stored in the correct local folders
+The filesystem and R2 hold the PDFs.
+Postgres holds the bookkeeping state.
 
-The initial system of record can be the filesystem plus a lightweight tracking file.
+## Main Tables
 
-## Phase 1 Persistence
+### `documents`
 
-### Local Folders
+One row per imported document.
 
-```text
-Documents/
-  Supplier/
-    Invoices/
-    Statements/
-    Credit Notes/
-    Other/
-```
+Purpose:
 
-### Tracking File
+- canonical document record
+- supplier/type/date/reference/amount metadata
+- storage location pointers
+- extracted text
+- AI extraction payload
 
-```text
-data/processed_emails.json
-```
+Important fields include:
 
-Suggested fields:
+- `supplier`
+- `document_type`
+- `document_date`
+- `reference`
+- `amount`
+- `vat_amount`
+- `currency`
+- `local_path`
+- `storage_provider`
+- `storage_bucket`
+- `storage_key`
+- `drive_file_id`
+- `drive_web_link`
+- `extraction_status`
+- `confidence_score`
+- `review_reasons`
+- `ai_extraction_status`
+- `ai_extraction_payload`
 
-```json
-{
-  "gmail_message_id": "18c9...",
-  "sender": "billing@example.com",
-  "subject": "Invoice INV-1002",
-  "attachments_saved": 2,
-  "status": "processed",
-  "processed_at": "2026-05-05T17:30:00Z"
-}
-```
+### `transactions`
 
-## Current Repo Schema
+One row per imported bookkeeping transaction.
 
-The current repo already contains earlier scaffolding for:
+Current sources:
 
-- `users`
-- `gmail_connections`
-- `invoices`
-- `processed_emails`
+- `bank_statement`
+- `vatbook`
 
-That schema is still useful for experimentation, but it is biased toward the earlier invoice-dashboard-first plan.
+Important fields include:
 
-## Recommended Phase 2 Target Schema
+- `source_type`
+- `pub`
+- `transaction_date`
+- `description1`
+- `description2`
+- `debit_amount`
+- `credit_amount`
+- `category`
+- `review_status`
+- `review_note`
+- `expected_supplier`
 
-Once Google Drive and metadata storage matter, move toward a document-centric schema.
+### `transaction_document_links`
 
-### gmail_connections
+Operator and system document-to-transaction links.
 
-Keep this concept:
+Purpose:
 
-```sql
-CREATE TABLE gmail_connections (
-    id UUID PRIMARY KEY,
-    user_id UUID,
-    gmail_email VARCHAR(255) NOT NULL,
-    access_token_encrypted TEXT NOT NULL,
-    refresh_token_encrypted TEXT NOT NULL,
-    token_expiry TIMESTAMP,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
+- exact invoice links
+- support-document links
+- rejected / hidden links
+- persisted context decisions
 
-### documents
+### `transaction_review_events`
 
-Prefer a generic document table over an invoice-only table:
+Audit trail for row decisions.
 
-```sql
-CREATE TABLE documents (
-    id UUID PRIMARY KEY,
-    user_id UUID,
-    supplier_name VARCHAR(255),
-    document_type VARCHAR(50),         -- invoice | statement | credit_note | other
-    source_email_id VARCHAR(255),
-    source_attachment_name TEXT,
-    file_name TEXT NOT NULL,
-    local_path TEXT,
-    drive_file_id TEXT,
-    drive_link TEXT,
-    document_date DATE,
-    reference TEXT,
-    amount DECIMAL(12, 2),
-    vat_amount DECIMAL(12, 2),
-    currency VARCHAR(3) DEFAULT 'GBP',
-    extracted_text TEXT,
-    confidence_score FLOAT,
-    status VARCHAR(50) DEFAULT 'stored',
-    processed_at TIMESTAMP DEFAULT NOW()
-);
-```
+Purpose:
 
-### processed_messages
+- record who changed what
+- keep review history explainable
 
-```sql
-CREATE TABLE processed_messages (
-    id UUID PRIMARY KEY,
-    user_id UUID,
-    gmail_message_id VARCHAR(255) NOT NULL,
-    sender_email VARCHAR(255),
-    subject TEXT,
-    status VARCHAR(50),                -- skipped | processed | failed
-    notes TEXT,
-    processed_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(user_id, gmail_message_id)
-);
-```
+### `transaction_rules`
 
-## Phase 4 Additions
+Reusable operator rules.
 
-When Excel matching arrives, add:
+Examples:
 
-### transactions
+- wages
+- contract
+- hard copy available
+- no document expected
 
-```sql
-CREATE TABLE transactions (
-    id UUID PRIMARY KEY,
-    user_id UUID,
-    source_file TEXT,
-    transaction_date DATE,
-    description TEXT,
-    amount DECIMAL(12, 2),
-    imported_at TIMESTAMP DEFAULT NOW()
-);
-```
+Purpose:
 
-### document_matches
+- reduce recurring manual review
 
-```sql
-CREATE TABLE document_matches (
-    id UUID PRIMARY KEY,
-    user_id UUID,
-    transaction_id UUID,
-    document_id UUID,
-    confidence VARCHAR(20),            -- high | medium | low
-    score FLOAT,
-    match_reason TEXT,
-    status VARCHAR(20) DEFAULT 'suggested',
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
+## Extraction Persistence
 
-## Design Notes
+### `document_extraction_runs`
 
-- The long-term storage model should be `document`-centric, not `invoice`-centric
-- Statements and credit notes are first-class entities in the new workflow
-- Filesystem paths and Drive links should both be storable
-- Processed Gmail message IDs must remain unique to avoid duplicates
-- If the system remains single-user for a while, `user_id` can be simplified operationally, even if auth scaffolding remains in the repo
+One row per extraction attempt.
+
+Purpose:
+
+- keep extraction history
+- store extractor family/profile/version
+- preserve raw payloads
+- support safe re-extraction
+
+Important fields:
+
+- `extractor_family`
+- `extractor_profile`
+- `extractor_version`
+- `source_kind`
+  - `rules`
+  - `hybrid`
+  - `ai_primary`
+- `status`
+- `confidence_score`
+- `review_reasons`
+- `raw_payload_json`
+
+### `document_financial_facts`
+
+One canonical structured fact row per document.
+
+Purpose:
+
+- hold the stable “header” data for a document
+- avoid re-reading raw PDFs for basic facts
+
+Important fields:
+
+- `supplier_canonical`
+- `pub_hint`
+- `document_type`
+- `statement_kind`
+- `reference`
+- `document_date`
+- `period_start`
+- `period_end`
+- `amount`
+- `vat_amount`
+- `currency`
+- `account_number`
+- `account_name`
+- `is_financial`
+- `extraction_run_id`
+
+### `document_financial_rows`
+
+One row per extracted financial line.
+
+This is the most important table for reconciliation.
+
+Purpose:
+
+- store statement invoice rows
+- store statement payment rows
+- store statement credit rows
+- store line-level structured evidence permanently
+
+Important fields:
+
+- `row_type`
+- `reference`
+- `clearing_reference`
+- `event_date`
+- `due_date`
+- `amount`
+- `signed_amount`
+- `currency`
+- `description`
+- `raw_text`
+- `confidence_score`
+- `is_financial`
+
+## Reconciliation Persistence
+
+### `reconciliation_suggestions`
+
+One persisted suggestion per transaction outcome candidate.
+
+Purpose:
+
+- store the matcher result instead of rebuilding everything only in memory
+- support stable review surfaces
+- support versioned matching later
+
+Important fields:
+
+- `suggestion_type`
+  - `direct_invoice_match`
+  - `statement_settlement`
+  - `supporting_docs_only`
+  - `rule_resolution`
+- `status`
+  - `suggested`
+  - `accepted`
+  - `rejected`
+  - `superseded`
+- `confidence_score`
+- `reason_summary`
+- `reason_json`
+- `verifier_status`
+  - `passed`
+  - `partial`
+  - `failed`
+
+### `reconciliation_suggestion_items`
+
+Join rows under one suggestion.
+
+Purpose:
+
+- keep the suggestion composition explicit
+- show which documents and rows support a settlement
+
+Important fields:
+
+- `document_id`
+- `financial_row_id`
+- `item_role`
+  - `statement`
+  - `invoice`
+  - `credit_note`
+  - `payment_row`
+  - `support_doc`
+- `reference`
+- `amount`
+- `signed_amount`
+
+## Persistence Philosophy
+
+The important rule is:
+
+> do not rely on raw PDF text or temporary parser output as the long-term reconciliation layer
+
+Instead:
+
+1. import the document
+2. extract structured data
+3. store the structured data
+4. build suggestions from stored rows
+5. verify and review from stored rows
+
+That is the direction of the schema now.
+
+## Current Weak Point
+
+The schema shape is now broadly correct.
+
+The main remaining weak point is still **statement extraction quality**, especially for supplier statement rows.
+
+That is no longer a schema problem.
+It is now mostly an extraction-quality problem.
