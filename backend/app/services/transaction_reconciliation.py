@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import Document, Transaction, TransactionDocumentLink
+from app.services.statement_arithmetic import amounts_match
 from app.services.document_ledger import (
     CHARGE_LEDGER_ENTRY_KINDS,
     LEDGER_ENTRY_CREDIT_NOTE,
@@ -812,7 +813,7 @@ def build_transaction_reconciliation_flow(
         matching_settlements = [
             settlement
             for settlement in statement_settlements
-            if transaction.debit_amount is not None and settlement.payment_entry.amount == transaction.debit_amount
+            if amounts_match(settlement.payment_entry.amount, transaction.debit_amount)
         ]
         ledger_invoice_refs = _ordered_unique(
             [
@@ -1994,7 +1995,7 @@ def _find_supporting_document_suggestions(
                 matching_settlements = [
                     settlement
                     for settlement in settlements_by_document_id.get(document.id, [])
-                    if settlement.payment_entry.amount == transaction.debit_amount
+                    if amounts_match(settlement.payment_entry.amount, transaction.debit_amount)
                 ]
                 if ledger.statement_kind == "supplier_statement":
                     score += Decimal("0.08")
@@ -2133,7 +2134,7 @@ def _build_support_payment_analysis(
         settlement
         for ledger in financial_support_ledgers
         for settlement in build_statement_settlements(ledger)
-        if settlement.payment_entry.amount == transaction.debit_amount
+        if amounts_match(settlement.payment_entry.amount, transaction.debit_amount)
     ]
     nearby_invoice_references = {entry.reference for entry in nearby_supplier_invoice_entries if entry.reference}
     statement_invoice_refs = sorted(
@@ -2386,7 +2387,7 @@ def _statement_is_flow_relevant(
     matching_settlements = [
         settlement
         for settlement in build_statement_settlements(ledger)
-        if transaction.debit_amount is not None and settlement.payment_entry.amount == transaction.debit_amount
+        if amounts_match(settlement.payment_entry.amount, transaction.debit_amount)
     ]
     if matching_settlements:
         return True

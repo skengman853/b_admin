@@ -1,0 +1,95 @@
+{
+  "supplier": "Heineken",
+  "document_type": "statement",
+  "document_date": "2026-02-04",
+  "reference": null,
+  "amount": null,
+  "vat_amount": null,
+  "currency": "EUR",
+  "confidence_score": 0.99,
+  "is_financial": true,
+  "statement_kind": "statement_of_account",
+  "account_number": "2016632103",
+  "account_name": "Maye Carey",
+  "period_start": "2026-01-01",
+  "period_end": "2026-01-31",
+  "total_due": null,
+  "settlement_discount_total": "3914.99",
+  "opening_balance": "4561.09",
+  "closing_balance": "0.0",
+  "note": "Settlement Discount of EUR 3,914.99 is available for payment.",
+  "entries": [
+    {
+      "event_date": "2025-12-31",
+      "reference": "1800310474",
+      "transaction_type": "Invoice",
+      "due_date": "2025-12-31",
+      "clearing_reference": "0194024087",
+      "amount": "4561.09",
+      "raw_text": "1800310474 0194024087 Invoice 31.12.2025 31.12.2025 4,561.09"
+    },
+    {
+      "event_date": "2026-01-02",
+      "reference": "2000000419",
+      "transaction_type": "Payment",
+      "due_date": "2026-01-02",
+      "clearing_reference": null,
+      "amount": "-4561.09",
+      "raw_text": "2000000419 Payment 02.01.2026 02.01.2026 -4,561.09"
+    },
+    {
+      "event_date": "2026-01-28",
+      "reference": "1800014288",
+      "transaction_type": "Invoice",
+      "due_date": "2026-01-28",
+      "clearing_reference": "0194050825",
+      "amount": "3058.8",
+      "raw_text": "1800014288 0194050825 Invoice 28.01.2026 28.01.2026 3,058.80"
+    },
+    {
+      "event_date": "2026-01-29",
+      "reference": "2000010272",
+      "transaction_type": "Payment",
+      "due_date": "2026-01-29",
+      "clearing_reference": null,
+      "amount": "-3058.8",
+      "raw_text": "2000010272 Payment 29.01.2026 29.01.2026 -3,058.80"
+    },
+    {
+      "event_date": "2026-01-21",
+      "reference": "1800009410",
+      "transaction_type": "Invoice",
+      "due_date": "2026-01-21",
+      "clearing_reference": "0194042467",
+      "amount": "3202.4",
+      "raw_text": "1800009410 0194042467 Invoice 21.01.2026 21.01.2026 3,202.40"
+    },
+    {
+      "event_date": "2026-01-22",
+      "reference": "2000006276",
+      "transaction_type": "Payment",
+      "due_date": "2026-01-22",
+      "clearing_reference": null,
+      "amount": "-3202.4",
+      "raw_text": "2000006276 Payment 22.01.2026 22.01.2026 -3,202.40"
+    },
+    {
+      "event_date": "2026-01-14",
+      "reference": "1800005752",
+      "transaction_type": "Invoice",
+      "due_date": "2026-01-14",
+      "clearing_reference": "0194035906",
+      "amount": "1370.04",
+      "raw_text": "1800005752 0194035906 Invoice 14.01.2026 14.01.2026 1,370.04"
+    },
+    {
+      "event_date": "2026-01-15",
+      "reference": "2000004337",
+      "transaction_type": "Payment",
+      "due_date": "2026-01-15",
+      "clearing_reference": null,
+      "amount": "-1370.04",
+      "raw_text": "2000004337 Payment 15.01.2026 15.01.2026 -1,370.04"
+    }
+  ]
+}

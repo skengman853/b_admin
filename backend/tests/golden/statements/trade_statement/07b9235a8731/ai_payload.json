@@ -1,0 +1,104 @@
+{
+  "supplier": "Connacht Bottlers",
+  "document_type": "statement",
+  "document_date": "2025-12-31",
+  "reference": null,
+  "amount": null,
+  "vat_amount": null,
+  "currency": null,
+  "confidence_score": null,
+  "is_financial": true,
+  "statement_kind": "trade_statement",
+  "account_number": "CAREY01",
+  "account_name": "CAREYS BAR LTD",
+  "period_start": null,
+  "period_end": null,
+  "total_due": "4081.85",
+  "settlement_discount_total": null,
+  "opening_balance": "606.13",
+  "closing_balance": "4081.85",
+  "note": null,
+  "entries": [
+    {
+      "event_date": "2025-12-03",
+      "reference": "DD-03-12",
+      "transaction_type": "Receipt",
+      "due_date": null,
+      "clearing_reference": null,
+      "amount": "606.13",
+      "raw_text": "03/12/2025 DD-03-12 Receipt 606.13"
+    },
+    {
+      "event_date": "2025-12-03",
+      "reference": "29242",
+      "transaction_type": "Invoice",
+      "due_date": null,
+      "clearing_reference": "32122",
+      "amount": "688.97",
+      "raw_text": "03/12/2025 29242 Invoice 688.97"
+    },
+    {
+      "event_date": "2025-12-10",
+      "reference": "DD-10-12",
+      "transaction_type": "Receipt",
+      "due_date": null,
+      "clearing_reference": null,
+      "amount": "688.97",
+      "raw_text": "10/12/2025 DD-10-12 Receipt 688.97"
+    },
+    {
+      "event_date": "2025-12-10",
+      "reference": "29547",
+      "transaction_type": "Invoice",
+      "due_date": null,
+      "clearing_reference": "32439",
+      "amount": "932.04",
+      "raw_text": "10/12/2025 29547 Invoice 932.04"
+    },
+    {
+      "event_date": "2025-12-17",
+      "reference": "DD-17-12",
+      "transaction_type": "Receipt",
+      "due_date": null,
+      "clearing_reference": null,
+      "amount": "932.04",
+      "raw_text": "17/12/2025 DD-17-12 Receipt 932.04"
+    },
+    {
+      "event_date": "2025-12-17",
+      "reference": "29875",
+      "transaction_type": "Invoice",
+      "due_date": null,
+      "clearing_reference": "32813",
+      "amount": "910.72",
+      "raw_text": "17/12/2025 29875 Invoice 910.72"
+    },
+    {
+      "event_date": "2025-12-23",
+      "reference": "30306",
+      "transaction_type": "Invoice",
+      "due_date": null,
+      "clearing_reference": "33246",
+      "amount": "3973.05",
+      "raw_text": "23/12/2025 30306 Invoice 3,973.05"
+    },
+    {
+      "event_date": "2025-12-24",
+      "reference": "DD-24-12",
+      "transaction_type": "Receipt",
+      "due_date": null,
+      "clearing_reference": null,
+      "amount": "910.72",
+      "raw_text": "24/12/2025 DD-24-12 Receipt 910.72"
+    },
+    {
+      "event_date": "2025-12-29",
+      "reference": "30419",
+      "transaction_type": "Invoice",
+      "due_date": null,
+      "clearing_reference": "33397",
+      "amount": "108.8",
+      "raw_text": "29/12/2025 30419 Invoice 108.80"
+    }
+  ]
+}

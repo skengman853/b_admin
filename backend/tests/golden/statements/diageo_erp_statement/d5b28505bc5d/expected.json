@@ -1,0 +1,65 @@
+{
+  "supplier": "Diageo",
+  "document_type": "statement",
+  "attachment_name": "Diageo Stmt - 077 - Statement - Date - 30.04.2026 - Linked.pdf",
+  "source_email_subject": "Careys Bar/Statements/Diageo Stmt - 077 - Statement - Date - 30.04.2026 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "supplier_statement",
+  "control_totals": {
+    "opening_balance": "0.00",
+    "closing_balance": "0.00",
+    "total_due": "0.00",
+    "settlement_discount_total": "-275.17"
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "invoice",
+      "reference": "9263312263",
+      "event_date": "2026-04-02",
+      "amount": "4027.43"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2503715694",
+      "event_date": "2026-04-07",
+      "amount": "4027.43"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "9263317044",
+      "event_date": "2026-04-10",
+      "amount": "487.62"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2503719806",
+      "event_date": "2026-04-15",
+      "amount": "487.62"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "9263321673",
+      "event_date": "2026-04-16",
+      "amount": "3198.25"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2503722026",
+      "event_date": "2026-04-21",
+      "amount": "3198.25"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "9263326661",
+      "event_date": "2026-04-23",
+      "amount": "5824.90"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2503726062",
+      "event_date": "2026-04-28",
+      "amount": "5824.90"
+    }
+  ]
+}

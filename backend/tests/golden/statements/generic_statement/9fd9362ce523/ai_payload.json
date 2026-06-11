@@ -1,0 +1,32 @@
+{
+  "supplier": "BOC Gases Ireland Ltd.",
+  "document_type": "statement",
+  "document_date": "2020-07-31",
+  "reference": null,
+  "amount": null,
+  "vat_amount": null,
+  "currency": "EUR",
+  "confidence_score": 0.99,
+  "is_financial": true,
+  "statement_kind": "generic_statement",
+  "account_number": "1441655",
+  "account_name": "CAREYS TAVERN",
+  "period_start": null,
+  "period_end": null,
+  "total_due": "73.92",
+  "settlement_discount_total": null,
+  "opening_balance": null,
+  "closing_balance": "73.92",
+  "note": null,
+  "entries": [
+    {
+      "event_date": "2019-11-11",
+      "reference": "3055538907",
+      "transaction_type": "Invoice",
+      "due_date": null,
+      "clearing_reference": null,
+      "amount": "73.92",
+      "raw_text": "11 November 2019 3055538907 Invoice 73.92"
+    }
+  ]
+}

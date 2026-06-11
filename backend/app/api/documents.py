@@ -74,7 +74,9 @@ def _build_document_detail_response(
         subject=document.source_email_subject or "",
     )
     parsed_statement = parse_supplier_statement(document)
-    ledger = build_document_ledger(document)
+    # Workbench detail view: previewing a not-yet-extracted statement via the
+    # parser is intentional here; extracted documents use their persisted rows.
+    ledger = build_document_ledger(document, allow_parse_fallback=True)
     base_payload = _build_document_response(document).model_dump()
 
     def _build_ledger_entry_response(entry) -> DocumentLedgerEntryResponse:

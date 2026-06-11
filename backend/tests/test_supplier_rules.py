@@ -35,6 +35,42 @@ class SupplierRulesTests(unittest.TestCase):
             "Little Luxuries",
         )
 
+    def test_pub_name_in_subject_is_not_attributed_as_supplier(self) -> None:
+        self.assertEqual(
+            detect_supplier(
+                "",
+                "Careys Bar statement May 2025",
+                "",
+                "statement.pdf",
+                "",
+            ),
+            "Other",
+        )
+
+    def test_pub_trading_name_in_pdf_text_is_not_attributed_as_supplier(self) -> None:
+        self.assertEqual(
+            detect_supplier(
+                "",
+                "Sub Account Statements TCT003",
+                "Invoice Address\nCAREY'S BAR LTD\nT/A THE CANAL TURN\nMAIN STREET",
+                "statement.pdf",
+                "",
+            ),
+            "Other",
+        )
+
+    def test_supplier_in_pdf_text_wins_over_pub_customer_address(self) -> None:
+        self.assertEqual(
+            detect_supplier(
+                "",
+                "Sub Account Statements TCT003",
+                "SUB ACCOUNT STATEMENT\nDiageo Ireland\nInvoice Address\nCAREY'S BAR LTD\nT/A THE CANAL TURN",
+                "statement.pdf",
+                "",
+            ),
+            "Diageo",
+        )
+
     def test_no_reply_sender_without_other_signals_falls_back_to_other(self) -> None:
         self.assertEqual(
             detect_supplier(

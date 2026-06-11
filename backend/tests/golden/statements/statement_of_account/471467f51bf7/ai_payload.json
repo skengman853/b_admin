@@ -1,0 +1,185 @@
+{
+  "supplier": "Bulmers Ireland",
+  "document_type": "statement",
+  "document_date": "2026-01-31",
+  "reference": null,
+  "amount": null,
+  "vat_amount": null,
+  "currency": "EUR",
+  "confidence_score": 0.95,
+  "is_financial": true,
+  "statement_kind": "statement_of_account",
+  "account_number": "69000795",
+  "account_name": "CAREY'S BAR LTD T/A CAREY'S",
+  "period_start": null,
+  "period_end": null,
+  "total_due": "2057.08",
+  "settlement_discount_total": null,
+  "opening_balance": null,
+  "closing_balance": null,
+  "note": null,
+  "entries": [
+    {
+      "event_date": "2025-12-29",
+      "reference": "3906146",
+      "transaction_type": "INV",
+      "due_date": "2026-01-05",
+      "clearing_reference": null,
+      "amount": "584.77",
+      "raw_text": "29/12/25 INV 3906146 584.77"
+    },
+    {
+      "event_date": "2025-12-29",
+      "reference": "3906146",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-01-05",
+      "clearing_reference": null,
+      "amount": "-584.77",
+      "raw_text": "29/12/25 INV 3906146 -584.77"
+    },
+    {
+      "event_date": "2025-12-30",
+      "reference": "3910543",
+      "transaction_type": "INV",
+      "due_date": "2026-01-06",
+      "clearing_reference": null,
+      "amount": "890.07",
+      "raw_text": "30/12/25 INV 3910543 890.07"
+    },
+    {
+      "event_date": "2025-12-30",
+      "reference": "3910543",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-01-06",
+      "clearing_reference": null,
+      "amount": "-890.07",
+      "raw_text": "30/12/25 INV 3910543 -890.07"
+    },
+    {
+      "event_date": "2025-12-30",
+      "reference": "3910546",
+      "transaction_type": "INV",
+      "due_date": "2026-01-06",
+      "clearing_reference": null,
+      "amount": "18.0",
+      "raw_text": "30/12/25 INV 3910546 18.00"
+    },
+    {
+      "event_date": "2025-12-30",
+      "reference": "3910546",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-01-06",
+      "clearing_reference": null,
+      "amount": "-18.0",
+      "raw_text": "30/12/25 INV 3910546 -18.00"
+    },
+    {
+      "event_date": "2026-01-08",
+      "reference": "3928952",
+      "transaction_type": "INV",
+      "due_date": "2026-01-15",
+      "clearing_reference": null,
+      "amount": "996.0",
+      "raw_text": "08/01/26 INV 3928952 996.00"
+    },
+    {
+      "event_date": "2026-01-08",
+      "reference": "3928952",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-01-15",
+      "clearing_reference": null,
+      "amount": "-996.0",
+      "raw_text": "08/01/26 INV 3928952 -996.00"
+    },
+    {
+      "event_date": "2026-01-08",
+      "reference": "3928953",
+      "transaction_type": "INV",
+      "due_date": "2026-01-15",
+      "clearing_reference": null,
+      "amount": "18.0",
+      "raw_text": "08/01/26 INV 3928953 18.00"
+    },
+    {
+      "event_date": "2026-01-08",
+      "reference": "3928953",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-01-15",
+      "clearing_reference": null,
+      "amount": "-18.0",
+      "raw_text": "08/01/26 INV 3928953 -18.00"
+    },
+    {
+      "event_date": "2026-01-14",
+      "reference": "3939907",
+      "transaction_type": "INV",
+      "due_date": "2026-01-21",
+      "clearing_reference": null,
+      "amount": "973.83",
+      "raw_text": "14/01/26 INV 3939907 973.83"
+    },
+    {
+      "event_date": "2026-01-14",
+      "reference": "3939907",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-01-21",
+      "clearing_reference": null,
+      "amount": "-973.83",
+      "raw_text": "14/01/26 INV 3939907 -973.83"
+    },
+    {
+      "event_date": "2026-01-14",
+      "reference": "3939910",
+      "transaction_type": "INV",
+      "due_date": "2026-01-21",
+      "clearing_reference": null,
+      "amount": "18.0",
+      "raw_text": "14/01/26 INV 3939910 18.00"
+    },
+    {
+      "event_date": "2026-01-14",
+      "reference": "3939910",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-01-21",
+      "clearing_reference": null,
+      "amount": "-18.0",
+      "raw_text": "14/01/26 INV 3939910 -18.00"
+    },
+    {
+      "event_date": "2026-01-27",
+      "reference": "3964612",
+      "transaction_type": "INV",
+      "due_date": "2026-02-03",
+      "clearing_reference": null,
+      "amount": "1010.54",
+      "raw_text": "27/01/26 INV 3964612 1010.54"
+    },
+    {
+      "event_date": "2026-01-27",
+      "reference": "3964614",
+      "transaction_type": "INV",
+      "due_date": "2026-02-03",
+      "clearing_reference": null,
+      "amount": "18.0",
+      "raw_text": "27/01/26 INV 3964614 18.00"
+    },
+    {
+      "event_date": "2026-01-29",
+      "reference": "3974386",
+      "transaction_type": "INV",
+      "due_date": "2026-02-05",
+      "clearing_reference": null,
+      "amount": "1010.54",
+      "raw_text": "29/01/26 INV 3974386 1010.54"
+    },
+    {
+      "event_date": "2026-01-29",
+      "reference": "3974390",
+      "transaction_type": "INV",
+      "due_date": "2026-02-05",
+      "clearing_reference": null,
+      "amount": "18.0",
+      "raw_text": "29/01/26 INV 3974390 18.00"
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+{
+  "supplier": "Heineken",
+  "document_type": "statement",
+  "document_date": "2026-01-05",
+  "reference": null,
+  "amount": null,
+  "vat_amount": null,
+  "currency": "EUR",
+  "confidence_score": 0.99,
+  "is_financial": true,
+  "statement_kind": "statement_of_account",
+  "account_number": "2016632103",
+  "account_name": "Careys Bar Limited",
+  "period_start": "2025-12-01",
+  "period_end": "2025-12-31",
+  "total_due": "4561.09",
+  "settlement_discount_total": "2936.25",
+  "opening_balance": "36.92",
+  "closing_balance": "4561.09",
+  "note": "Settlement Discount of EUR 2,936.25 is available for payment.",
+  "entries": [
+    {
+      "event_date": "2025-11-27",
+      "reference": "1800281381",
+      "transaction_type": "Invoice",
+      "due_date": "2025-11-27",
+      "clearing_reference": "0193975051",
+      "amount": "36.92",
+      "raw_text": "1800281381 0193975051 Invoice 27.11.2025 27.11.2025 36.92"
+    },
+    {
+      "event_date": "2025-12-01",
+      "reference": "2000158163",
+      "transaction_type": "Payment",
+      "due_date": "2025-12-01",
+      "clearing_reference": null,
+      "amount": "-36.92",
+      "raw_text": "2000158163 Payment 01.12.2025 01.12.2025 -36.92"
+    },
+    {
+      "event_date": "2025-12-23",
+      "reference": "1800305970",
+      "transaction_type": "Invoice",
+      "due_date": "2025-12-23",
+      "clearing_reference": "0194016071",
+      "amount": "4428.84",
+      "raw_text": "1800305970 0194016071 Invoice 23.12.2025 23.12.2025 4,428.84"
+    },
+    {
+      "event_date": "2025-12-24",
+      "reference": "2000169519",
+      "transaction_type": "Payment",
+      "due_date": "2025-12-24",
+      "clearing_reference": null,
+      "amount": "-4428.84",
+      "raw_text": "2000169519 Payment 24.12.2025 24.12.2025 -4,428.84"
+    },
+    {
+      "event_date": "2025-12-17",
+      "reference": "1800299765",
+      "transaction_type": "Invoice",
+      "due_date": "2025-12-17",
+      "clearing_reference": "0194005952",
+      "amount": "6195.08",
+      "raw_text": "1800299765 0194005952 Invoice 17.12.2025 17.12.2025 6,195.08"
+    },
+    {
+      "event_date": "2025-12-17",
+      "reference": "1800299769",
+      "transaction_type": "Invoice",
+      "due_date": "2025-12-17",
+      "clearing_reference": "0194005953",
+      "amount": "143.6",
+      "raw_text": "1800299769 0194005953 Invoice 17.12.2025 17.12.2025 143.60"
+    },
+    {
+      "event_date": "2025-12-19",
+      "reference": "2000166815",
+      "transaction_type": "Payment",
+      "due_date": "2025-12-19",
+      "clearing_reference": null,
+      "amount": "-6338.68",
+      "raw_text": "2000166815 Payment 19.12.2025 19.12.2025 -6,338.68"
+    },
+    {
+      "event_date": "2025-12-11",
+      "reference": "1800292312",
+      "transaction_type": "Invoice",
+      "due_date": "2025-12-11",
+      "clearing_reference": "0193994005",
+      "amount": "18.49",
+      "raw_text": "1800292312 0193994005 Invoice 11.12.2025 11.12.2025 18.49"
+    },
+    {
+      "event_date": "2025-12-12",
+      "reference": "2000163571",
+      "transaction_type": "Payment",
+      "due_date": "2025-12-12",
+      "clearing_reference": null,
+      "amount": "-18.49",
+      "raw_text": "2000163571 Payment 12.12.2025 12.12.2025 -18.49"
+    },
+    {
+      "event_date": "2025-12-10",
+      "reference": "1800290950",
+      "transaction_type": "Invoice",
+      "due_date": "2025-12-10",
+      "clearing_reference": "0193991611",
+      "amount": "450.98",
+      "raw_text": "1800290950 0193991611 Invoice 10.12.2025 10.12.2025 450.98"
+    },
+    {
+      "event_date": "2025-12-10",
+      "reference": "1800290955",
+      "transaction_type": "Invoice",
+      "due_date": "2025-12-10",
+      "clearing_reference": "0193991612",
+      "amount": "72.32",
+      "raw_text": "1800290955 0193991612 Invoice 10.12.2025 10.12.2025 72.32"
+    },
+    {
+      "event_date": "2025-12-10",
+      "reference": "1800290956",
+      "transaction_type": "Invoice",
+      "due_date": "2025-12-10",
+      "clearing_reference": "0193991613",
+      "amount": "57.86",
+      "raw_text": "1800290956 0193991613 Invoice 10.12.2025 10.12.2025 57.86"
+    },
+    {
+      "event_date": "2025-12-11",
+      "reference": "2000162929",
+      "transaction_type": "Payment",
+      "due_date": "2025-12-11",
+      "clearing_reference": null,
+      "amount": "-581.16",
+      "raw_text": "2000162929 Payment 11.12.2025 11.12.2025 -581.16"
+    },
+    {
+      "event_date": "2025-12-03",
+      "reference": "1800284834",
+      "transaction_type": "Invoice",
+      "due_date": "2025-12-03",
+      "clearing_reference": "0193981166",
+      "amount": "2957.13",
+      "raw_text": "1800284834 0193981166 Invoice 03.12.2025 03.12.2025 2,957.13"
+    },
+    {
+      "event_date": "2025-12-04",
+      "reference": "2000159737",
+      "transaction_type": "Payment",
+      "due_date": "2025-12-04",
+      "clearing_reference": null,
+      "amount": "-2957.13",
+      "raw_text": "2000159737 Payment 04.12.2025 04.12.2025 -2,957.13"
+    },
+    {
+      "event_date": "2025-12-31",
+      "reference": "1800310474",
+      "transaction_type": "Invoice",
+      "due_date": "2025-12-31",
+      "clearing_reference": "0194024087",
+      "amount": "4561.09",
+      "raw_text": "1800310474 0194024087 Invoice 31.12.2025 31.12.2025 4,561.09"
+    }
+  ]
+}

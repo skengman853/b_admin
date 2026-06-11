@@ -1,0 +1,89 @@
+{
+  "supplier": "Heineken",
+  "document_type": "statement",
+  "attachment_name": "Heineken - 049 - Statement Summary - Date - 04-03-2026 - Linked.pdf",
+  "source_email_subject": "Statement Summaries - New/Careys Bar/Heineken - 049 - Statement Summary - Date - 04-03-2026 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "statement_of_account",
+  "control_totals": {
+    "opening_balance": "0.00",
+    "closing_balance": "0.00",
+    "total_due": null,
+    "settlement_discount_total": "3914.99"
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "invoice",
+      "reference": "1800037047",
+      "event_date": "2026-02-25",
+      "amount": "3551.19"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000022580",
+      "event_date": "2026-02-26",
+      "amount": "3551.19"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800030746",
+      "event_date": "2026-02-12",
+      "amount": "0.02"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800032013",
+      "event_date": "2026-02-18",
+      "amount": "4048.85"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000018896",
+      "event_date": "2026-02-20",
+      "amount": "4048.87"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800026742",
+      "event_date": "2026-02-11",
+      "amount": "2903.85"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000016443",
+      "event_date": "2026-02-13",
+      "amount": "2903.85"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800025557",
+      "event_date": "2026-02-12",
+      "amount": "18.51"
+    },
+    {
+      "row_type": "credit_note",
+      "reference": "1800025560",
+      "event_date": "2026-02-11",
+      "amount": "0.02"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000015846",
+      "event_date": "2026-02-12",
+      "amount": "18.49"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800020278",
+      "event_date": "2026-02-05",
+      "amount": "3762.39"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000013162",
+      "event_date": "2026-02-06",
+      "amount": "3762.39"
+    }
+  ]
+}

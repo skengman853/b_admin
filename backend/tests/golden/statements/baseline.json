@@ -1,0 +1,52 @@
+{
+  "diageo_erp_statement": {
+    "cases": 9,
+    "verified_cases": 9,
+    "row_recall": 1.0,
+    "row_precision": 1.0,
+    "amount_exact_rate": 0.977,
+    "control_totals_accuracy": 0.846,
+    "arithmetic_balanced_rate": 0.444,
+    "arithmetic_statuses": {
+      "balanced": 4,
+      "not_applicable": 5
+    }
+  },
+  "generic_statement": {
+    "cases": 2,
+    "verified_cases": 2,
+    "row_recall": 1.0,
+    "row_precision": 1.0,
+    "amount_exact_rate": 1.0,
+    "control_totals_accuracy": 1.0,
+    "arithmetic_balanced_rate": 1.0,
+    "arithmetic_statuses": {
+      "balanced": 2
+    }
+  },
+  "statement_of_account": {
+    "cases": 10,
+    "verified_cases": 10,
+    "row_recall": 0.904,
+    "row_precision": 0.986,
+    "amount_exact_rate": 1.0,
+    "control_totals_accuracy": 1.0,
+    "arithmetic_balanced_rate": 0.8,
+    "arithmetic_statuses": {
+      "balanced": 8,
+      "unbalanced": 2
+    }
+  },
+  "trade_statement": {
+    "cases": 5,
+    "verified_cases": 5,
+    "row_recall": 1.0,
+    "row_precision": 1.0,
+    "amount_exact_rate": 1.0,
+    "control_totals_accuracy": 1.0,
+    "arithmetic_balanced_rate": 1.0,
+    "arithmetic_statuses": {
+      "balanced": 5
+    }
+  }
+}

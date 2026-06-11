@@ -13,10 +13,23 @@ from app.services.supplier_profiles import (  # noqa: E402
     build_supplier_lookup_keys,
     canonicalize_supplier_name,
     detect_statement_parser_family,
+    is_operator_entity,
 )
 
 
 class SupplierProfilesTests(unittest.TestCase):
+    def test_recognizes_operator_entities_in_any_casing(self) -> None:
+        self.assertTrue(is_operator_entity("Careys Bar"))
+        self.assertTrue(is_operator_entity("CANAL TURN"))
+        self.assertTrue(is_operator_entity("The Canal Turn"))
+        self.assertTrue(is_operator_entity("CAREY'S BAR LTD"))
+
+    def test_real_suppliers_are_not_operator_entities(self) -> None:
+        self.assertFalse(is_operator_entity("Diageo"))
+        self.assertFalse(is_operator_entity("Connacht Bottlers"))
+        self.assertFalse(is_operator_entity(None))
+        self.assertFalse(is_operator_entity("Other"))
+
     def test_canonicalizes_known_bank_alias(self) -> None:
         self.assertEqual(canonicalize_supplier_name("MoodMaster"), "Automatic Amusements")
 

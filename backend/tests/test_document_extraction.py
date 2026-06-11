@@ -648,6 +648,78 @@ class DocumentExtractionTests(unittest.TestCase):
         self.assertIn("low_confidence_extraction", merged["review_reasons"])
         self.assertLess(merged["confidence_score"], 0.7)
 
+    @unittest.skipIf(_ai_import_error is not None, f"AI extraction helper unavailable: {_ai_import_error}")
+    def test_ai_merge_replaces_pub_supplier_with_extracted_supplier(self) -> None:
+        payload = build_extraction_fields(
+            extracted_text=SPARSE_PROMO_STATEMENT_TEXT,
+            supplier="Canal Turn",
+            document_type="statement",
+            subject="Canal Turn/Sub Account Statements/file.pdf",
+            attachment_name="Canal Turn - Sub Account Statements TCT003.pdf",
+            needs_review=False,
+        )
+        document = types.SimpleNamespace(
+            document_type="statement",
+            supplier="Canal Turn",
+            attachment_name="Canal Turn - Sub Account Statements TCT003.pdf",
+            source_email_subject="Canal Turn/Sub Account Statements/file.pdf",
+            ai_extraction_status=None,
+            ai_extraction_provider=None,
+            ai_extraction_model=None,
+            ai_extraction_payload=None,
+            ai_extracted_at=None,
+        )
+        ai_result = AIDocumentExtractionResult(
+            supplier="Diageo Ireland",
+            document_date="2026-03-31",
+            statement_kind="sub_account_statement",
+            is_financial=True,
+        )
+
+        merge_ai_extraction(
+            document=document,
+            extraction_fields=payload,
+            ai_result=ai_result,
+        )
+
+        self.assertEqual(document.supplier, "Diageo")
+
+    @unittest.skipIf(_ai_import_error is not None, f"AI extraction helper unavailable: {_ai_import_error}")
+    def test_ai_merge_never_assigns_pub_name_as_supplier(self) -> None:
+        payload = build_extraction_fields(
+            extracted_text=SPARSE_PROMO_STATEMENT_TEXT,
+            supplier="Other",
+            document_type="statement",
+            subject="statement.pdf",
+            attachment_name="statement.pdf",
+            needs_review=True,
+        )
+        document = types.SimpleNamespace(
+            document_type="statement",
+            supplier="Other",
+            attachment_name="statement.pdf",
+            source_email_subject="statement.pdf",
+            ai_extraction_status=None,
+            ai_extraction_provider=None,
+            ai_extraction_model=None,
+            ai_extraction_payload=None,
+            ai_extracted_at=None,
+        )
+        ai_result = AIDocumentExtractionResult(
+            supplier="Careys Bar",
+            document_date="2026-03-31",
+            statement_kind="generic_statement",
+            is_financial=True,
+        )
+
+        merge_ai_extraction(
+            document=document,
+            extraction_fields=payload,
+            ai_result=ai_result,
+        )
+
+        self.assertEqual(document.supplier, "Other")
+
     def test_extracts_multi_invoice_candidates(self) -> None:
         candidates = extract_multi_invoice_candidates(
             text=LOVELL_MULTI_INVOICE_TEXT,

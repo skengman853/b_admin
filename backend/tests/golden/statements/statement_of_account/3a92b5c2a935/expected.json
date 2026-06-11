@@ -1,0 +1,113 @@
+{
+  "supplier": "Heineken",
+  "document_type": "statement",
+  "attachment_name": "Heineken - 047 - Statement Summary - Date - 05-01-2026 - Linked.pdf",
+  "source_email_subject": "Statement Summaries - New/Careys Bar/Archive/Heineken - 047 - Statement Summary - Date - 05-01-2026 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "statement_of_account",
+  "control_totals": {
+    "opening_balance": "36.92",
+    "closing_balance": "4561.09",
+    "total_due": null,
+    "settlement_discount_total": "2936.25"
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "invoice",
+      "reference": "1800281381",
+      "event_date": "2025-11-27",
+      "amount": "36.92"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000158163",
+      "event_date": "2025-12-01",
+      "amount": "36.92"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800305970",
+      "event_date": "2025-12-23",
+      "amount": "4428.84"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000169519",
+      "event_date": "2025-12-24",
+      "amount": "4428.84"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800299765",
+      "event_date": "2025-12-17",
+      "amount": "6195.08"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800299769",
+      "event_date": "2025-12-17",
+      "amount": "143.60"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000166815",
+      "event_date": "2025-12-19",
+      "amount": "6338.68"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800292312",
+      "event_date": "2025-12-11",
+      "amount": "18.49"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000163571",
+      "event_date": "2025-12-12",
+      "amount": "18.49"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800290950",
+      "event_date": "2025-12-10",
+      "amount": "450.98"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800290955",
+      "event_date": "2025-12-10",
+      "amount": "72.32"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800290956",
+      "event_date": "2025-12-10",
+      "amount": "57.86"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000162929",
+      "event_date": "2025-12-11",
+      "amount": "581.16"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800284834",
+      "event_date": "2025-12-03",
+      "amount": "2957.13"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000159737",
+      "event_date": "2025-12-04",
+      "amount": "2957.13"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800310474",
+      "event_date": "2025-12-31",
+      "amount": "4561.09"
+    }
+  ]
+}

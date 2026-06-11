@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     ai_document_extraction_enabled: bool = True
     ai_document_extraction_model: str = "gpt-4.1-mini"
     ai_document_extraction_min_confidence: float = 0.7
+    ai_document_extraction_send_page_images: bool = True
+    ai_document_extraction_max_image_pages: int = 8
+    ai_document_extraction_image_dpi: int = 170
+    ai_document_extraction_repair_enabled: bool = True
     document_storage_backend: str = "local"
     s3_bucket: str = ""
     s3_region: str = ""

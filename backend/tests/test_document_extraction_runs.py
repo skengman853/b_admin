@@ -295,6 +295,178 @@ DD-29-04 Receipt 169.74
                 self.assertEqual(rows[0].reference, "DD-29-04")
                 self.assertEqual(rows[0].amount, Decimal("169.74"))
 
+        async def test_statement_control_totals_and_arithmetic_are_persisted(self) -> None:
+            async with self.session_factory() as session:
+                document = Document(
+                    id=uuid.uuid4(),
+                    user_id=self.user.id,
+                    gmail_message_id="statement-arithmetic-doc",
+                    attachment_index=0,
+                    derivation_index=0,
+                    attachment_name="Heineken - Stmt 021 - Date 30-04-2026.pdf",
+                    supplier="Heineken",
+                    document_type="statement",
+                    local_path=str(self.pdf_path),
+                )
+                session.add(document)
+                await session.commit()
+
+                extracted_text = """STATEMENT OF ACCOUNT
+Customer Account No: 2016632103
+Date: 30.04.2026
+"""
+                ai_result = AIDocumentExtractionResult(
+                    document_date="2026-04-30",
+                    statement_kind="supplier_statement",
+                    is_financial=True,
+                    account_number="2016632103",
+                    period_start="2026-04-01",
+                    period_end="2026-04-30",
+                    opening_balance="100.00",
+                    closing_balance="250.00",
+                    confidence_score=0.9,
+                    entries=[
+                        {
+                            "event_date": "2026-04-10",
+                            "reference": "9263312263",
+                            "transaction_type": "Invoice",
+                            "amount": "250.00",
+                        },
+                        {
+                            "event_date": "2026-04-20",
+                            "reference": "DD-20-04",
+                            "transaction_type": "Receipt",
+                            "amount": "100.00",
+                        },
+                    ],
+                )
+                patches = (
+                    patch("app.services.document_extraction.ensure_local_document_file", return_value=self.pdf_path),
+                    patch("app.services.document_extraction.extract_pdf_text", return_value=extracted_text),
+                    patch("app.services.document_extraction.should_attempt_ai_extraction", return_value=True),
+                    patch("app.services.document_extraction.extract_document_with_ai", new=AsyncMock(return_value=ai_result)),
+                    patch("app.services.document_extraction.sync_invoices_from_documents", new=AsyncMock()),
+                )
+                with patches[0], patches[1], patches[2], patches[3], patches[4]:
+                    await extract_documents(
+                        user=self.user,
+                        db=session,
+                        limit=1,
+                        document_ids=[document.id],
+                        force=True,
+                    )
+
+                fact = (
+                    await session.execute(
+                        select(DocumentFinancialFact).where(DocumentFinancialFact.document_id == document.id)
+                    )
+                ).scalar_one()
+                self.assertEqual(fact.opening_balance, Decimal("100.00"))
+                self.assertEqual(fact.closing_balance, Decimal("250.00"))
+                self.assertEqual(fact.arithmetic_mode, "activity")
+                self.assertEqual(fact.arithmetic_status, "balanced")
+                self.assertEqual(fact.arithmetic_delta, Decimal("0.00"))
+
+                # A forced re-extraction must replace the document's rows, not accumulate them.
+                with patches[0], patches[1], patches[2], patches[3], patches[4]:
+                    await extract_documents(
+                        user=self.user,
+                        db=session,
+                        limit=1,
+                        document_ids=[document.id],
+                        force=True,
+                    )
+
+                runs = (
+                    await session.execute(
+                        select(DocumentExtractionRun).where(DocumentExtractionRun.document_id == document.id)
+                    )
+                ).scalars().all()
+                self.assertEqual(len(runs), 2)
+
+                rows = (
+                    await session.execute(
+                        select(DocumentFinancialRow).where(DocumentFinancialRow.document_id == document.id)
+                    )
+                ).scalars().all()
+                self.assertEqual(len(rows), 2)
+                self.assertEqual({row.row_type for row in rows}, {"invoice", "payment"})
+
+        async def test_unbalanced_statement_extraction_gets_one_repair_attempt(self) -> None:
+            async with self.session_factory() as session:
+                document = Document(
+                    id=uuid.uuid4(),
+                    user_id=self.user.id,
+                    gmail_message_id="statement-repair-doc",
+                    attachment_index=0,
+                    derivation_index=0,
+                    attachment_name="Bulmers Ireland - Stmt 022 - Date 31-05-2026.pdf",
+                    supplier="Bulmers",
+                    document_type="statement",
+                    local_path=str(self.pdf_path),
+                )
+                session.add(document)
+                await session.commit()
+
+                base_kwargs = {
+                    "document_date": "2026-05-31",
+                    "statement_kind": "supplier_statement",
+                    "is_financial": True,
+                    "opening_balance": "0.00",
+                    "closing_balance": "894.10",
+                    "confidence_score": 0.9,
+                }
+                unbalanced_result = AIDocumentExtractionResult(
+                    **base_kwargs,
+                    entries=[
+                        {"reference": "4100706", "transaction_type": "Invoice", "amount": "876.10"},
+                    ],
+                )
+                repaired_result = AIDocumentExtractionResult(
+                    **base_kwargs,
+                    entries=[
+                        {"reference": "4100706", "transaction_type": "Invoice", "amount": "876.10"},
+                        {"reference": "4112987", "transaction_type": "Invoice", "amount": "18.00"},
+                    ],
+                )
+                ai_mock = AsyncMock(side_effect=[unbalanced_result, repaired_result])
+                with (
+                    patch("app.services.document_extraction.ensure_local_document_file", return_value=self.pdf_path),
+                    patch("app.services.document_extraction.extract_pdf_text", return_value="STATEMENT OF ACCOUNT"),
+                    patch("app.services.document_extraction.should_attempt_ai_extraction", return_value=True),
+                    patch("app.services.document_extraction.extract_document_with_ai", new=ai_mock),
+                    patch("app.services.document_extraction.sync_invoices_from_documents", new=AsyncMock()),
+                ):
+                    await extract_documents(
+                        user=self.user,
+                        db=session,
+                        limit=1,
+                        document_ids=[document.id],
+                        force=True,
+                    )
+
+                self.assertEqual(ai_mock.await_count, 2)
+                repair_call_kwargs = ai_mock.await_args_list[1].kwargs
+                self.assertIn("did not reconcile arithmetically", repair_call_kwargs["repair_context"])
+
+                fact = (
+                    await session.execute(
+                        select(DocumentFinancialFact).where(DocumentFinancialFact.document_id == document.id)
+                    )
+                ).scalar_one()
+                self.assertEqual(fact.arithmetic_status, "balanced")
+
+                run = (
+                    await session.execute(
+                        select(DocumentExtractionRun).where(DocumentExtractionRun.document_id == document.id)
+                    )
+                ).scalar_one()
+                self.assertEqual(run.source_kind, "ai_repair")
+                ai_payload_meta = run.raw_payload_json["ai_extraction"]
+                self.assertTrue(ai_payload_meta["repair_attempted"])
+                self.assertTrue(ai_payload_meta["repair_used"])
+                self.assertEqual(len(ai_payload_meta["first_attempt_payload"]["entries"]), 1)
+
         async def test_backfill_financial_state_creates_run_fact_and_rows(self) -> None:
             async with self.session_factory() as session:
                 document = Document(

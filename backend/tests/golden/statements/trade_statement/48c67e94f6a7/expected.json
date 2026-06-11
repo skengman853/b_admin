@@ -1,0 +1,89 @@
+{
+  "supplier": "Connacht Bottlers",
+  "document_type": "statement",
+  "attachment_name": "JJ Mahon - Stmt - 058 - Date - 30-04-2026 - Linked.pdf",
+  "source_email_subject": "Statements/Careys Bar/JJ Mahon - Stmt - 058 - Date - 30-04-2026 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "trade_statement",
+  "control_totals": {
+    "opening_balance": "350.33",
+    "closing_balance": "786.50",
+    "total_due": "786.50",
+    "settlement_discount_total": null
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "payment",
+      "reference": "DD-01-04",
+      "event_date": "2026-04-01",
+      "amount": "350.33"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "33655",
+      "event_date": "2026-04-01",
+      "amount": "1037.02"
+    },
+    {
+      "row_type": "payment",
+      "reference": "DD-08-04",
+      "event_date": "2026-04-08",
+      "amount": "1037.02"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "33941",
+      "event_date": "2026-04-08",
+      "amount": "1116.49"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "34036",
+      "event_date": "2026-04-09",
+      "amount": "169.74"
+    },
+    {
+      "row_type": "payment",
+      "reference": "DD-15-04",
+      "event_date": "2026-04-15",
+      "amount": "1116.49"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "34222",
+      "event_date": "2026-04-15",
+      "amount": "850.11"
+    },
+    {
+      "row_type": "payment",
+      "reference": "DD-16-04",
+      "event_date": "2026-04-16",
+      "amount": "169.74"
+    },
+    {
+      "row_type": "payment",
+      "reference": "DD-22-04",
+      "event_date": "2026-04-22",
+      "amount": "850.11"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "34508",
+      "event_date": "2026-04-22",
+      "amount": "740.98"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "34769",
+      "event_date": "2026-04-28",
+      "amount": "786.50"
+    },
+    {
+      "row_type": "payment",
+      "reference": "DD-29-04",
+      "event_date": "2026-04-29",
+      "amount": "740.98"
+    }
+  ]
+}

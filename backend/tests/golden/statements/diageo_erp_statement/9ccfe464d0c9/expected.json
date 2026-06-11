@@ -1,0 +1,83 @@
+{
+  "supplier": "Diageo",
+  "document_type": "statement",
+  "attachment_name": "Diageo Stmt - 075 - Statement - Date - 28.02.2026.pdf",
+  "source_email_subject": "Careys Bar/Statements/Diageo Stmt - 075 - Statement - Date - 28.02.2026.pdf",
+  "verified": true,
+  "statement_kind": "supplier_statement",
+  "control_totals": {
+    "opening_balance": "3898.62",
+    "closing_balance": "1619.29",
+    "total_due": "1619.29",
+    "settlement_discount_total": "-379.33"
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "payment",
+      "reference": "2503689889",
+      "event_date": "2026-02-03",
+      "amount": "3898.62"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "9263271493",
+      "event_date": "2026-02-06",
+      "amount": "3568.41"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2503692941",
+      "event_date": "2026-02-11",
+      "amount": "3568.41"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "9263275740",
+      "event_date": "2026-02-12",
+      "amount": "3080.14"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2503695310",
+      "event_date": "2026-02-17",
+      "amount": "3080.14"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "9263279690",
+      "event_date": "2026-02-19",
+      "amount": "3791.09"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2503697703",
+      "event_date": "2026-02-24",
+      "amount": "3791.09"
+    },
+    {
+      "row_type": "credit_note",
+      "reference": "7262431034",
+      "event_date": "2026-02-26",
+      "amount": "190.13"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "9263283912",
+      "event_date": "2026-02-26",
+      "amount": "243.81"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "9263283913",
+      "event_date": "2026-02-26",
+      "amount": "4271.24"
+    },
+    {
+      "row_type": "credit_note",
+      "reference": "2308235175",
+      "event_date": "2026-02-27",
+      "amount": "2705.63"
+    }
+  ]
+}

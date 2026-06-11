@@ -1,0 +1,59 @@
+{
+  "supplier": "Connacht Bottlers",
+  "document_type": "statement",
+  "attachment_name": "JJ Mahon - Stmt - 055 - Date - 31-01-2026 - Linked.pdf",
+  "source_email_subject": "Statements/Careys Bar/Archive/JJ Mahon - Stmt - 055 - Date - 31-01-2026 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "trade_statement",
+  "control_totals": {
+    "opening_balance": "4081.85",
+    "closing_balance": "970.93",
+    "total_due": "970.93",
+    "settlement_discount_total": null
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "payment",
+      "reference": "DD-05-01",
+      "event_date": "2026-01-05",
+      "amount": "4081.85"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "30672",
+      "event_date": "2026-01-07",
+      "amount": "387.57"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "30887",
+      "event_date": "2026-01-14",
+      "amount": "1050.57"
+    },
+    {
+      "row_type": "payment",
+      "reference": "DD-14-01",
+      "event_date": "2026-01-14",
+      "amount": "387.57"
+    },
+    {
+      "row_type": "payment",
+      "reference": "DD-21-01",
+      "event_date": "2026-01-21",
+      "amount": "1050.57"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "31284",
+      "event_date": "2026-01-28",
+      "amount": "694.18"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "31377",
+      "event_date": "2026-01-29",
+      "amount": "276.75"
+    }
+  ]
+}

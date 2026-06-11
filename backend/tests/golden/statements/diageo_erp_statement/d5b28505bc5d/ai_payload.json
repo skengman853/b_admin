@@ -1,0 +1,95 @@
+{
+  "supplier": "Diageo",
+  "document_type": "statement",
+  "document_date": "2026-04-30",
+  "reference": null,
+  "amount": null,
+  "vat_amount": null,
+  "currency": "EUR",
+  "confidence_score": null,
+  "is_financial": true,
+  "statement_kind": null,
+  "account_number": "314773",
+  "account_name": "CAREY'S BAR LIMITED T/A CAREY'S BAR",
+  "period_start": "2026-04-01",
+  "period_end": "2026-04-30",
+  "total_due": "0.0",
+  "settlement_discount_total": "-275.17",
+  "opening_balance": "0.0",
+  "closing_balance": "0.0",
+  "note": null,
+  "entries": [
+    {
+      "event_date": "2026-04-02",
+      "reference": "9263312263",
+      "transaction_type": "INVOIC",
+      "due_date": "2026-04-09",
+      "clearing_reference": "2503715694",
+      "amount": "4027.43",
+      "raw_text": "02.04.2026 9263312263 INVOIC D110852766 09.04.2026 2503715694 4,027.43"
+    },
+    {
+      "event_date": "2026-04-07",
+      "reference": "2503715694",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-04-07",
+      "clearing_reference": "2503715694",
+      "amount": "-4027.43",
+      "raw_text": "07.04.2026 2503715694 PAYMNT 07.04.2026 2503715694 4,027.43-"
+    },
+    {
+      "event_date": "2026-04-10",
+      "reference": "9263317044",
+      "transaction_type": "INVOIC",
+      "due_date": "2026-04-17",
+      "clearing_reference": "2503719806",
+      "amount": "487.62",
+      "raw_text": "10.04.2026 9263317044 INVOIC D110852769 17.04.2026 2503719806 487.62"
+    },
+    {
+      "event_date": "2026-04-15",
+      "reference": "2503719806",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-04-15",
+      "clearing_reference": "2503719806",
+      "amount": "-487.62",
+      "raw_text": "15.04.2026 2503719806 PAYMNT 15.04.2026 2503719806 487.62-"
+    },
+    {
+      "event_date": "2026-04-16",
+      "reference": "9263321673",
+      "transaction_type": "INVOIC",
+      "due_date": "2026-04-23",
+      "clearing_reference": "2503722026",
+      "amount": "3198.25",
+      "raw_text": "16.04.2026 9263321673 INVOIC D110855861 23.04.2026 2503722026 3,198.25"
+    },
+    {
+      "event_date": "2026-04-21",
+      "reference": "2503722026",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-04-21",
+      "clearing_reference": "2503722026",
+      "amount": "-3198.25",
+      "raw_text": "21.04.2026 2503722026 PAYMNT 21.04.2026 2503722026 3,198.25-"
+    },
+    {
+      "event_date": "2026-04-23",
+      "reference": "9263326661",
+      "transaction_type": "INVOIC",
+      "due_date": "2026-04-30",
+      "clearing_reference": "2503726062",
+      "amount": "5824.9",
+      "raw_text": "23.04.2026 9263326661 INVOIC D110859131 30.04.2026 2503726062 5,824.90"
+    },
+    {
+      "event_date": "2026-04-28",
+      "reference": "2503726062",
+      "transaction_type": "PAYMNT",
+      "due_date": "2026-04-28",
+      "clearing_reference": "2503726062",
+      "amount": "-5824.9",
+      "raw_text": "28.04.2026 2503726062 PAYMNT 28.04.2026 2503726062 5,824.90-"
+    }
+  ]
+}

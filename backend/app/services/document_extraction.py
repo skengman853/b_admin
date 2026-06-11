@@ -14,11 +14,14 @@ from app.services.ai_document_extraction import (
     extract_document_with_ai,
     merge_ai_extraction,
     should_attempt_ai_extraction,
+    statement_arithmetic_for_ai_result,
 )
+from app.config import settings
 from app.services.document_extraction_rules import build_extraction_fields
 from app.services.document_financial_state import sync_document_financial_state
 from app.services.invoice_projection import sync_invoices_from_documents
 from app.services.object_storage import ensure_local_document_file
+from app.services.pdf_images import render_pdf_page_images
 from app.services.pdf_text import extract_pdf_text
 from app.services.supplier_profiles import detect_statement_parser_family
 
@@ -119,7 +122,8 @@ async def extract_documents(
             )
             continue
 
-        extracted_text = extract_pdf_text(local_path.read_bytes())
+        pdf_bytes = local_path.read_bytes()
+        extracted_text = extract_pdf_text(pdf_bytes)
         if not extracted_text.strip():
             document.extraction_status = "failed"
             document.extracted_at = datetime.utcnow()
@@ -154,6 +158,7 @@ async def extract_documents(
         extraction_fields = await _build_document_extraction_fields(
             document=document,
             extracted_text=extracted_text,
+            pdf_bytes=pdf_bytes,
         )
         for field, value in extraction_fields.items():
             setattr(document, field, value)
@@ -242,6 +247,8 @@ def _extractor_profile(*, document: Document, extracted_text: str) -> str:
 
 def _extraction_source_kind(document: Document) -> str:
     if document.ai_extraction_status == "completed" and document.ai_extraction_payload:
+        if getattr(document, "ai_extraction_repair_used", False):
+            return "ai_repair"
         if document.document_type == "statement":
             return "ai_primary"
         return "hybrid"
@@ -252,7 +259,11 @@ async def _build_document_extraction_fields(
     *,
     document: Document,
     extracted_text: str,
+    pdf_bytes: bytes | None = None,
 ) -> dict:
+    page_images = _render_statement_page_images(document=document, pdf_bytes=pdf_bytes)
+    document.ai_extraction_input_kind = "text_and_images" if page_images else "text_only"
+
     ai_attempted = False
     if document.document_type == "statement" and should_attempt_ai_extraction(document=document, extraction_fields={}):
         ai_attempted = True
@@ -260,11 +271,18 @@ async def _build_document_extraction_fields(
             ai_result = await extract_document_with_ai(
                 document=document,
                 extracted_text=extracted_text,
+                page_images=page_images,
             )
         except Exception:
             document.ai_extraction_status = "failed"
         else:
             if ai_result is not None:
+                ai_result = await _maybe_repair_statement_extraction(
+                    document=document,
+                    extracted_text=extracted_text,
+                    page_images=page_images,
+                    ai_result=ai_result,
+                )
                 seeded_fields = _build_statement_ai_primary_fields(
                     document=document,
                     extracted_text=extracted_text,
@@ -294,6 +312,7 @@ async def _build_document_extraction_fields(
             ai_result = await extract_document_with_ai(
                 document=document,
                 extracted_text=extracted_text,
+                page_images=page_images,
             )
         except Exception:
             document.ai_extraction_status = "failed"
@@ -307,6 +326,60 @@ async def _build_document_extraction_fields(
             else:
                 document.ai_extraction_status = "skipped"
     return extraction_fields
+
+
+async def _maybe_repair_statement_extraction(
+    *,
+    document: Document,
+    extracted_text: str,
+    page_images: list[bytes],
+    ai_result: AIDocumentExtractionResult,
+) -> AIDocumentExtractionResult:
+    """One bounded retry when the extraction fails its own arithmetic.
+
+    Keeps whichever attempt balances; both attempts stay auditable in the
+    extraction run payload.
+    """
+    if not settings.ai_document_extraction_repair_enabled:
+        return ai_result
+    arithmetic = statement_arithmetic_for_ai_result(ai_result)
+    if not arithmetic.is_unbalanced:
+        return ai_result
+
+    repair_context = (
+        "A previous extraction of this exact statement did not reconcile arithmetically "
+        f"(verification mode: {arithmetic.mode}; extracted rows differ from the stated totals by {arithmetic.delta}). "
+        "Re-read the document carefully: a row may be missing, an Amount Paid column may have been skipped, "
+        "or one amount may have been misread. Extract every financial row again."
+    )
+    try:
+        repaired = await extract_document_with_ai(
+            document=document,
+            extracted_text=extracted_text,
+            page_images=page_images,
+            repair_context=repair_context,
+        )
+    except Exception:
+        return ai_result
+
+    document.ai_extraction_repair_attempted = True
+    if repaired is not None and statement_arithmetic_for_ai_result(repaired).is_balanced:
+        document.ai_extraction_repair_used = True
+        document.ai_extraction_first_attempt_payload = ai_result.model_dump(mode="json")
+        return repaired
+    return ai_result
+
+
+def _render_statement_page_images(*, document: Document, pdf_bytes: bytes | None) -> list[bytes]:
+    if document.document_type != "statement" or not pdf_bytes:
+        return []
+    if not settings.ai_document_extraction_send_page_images:
+        return []
+    return render_pdf_page_images(
+        pdf_bytes,
+        max_pages=settings.ai_document_extraction_max_image_pages,
+        dpi=settings.ai_document_extraction_image_dpi,
+    )
 
 
 def _build_statement_ai_primary_fields(
@@ -352,6 +425,10 @@ def _build_run_payload(*, document: Document, extraction_fields: dict) -> dict:
             "status": document.ai_extraction_status,
             "provider": document.ai_extraction_provider,
             "model": document.ai_extraction_model,
+            "input_kind": getattr(document, "ai_extraction_input_kind", None),
+            "repair_attempted": getattr(document, "ai_extraction_repair_attempted", False),
+            "repair_used": getattr(document, "ai_extraction_repair_used", False),
+            "first_attempt_payload": getattr(document, "ai_extraction_first_attempt_payload", None),
             "payload": document.ai_extraction_payload,
         },
     }

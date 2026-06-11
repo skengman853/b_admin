@@ -1,0 +1,131 @@
+{
+  "supplier": "Heineken",
+  "document_type": "statement",
+  "document_date": "2026-03-04",
+  "reference": null,
+  "amount": null,
+  "vat_amount": null,
+  "currency": "EUR",
+  "confidence_score": 0.99,
+  "is_financial": true,
+  "statement_kind": "statement_of_account",
+  "account_number": "2016632103",
+  "account_name": "Careys Bar Limited",
+  "period_start": "2026-02-01",
+  "period_end": "2026-02-28",
+  "total_due": null,
+  "settlement_discount_total": "3914.99",
+  "opening_balance": "0.0",
+  "closing_balance": "0.0",
+  "note": "Settlement Discount of EUR 3,914.99 is available for payment.",
+  "entries": [
+    {
+      "event_date": "2026-02-25",
+      "reference": "1800037047",
+      "transaction_type": "Invoice",
+      "due_date": "2026-02-25",
+      "clearing_reference": "0194089195",
+      "amount": "3551.19",
+      "raw_text": "1800037047 0194089195 Invoice 25.02.2026 3,551.19"
+    },
+    {
+      "event_date": "2026-02-26",
+      "reference": "2000022580",
+      "transaction_type": "Payment",
+      "due_date": "2026-02-26",
+      "clearing_reference": null,
+      "amount": "-3551.19",
+      "raw_text": "2000022580 Payment 26.02.2026 -3,551.19"
+    },
+    {
+      "event_date": "2026-02-12",
+      "reference": "1800030746",
+      "transaction_type": "Invoice",
+      "due_date": "2026-02-12",
+      "clearing_reference": "0194079352",
+      "amount": "0.02",
+      "raw_text": "1800030746 0194079352 Invoice 12.02.2026 0.02"
+    },
+    {
+      "event_date": "2026-02-18",
+      "reference": "1800032013",
+      "transaction_type": "Invoice",
+      "due_date": "2026-02-18",
+      "clearing_reference": "0194081444",
+      "amount": "4048.85",
+      "raw_text": "1800032013 0194081444 Invoice 18.02.2026 4,048.85"
+    },
+    {
+      "event_date": "2026-02-20",
+      "reference": "2000018896",
+      "transaction_type": "Payment",
+      "due_date": "2026-02-20",
+      "clearing_reference": null,
+      "amount": "-4048.87",
+      "raw_text": "2000018896 Payment 20.02.2026 -4,048.87"
+    },
+    {
+      "event_date": "2026-02-11",
+      "reference": "1800026742",
+      "transaction_type": "Invoice",
+      "due_date": "2026-02-11",
+      "clearing_reference": "0194072466",
+      "amount": "2903.85",
+      "raw_text": "1800026742 0194072466 Invoice 11.02.2026 2,903.85"
+    },
+    {
+      "event_date": "2026-02-13",
+      "reference": "2000016443",
+      "transaction_type": "Payment",
+      "due_date": "2026-02-13",
+      "clearing_reference": null,
+      "amount": "-2903.85",
+      "raw_text": "2000016443 Payment 13.02.2026 -2,903.85"
+    },
+    {
+      "event_date": "2026-02-12",
+      "reference": "1800025557",
+      "transaction_type": "Invoice",
+      "due_date": "2026-02-12",
+      "clearing_reference": "0194070518",
+      "amount": "18.51",
+      "raw_text": "1800025557 0194070518 Invoice 12.02.2026 18.51"
+    },
+    {
+      "event_date": "2026-02-11",
+      "reference": "1800025560",
+      "transaction_type": "Cr.Note",
+      "due_date": "2026-02-11",
+      "clearing_reference": "0194070519",
+      "amount": "-0.02",
+      "raw_text": "1800025560 0194070519 Credit 11.02.2026 -0.02"
+    },
+    {
+      "event_date": "2026-02-12",
+      "reference": "2000015846",
+      "transaction_type": "Payment",
+      "due_date": "2026-02-12",
+      "clearing_reference": null,
+      "amount": "-18.49",
+      "raw_text": "2000015846 Payment 12.02.2026 -18.49"
+    },
+    {
+      "event_date": "2026-02-05",
+      "reference": "1800020278",
+      "transaction_type": "Invoice",
+      "due_date": "2026-02-05",
+      "clearing_reference": "0194061362",
+      "amount": "3762.39",
+      "raw_text": "1800020278 0194061362 Invoice 05.02.2026 3,762.39"
+    },
+    {
+      "event_date": "2026-02-06",
+      "reference": "2000013162",
+      "transaction_type": "Payment",
+      "due_date": "2026-02-06",
+      "clearing_reference": null,
+      "amount": "-3762.39",
+      "raw_text": "2000013162 Payment 06.02.2026 -3,762.39"
+    }
+  ]
+}

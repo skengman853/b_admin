@@ -1,0 +1,125 @@
+{
+  "supplier": "Bulmers",
+  "document_type": "statement",
+  "attachment_name": "Bulmers Ireland - Stmt 015 - Date 31-01-2026 - Linked.pdf",
+  "source_email_subject": "Bulmers Ireland/Statements/Careys Bar/Archive/Bulmers Ireland - Stmt 015 - Date 31-01-2026 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "statement_of_account",
+  "control_totals": {
+    "opening_balance": null,
+    "closing_balance": null,
+    "total_due": "2057.08",
+    "settlement_discount_total": null
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "invoice",
+      "reference": "3906146",
+      "event_date": "2025-12-29",
+      "amount": "584.77"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3906146",
+      "event_date": "2025-12-29",
+      "amount": "584.77"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3910543",
+      "event_date": "2025-12-30",
+      "amount": "890.07"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3910543",
+      "event_date": "2025-12-30",
+      "amount": "890.07"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3910546",
+      "event_date": "2025-12-30",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3910546",
+      "event_date": "2025-12-30",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3928952",
+      "event_date": "2026-01-08",
+      "amount": "996.00"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3928952",
+      "event_date": "2026-01-08",
+      "amount": "996.00"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3928953",
+      "event_date": "2026-01-08",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3928953",
+      "event_date": "2026-01-08",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3939907",
+      "event_date": "2026-01-14",
+      "amount": "973.83"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3939907",
+      "event_date": "2026-01-14",
+      "amount": "973.83"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3939910",
+      "event_date": "2026-01-14",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3939910",
+      "event_date": "2026-01-14",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3964612",
+      "event_date": "2026-01-27",
+      "amount": "1010.54"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3964614",
+      "event_date": "2026-01-27",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3974386",
+      "event_date": "2026-01-29",
+      "amount": "1010.54"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3974390",
+      "event_date": "2026-01-29",
+      "amount": "18.00"
+    }
+  ]
+}

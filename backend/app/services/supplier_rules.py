@@ -5,6 +5,7 @@ from email.utils import parseaddr
 
 from app.services.supplier_profiles import (
     canonicalize_supplier_name as canonicalize_known_supplier_name,
+    is_operator_entity,
     match_known_supplier_in_text,
 )
 
@@ -157,7 +158,7 @@ def detect_supplier(
     ).lower()
 
     subject_candidate = _extract_supplier_from_subject(subject)
-    if subject_candidate:
+    if subject_candidate and not is_operator_entity(subject_candidate):
         return subject_candidate
 
     known = _match_known_supplier(haystack)
@@ -170,11 +171,11 @@ def detect_supplier(
             return known
 
     email_candidate = _extract_supplier_from_email_text(email_text)
-    if email_candidate:
+    if email_candidate and not is_operator_entity(email_candidate):
         return email_candidate
 
     pdf_candidate = _extract_supplier_from_pdf_text(pdf_text)
-    if pdf_candidate:
+    if pdf_candidate and not is_operator_entity(pdf_candidate):
         return pdf_candidate
 
     domain = sender_email.split("@", 1)[-1] if "@" in sender_email else ""
@@ -185,7 +186,12 @@ def detect_supplier(
     if display_name and domain not in FREE_MAIL_DOMAINS and not forwarded:
         cleaned = re.sub(r"\s+", " ", display_name).strip()
         lowered_cleaned = cleaned.lower()
-        if cleaned and "@" not in cleaned and not any(term in lowered_cleaned for term in LOW_CONFIDENCE_SENDER_NAMES):
+        if (
+            cleaned
+            and "@" not in cleaned
+            and not any(term in lowered_cleaned for term in LOW_CONFIDENCE_SENDER_NAMES)
+            and not is_operator_entity(cleaned)
+        ):
             return cleaned
 
     if domain and domain not in FREE_MAIL_DOMAINS and not any(term in local_part for term in ("no-reply", "noreply")):

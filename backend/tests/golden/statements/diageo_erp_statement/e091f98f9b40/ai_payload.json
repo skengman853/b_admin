@@ -1,0 +1,22 @@
+{
+  "supplier": "Diageo",
+  "document_type": "statement",
+  "document_date": "2026-03-20",
+  "reference": null,
+  "amount": null,
+  "vat_amount": null,
+  "currency": "EUR",
+  "confidence_score": 0.99,
+  "is_financial": true,
+  "statement_kind": "sub_account_statement",
+  "account_number": "314773",
+  "account_name": "CAREY'S BAR LIMITED T/A CAREY'S BAR",
+  "period_start": "2026-02-01",
+  "period_end": "2026-02-28",
+  "total_due": "-5011.03",
+  "settlement_discount_total": null,
+  "opening_balance": "0.0",
+  "closing_balance": "-5011.03",
+  "note": null,
+  "entries": []
+}

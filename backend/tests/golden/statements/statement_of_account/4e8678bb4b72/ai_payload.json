@@ -1,0 +1,77 @@
+{
+  "supplier": "Bulmers Ireland",
+  "document_type": "statement",
+  "document_date": "2026-04-30",
+  "reference": null,
+  "amount": null,
+  "vat_amount": null,
+  "currency": "EUR",
+  "confidence_score": 0.99,
+  "is_financial": true,
+  "statement_kind": "statement_of_account",
+  "account_number": "69000795",
+  "account_name": "CAREY'S BAR LTD T/A CAREY'S",
+  "period_start": null,
+  "period_end": null,
+  "total_due": "851.87",
+  "settlement_discount_total": null,
+  "opening_balance": null,
+  "closing_balance": null,
+  "note": "Payment terms: 7 Days from Invoice date; Payment method: Direct Debit; Credit Limit: 3000",
+  "entries": [
+    {
+      "event_date": "2026-03-25",
+      "reference": "4100706",
+      "transaction_type": "INV",
+      "due_date": "2026-04-01",
+      "clearing_reference": null,
+      "amount": "876.1",
+      "raw_text": "25/03/26 INV 4100706 Amount 876.10 Paid -876.10"
+    },
+    {
+      "event_date": "2026-03-31",
+      "reference": "4112987",
+      "transaction_type": "INV",
+      "due_date": "2026-04-07",
+      "clearing_reference": null,
+      "amount": "18.0",
+      "raw_text": "31/03/26 INV 4112987 Amount 18.00 Paid -18.00"
+    },
+    {
+      "event_date": "2026-04-02",
+      "reference": "4120677",
+      "transaction_type": "INV",
+      "due_date": "2026-04-09",
+      "clearing_reference": null,
+      "amount": "939.96",
+      "raw_text": "02/04/26 INV 4120677 Amount 939.96 Paid -939.96"
+    },
+    {
+      "event_date": "2026-04-15",
+      "reference": "4150604",
+      "transaction_type": "INV",
+      "due_date": "2026-04-22",
+      "clearing_reference": null,
+      "amount": "1112.45",
+      "raw_text": "15/04/26 INV 4150604 Amount 1112.45 Paid -1112.45"
+    },
+    {
+      "event_date": "2026-04-15",
+      "reference": "4150707",
+      "transaction_type": "INV",
+      "due_date": "2026-04-22",
+      "clearing_reference": null,
+      "amount": "18.0",
+      "raw_text": "15/04/26 INV 4150707 Amount 18.00 Paid -18.00"
+    },
+    {
+      "event_date": "2026-04-30",
+      "reference": "4188699",
+      "transaction_type": "INV",
+      "due_date": "2026-05-07",
+      "clearing_reference": null,
+      "amount": "851.87",
+      "raw_text": "30/04/26 INV 4188699 Amount 851.87 Paid 0.00"
+    }
+  ]
+}

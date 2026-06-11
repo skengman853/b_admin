@@ -1,0 +1,16 @@
+{
+  "supplier": "Diageo",
+  "document_type": "statement",
+  "attachment_name": "Diageo Sub Acc Stmt - 068 - Statement - Date - 02-04-2026 - Linked.pdf",
+  "source_email_subject": "Careys Bar/Sub Account Statements/Diageo Sub Acc Stmt - 068 - Statement - Date - 02-04-2026 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "sub_account_statement",
+  "control_totals": {
+    "opening_balance": "-5011.03",
+    "closing_balance": "-5464.37",
+    "total_due": null,
+    "settlement_discount_total": null
+  },
+  "expected_arithmetic_status": "not_applicable",
+  "rows": []
+}

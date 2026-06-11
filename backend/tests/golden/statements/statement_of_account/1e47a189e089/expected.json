@@ -1,0 +1,83 @@
+{
+  "supplier": "Bulmers",
+  "document_type": "statement",
+  "attachment_name": "Bulmers Ireland - Stmt 014 - Date 31-12-2025 - Linked.pdf",
+  "source_email_subject": "Bulmers Ireland/Statements/Careys Bar/Archive/Bulmers Ireland - Stmt 014 - Date 31-12-2025 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "statement_of_account",
+  "control_totals": {
+    "opening_balance": null,
+    "closing_balance": null,
+    "total_due": "1492.84",
+    "settlement_discount_total": null
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "invoice",
+      "reference": "3860333",
+      "event_date": "2025-12-10",
+      "amount": "550.59"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3860333",
+      "event_date": "2025-12-10",
+      "amount": "550.59"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3860383",
+      "event_date": "2025-12-10",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3860383",
+      "event_date": "2025-12-10",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3898053",
+      "event_date": "2025-12-23",
+      "amount": "1044.42"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3898053",
+      "event_date": "2025-12-23",
+      "amount": "1044.42"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3898054",
+      "event_date": "2025-12-23",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "payment",
+      "reference": "3898054",
+      "event_date": "2025-12-23",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3906146",
+      "event_date": "2025-12-29",
+      "amount": "584.77"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3910543",
+      "event_date": "2025-12-30",
+      "amount": "890.07"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "3910546",
+      "event_date": "2025-12-30",
+      "amount": "18.00"
+    }
+  ]
+}

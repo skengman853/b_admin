@@ -28,6 +28,20 @@ DOCUMENT_STATEMENT_PUB_ALIASES: dict[str, set[str]] = {
     "corrcross": {"corrcross"},
 }
 
+# The operator's own pubs and legal entities. These names identify the customer
+# side of a document and must never be attributed as the supplier.
+OPERATOR_ENTITY_NAMES: tuple[str, ...] = (
+    "Careys",
+    "Careys Bar",
+    "Careys Pub",
+    "Careys Tavern",
+    "Carey's Bar Ltd",
+    "Canal",
+    "Canal Turn",
+    "The Canal Turn",
+    "Corr Cross",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class SupplierProfile:
@@ -116,6 +130,18 @@ def _profile_keys(profile: SupplierProfile) -> set[str]:
         *(compact_profile_key(alias) for alias in profile.aliases),
         *(compact_profile_key(alias) for alias in profile.bank_aliases),
     }
+
+
+_OPERATOR_ENTITY_KEYS: set[str] = {
+    compact_profile_key(name) for name in OPERATOR_ENTITY_NAMES
+}
+
+
+def is_operator_entity(candidate: str | None) -> bool:
+    compacted = compact_profile_key(candidate)
+    if not compacted:
+        return False
+    return compacted in _OPERATOR_ENTITY_KEYS
 
 
 def get_supplier_profile(candidate: str | None) -> SupplierProfile | None:

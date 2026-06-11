@@ -63,6 +63,7 @@ class ParsedSupplierStatement:
     period_end: date | None = None
     total_due: Decimal | None = None
     settlement_discount_total: Decimal | None = None
+    opening_balance: Decimal | None = None
     closing_balance: Decimal | None = None
     invoice_references: list[str] = field(default_factory=list)
     payment_references: list[str] = field(default_factory=list)
@@ -167,7 +168,8 @@ def _parse_ai_extracted_statement(document: Document) -> ParsedSupplierStatement
         period_end=ai_result.period_end or document.document_date,
         total_due=ai_result.total_due,
         settlement_discount_total=ai_result.settlement_discount_total,
-        closing_balance=ai_result.closing_balance or ai_result.amount,
+        opening_balance=ai_result.opening_balance,
+        closing_balance=ai_result.closing_balance if ai_result.closing_balance is not None else ai_result.amount,
         invoice_references=invoice_references,
         payment_references=payment_references,
         note=" ".join(note_parts),
@@ -432,6 +434,7 @@ def _parse_statement_of_account(document: Document, text: str) -> ParsedSupplier
         period_end=period_end or statement_date or document.document_date,
         total_due=closing_balance,
         settlement_discount_total=settlement_discount,
+        opening_balance=opening_balance,
         closing_balance=closing_balance,
         invoice_references=invoice_references,
         payment_references=payment_references,

@@ -1,0 +1,89 @@
+{
+  "supplier": "Bulmers",
+  "document_type": "statement",
+  "attachment_name": "Bulmers Ireland - Stmt 017 - Date 31-03-2026 - Linked.pdf",
+  "source_email_subject": "Bulmers Ireland/Statements/Careys Bar/Bulmers Ireland - Stmt 017 - Date 31-03-2026 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "statement_of_account",
+  "control_totals": {
+    "opening_balance": null,
+    "closing_balance": null,
+    "total_due": "894.10",
+    "settlement_discount_total": null
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "invoice",
+      "reference": "4053883",
+      "event_date": "2026-03-05",
+      "amount": "843.69"
+    },
+    {
+      "row_type": "payment",
+      "reference": "4053883",
+      "event_date": "2026-03-05",
+      "amount": "843.69"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "4053930",
+      "event_date": "2026-03-05",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "payment",
+      "reference": "4053930",
+      "event_date": "2026-03-05",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "4067562",
+      "event_date": "2026-03-11",
+      "amount": "1576.37"
+    },
+    {
+      "row_type": "payment",
+      "reference": "4067562",
+      "event_date": "2026-03-11",
+      "amount": "1576.37"
+    },
+    {
+      "row_type": "credit_note",
+      "reference": "4067599",
+      "event_date": "2026-03-11",
+      "amount": "20.50"
+    },
+    {
+      "row_type": "payment",
+      "reference": "4067599",
+      "event_date": "2026-03-11",
+      "amount": "-20.50"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "4085761",
+      "event_date": "2026-03-18",
+      "amount": "928.81"
+    },
+    {
+      "row_type": "payment",
+      "reference": "4085761",
+      "event_date": "2026-03-18",
+      "amount": "928.81"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "4100706",
+      "event_date": "2026-03-25",
+      "amount": "876.10"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "4112987",
+      "event_date": "2026-03-31",
+      "amount": "18.00"
+    }
+  ]
+}

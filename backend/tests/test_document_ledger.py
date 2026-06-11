@@ -26,8 +26,11 @@ try:
     from app.models import Document  # noqa: E402
     from app.services.document_ledger import (  # noqa: E402
         LEDGER_ENTRY_CREDIT_NOTE,
+        LEDGER_ENTRY_DISCOUNT,
         LEDGER_ENTRY_INVOICE,
         LEDGER_ENTRY_PAYMENT,
+        ParsedDocumentLedger,
+        ParsedLedgerEntry,
         build_document_ledger,
         build_statement_settlements,
     )
@@ -336,6 +339,68 @@ class DocumentLedgerTest(unittest.TestCase):
             ["34470", "34497"],
         )
         self.assertEqual(settlements[1].net_amount, Decimal("1144.42"))
+
+    def _settlement_ledger(self, entries: list[ParsedLedgerEntry]) -> ParsedDocumentLedger:
+        return ParsedDocumentLedger(
+            document_id=entries[0].document_id,
+            supplier="Diageo",
+            document_type="statement",
+            is_financial=True,
+            statement_kind="supplier_statement",
+            entries=entries,
+        )
+
+    def _ledger_entry(self, *, kind: str, reference: str, event_date: date, amount: str) -> ParsedLedgerEntry:
+        value = Decimal(amount)
+        signed = -abs(value) if kind in {LEDGER_ENTRY_CREDIT_NOTE, LEDGER_ENTRY_DISCOUNT} else value
+        return ParsedLedgerEntry(
+            document_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+            document_type="statement",
+            supplier="Diageo",
+            entry_kind=kind,
+            event_date=event_date,
+            reference=reference,
+            amount=value,
+            signed_amount=signed,
+        )
+
+    def test_settlement_nets_prompt_payment_discount_against_invoice(self) -> None:
+        # invoice 4034.90 with a 2.5% settlement discount of 100.87: the bank
+        # debit is 3934.03, which only reconciles when the discount row joins
+        # the settlement group.
+        ledger = self._settlement_ledger(
+            [
+                self._ledger_entry(kind=LEDGER_ENTRY_INVOICE, reference="9263290802", event_date=date(2026, 3, 5), amount="4034.90"),
+                self._ledger_entry(kind=LEDGER_ENTRY_DISCOUNT, reference="SETT-DISC", event_date=date(2026, 3, 5), amount="100.87"),
+                self._ledger_entry(kind=LEDGER_ENTRY_PAYMENT, reference="2503704272", event_date=date(2026, 3, 10), amount="3934.03"),
+            ]
+        )
+
+        settlements = build_statement_settlements(ledger)
+
+        self.assertEqual(len(settlements), 1)
+        self.assertEqual(settlements[0].payment_entry.reference, "2503704272")
+        self.assertEqual(
+            {entry.reference for entry in settlements[0].component_entries},
+            {"9263290802", "SETT-DISC"},
+        )
+        self.assertEqual(settlements[0].net_amount, Decimal("3934.03"))
+
+    def test_settlement_subset_match_tolerates_one_cent(self) -> None:
+        ledger = self._settlement_ledger(
+            [
+                self._ledger_entry(kind=LEDGER_ENTRY_INVOICE, reference="INV-1", event_date=date(2026, 3, 5), amount="100.01"),
+                self._ledger_entry(kind=LEDGER_ENTRY_PAYMENT, reference="PAY-1", event_date=date(2026, 3, 10), amount="100.00"),
+            ]
+        )
+
+        settlements = build_statement_settlements(ledger)
+
+        self.assertEqual(len(settlements), 1)
+        self.assertEqual(
+            [entry.reference for entry in settlements[0].component_entries],
+            ["INV-1"],
+        )
 
     def test_statement_of_account_settlement_is_recovered_generically(self) -> None:
         statement = Document(

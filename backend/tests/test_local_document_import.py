@@ -124,6 +124,38 @@ else:
             self.assertIn("archive_directory", {item.reason for item in result.results if item.status == "skipped"})
             self.assertIn("unknown_document_type", {item.reason for item in result.results if item.status == "skipped"})
 
+        async def test_pub_folder_is_not_attributed_as_supplier(self) -> None:
+            archive_root = self.tmp_path / "import_sources" / "Statements - Pubs"
+            statement_path = archive_root / "Canal Turn" / "Sub Account Statements" / (
+                "Sub Account Statements TCT003 - Date 05.07.2021.pdf"
+            )
+            statement_path.parent.mkdir(parents=True, exist_ok=True)
+            statement_path.write_bytes(b"%PDF-1.4\narchive-test")
+
+            async with self.session_factory() as session:
+                result = await import_documents_from_local_archive(
+                    user=self.user,
+                    db=session,
+                    source_path=str(archive_root),
+                    limit=10,
+                    extract_after_import=False,
+                )
+
+                documents = list(
+                    (
+                        await session.execute(
+                            select(Document).where(Document.user_id == self.user.id)
+                        )
+                    ).scalars().all()
+                )
+
+            self.assertEqual(result.imported_documents, 1)
+            self.assertEqual(len(documents), 1)
+            self.assertEqual(documents[0].supplier, "Other")
+            self.assertIn("unknown_supplier", documents[0].review_reasons)
+            imported_item = next(item for item in result.results if item.status == "imported")
+            self.assertEqual(imported_item.pub_hint, "Canal Turn")
+
         async def test_extracts_after_import_when_requested(self) -> None:
             archive_root = self.tmp_path / "import_sources" / "Invoices - Pubs"
             invoice_path = archive_root / "David Campbell t-a Little Luxuries" / "Invoices" / (

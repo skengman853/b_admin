@@ -1,28 +1,35 @@
 from __future__ import annotations
 
+import base64
 import json
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.config import settings
 from app.models import Document
+from app.services.statement_arithmetic import (
+    ArithmeticRow,
+    classify_statement_row_kind,
+    is_non_settlement_statement_kind,
+    verify_statement_arithmetic,
+)
 from app.services.supplier_profiles import (
     PARSER_FAMILY_DIAGEO_ERP,
     PARSER_FAMILY_GENERIC_STATEMENT,
     PARSER_FAMILY_STATEMENT_OF_ACCOUNT,
     PARSER_FAMILY_TRADE_STATEMENT,
+    canonicalize_supplier_name,
     detect_statement_parser_family,
+    is_operator_entity,
 )
 
 
 AI_EXTRACTION_PROVIDER = "openai"
-STATEMENT_KINDS_WITHOUT_ROW_SETTLEMENT = {
-    "sub_account_statement",
-    "keg_flow_statement",
-}
+# Bump when prompt wording changes so cached eval results are invalidated.
+AI_EXTRACTION_PROMPT_VERSION = "v4"
 
 
 class AIDocumentStatementEntry(BaseModel):
@@ -52,9 +59,62 @@ class AIDocumentExtractionResult(BaseModel):
     period_end: date | None = None
     total_due: Decimal | None = None
     settlement_discount_total: Decimal | None = None
+    opening_balance: Decimal | None = None
     closing_balance: Decimal | None = None
     note: str | None = None
     entries: list[AIDocumentStatementEntry] = Field(default_factory=list)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value):
+        return normalize_currency_code(value)
+
+
+CURRENCY_NAME_CODES = {
+    "euro": "EUR",
+    "euros": "EUR",
+    "€": "EUR",
+    "pound": "GBP",
+    "pounds": "GBP",
+    "sterling": "GBP",
+    "£": "GBP",
+    "dollar": "USD",
+    "dollars": "USD",
+    "$": "USD",
+}
+
+
+def normalize_currency_code(value) -> str | None:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    if not cleaned:
+        return None
+    lowered = cleaned.lower()
+    if lowered in CURRENCY_NAME_CODES:
+        return CURRENCY_NAME_CODES[lowered]
+    if len(cleaned) == 3 and cleaned.isalpha():
+        return cleaned.upper()
+    return None
+
+
+def statement_arithmetic_for_ai_result(ai_result: AIDocumentExtractionResult):
+    return verify_statement_arithmetic(
+        rows=[
+            ArithmeticRow(
+                kind=classify_statement_row_kind(entry.transaction_type, reference=entry.reference),
+                amount=entry.amount,
+                event_date=entry.event_date,
+            )
+            for entry in ai_result.entries
+        ],
+        opening_balance=ai_result.opening_balance,
+        closing_balance=ai_result.closing_balance,
+        total_due=ai_result.total_due,
+        settlement_discount_total=ai_result.settlement_discount_total,
+        statement_kind=ai_result.statement_kind or "statement",
+        period_start=ai_result.period_start,
+    )
 
 
 def ai_extraction_available() -> bool:
@@ -94,15 +154,22 @@ async def extract_document_with_ai(
     *,
     document: Document,
     extracted_text: str,
+    page_images: list[bytes] | None = None,
+    repair_context: str | None = None,
 ) -> AIDocumentExtractionResult | None:
     if not ai_extraction_available():
         return None
-    if not extracted_text.strip():
+    if not extracted_text.strip() and not page_images:
         return None
 
     raw_response = await _run_ai_extraction_request(
         model=settings.ai_document_extraction_model,
-        messages=_build_ai_extraction_messages(document=document, extracted_text=extracted_text),
+        messages=_build_ai_extraction_messages(
+            document=document,
+            extracted_text=extracted_text,
+            page_images=page_images,
+            repair_context=repair_context,
+        ),
     )
     if not raw_response:
         return None
@@ -129,8 +196,9 @@ def merge_ai_extraction(
     if ai_result.document_type and document.document_type == "unknown":
         document.document_type = ai_result.document_type
 
-    if ai_result.supplier and document.supplier == "Other":
-        document.supplier = ai_result.supplier
+    ai_supplier = ai_result.supplier if not is_operator_entity(ai_result.supplier) else None
+    if ai_supplier and (document.supplier == "Other" or is_operator_entity(document.supplier)):
+        document.supplier = canonicalize_supplier_name(ai_supplier) or ai_supplier
 
     if ai_result.document_date and merged.get("document_date") is None:
         merged["document_date"] = ai_result.document_date
@@ -220,7 +288,13 @@ def _has_configured_openai_key(api_key: str | None) -> bool:
     return not any(marker in lowered for marker in placeholder_markers)
 
 
-def _build_ai_extraction_messages(*, document: Document, extracted_text: str) -> list[dict[str, str]]:
+def _build_ai_extraction_messages(
+    *,
+    document: Document,
+    extracted_text: str,
+    page_images: list[bytes] | None = None,
+    repair_context: str | None = None,
+) -> list[dict]:
     statement_family = None
     statement_family_instructions = ""
     statement_entry_contract = ""
@@ -237,70 +311,97 @@ def _build_ai_extraction_messages(*, document: Document, extracted_text: str) ->
             "Use `clearing_reference` only for a second linked document number or clearing document if it is distinct. "
             "Use `transaction_type` values that preserve the source wording when possible, such as `INVOIC`, `PAYMNT`, `CRNOTE`, `Invoice`, `Receipt`, or `Cr.Note`. "
             "If a row amount is not visible for a specific row, leave `amount` null instead of guessing. "
+            "Recover `opening_balance`, `closing_balance`, `total_due`, and `settlement_discount_total` whenever the statement states them; report them exactly as printed and never compute them yourself. "
+            "Do not emit opening-balance, closing-balance, balance-forward (B/FWD), or other running-balance lines as entries; report those figures only in the balance fields. "
             "Set `raw_text` to a short row-level excerpt, not the whole page."
         )
 
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You extract structured bookkeeping data from supplier PDFs. "
-                "Return one strict JSON object only. Prefer gross totals for amount. "
-                "For statements, recover account details, period, totals, and row entries. "
-                "When the document is a statement, prioritize row-level recovery over generic summarization. "
-                "Do not invent values. Leave unknown fields null."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"Document type hint: {document.document_type}\n"
-                f"Supplier hint: {document.supplier}\n"
-                f"Attachment name: {document.attachment_name}\n"
-                f"Email subject: {document.source_email_subject or ''}\n\n"
-                + (
-                    f"Statement parser family hint: {statement_family or 'unknown'}\n"
-                    f"{statement_entry_contract}\n"
-                    f"{statement_family_instructions}\n\n"
-                    if document.document_type == "statement"
-                    else ""
-                )
-                + (
-                    "If the document is an operational statement that explicitly says it is not financial, "
-                    "set `is_financial` to false and return no financial entries.\n\n"
-                    if document.document_type == "statement"
-                    else ""
-                )
-                +
-                "Return JSON with keys:\n"
-                "{"
-                '"supplier": string|null, '
-                '"document_type": string|null, '
-                '"document_date": "YYYY-MM-DD"|null, '
-                '"reference": string|null, '
-                '"amount": decimal|null, '
-                '"vat_amount": decimal|null, '
-                '"currency": string|null, '
-                '"confidence_score": number|null, '
-                '"is_financial": boolean|null, '
-                '"statement_kind": string|null, '
-                '"account_number": string|null, '
-                '"account_name": string|null, '
-                '"period_start": "YYYY-MM-DD"|null, '
-                '"period_end": "YYYY-MM-DD"|null, '
-                '"total_due": decimal|null, '
-                '"settlement_discount_total": decimal|null, '
-                '"closing_balance": decimal|null, '
-                '"note": string|null, '
-                '"entries": ['
-                '{"event_date":"YYYY-MM-DD"|null,"reference":string|null,"transaction_type":string|null,'
-                '"due_date":"YYYY-MM-DD"|null,"clearing_reference":string|null,"amount":decimal|null,"raw_text":string|null}'
-                "]"
-                "}\n\n"
-                f"Document text:\n{extracted_text}"
-            ),
-        },
-    ]
+    system_message = {
+        "role": "system",
+        "content": (
+            "You extract structured bookkeeping data from supplier PDFs. "
+            "Return one strict JSON object only. Prefer gross totals for amount. "
+            "For statements, recover account details, period, totals, and row entries. "
+            "When the document is a statement, prioritize row-level recovery over generic summarization. "
+            "Do not invent values. Leave unknown fields null."
+        ),
+    }
+
+    supplier_hint = document.supplier
+    if supplier_hint == "Other" or is_operator_entity(supplier_hint):
+        supplier_hint = "unknown"
+
+    user_text = (
+        f"Document type hint: {document.document_type}\n"
+        f"Supplier hint: {supplier_hint}\n"
+        "The supplier is the business that issued the document, never the customer, "
+        "recipient, or account holder named on it.\n"
+        f"Attachment name: {document.attachment_name}\n"
+        f"Email subject: {document.source_email_subject or ''}\n\n"
+        + (
+            f"Statement parser family hint: {statement_family or 'unknown'}\n"
+            f"{statement_entry_contract}\n"
+            f"{statement_family_instructions}\n\n"
+            if document.document_type == "statement"
+            else ""
+        )
+        + (
+            "If the document is an operational statement that explicitly says it is not financial, "
+            "set `is_financial` to false and return no financial entries.\n\n"
+            if document.document_type == "statement"
+            else ""
+        )
+        + (
+            "The attached page images are the authoritative source for table layout: read rows, "
+            "column alignment, and amounts from the images. Use the extracted text below to confirm "
+            "exact reference numbers, dates, and digits.\n\n"
+            if page_images
+            else ""
+        )
+        + (f"REPAIR ATTEMPT: {repair_context}\n\n" if repair_context else "")
+        +
+        "Return JSON with keys:\n"
+        "{"
+        '"supplier": string|null, '
+        '"document_type": string|null, '
+        '"document_date": "YYYY-MM-DD"|null, '
+        '"reference": string|null, '
+        '"amount": decimal|null, '
+        '"vat_amount": decimal|null, '
+        '"currency": string|null, '
+        '"confidence_score": number|null, '
+        '"is_financial": boolean|null, '
+        '"statement_kind": string|null, '
+        '"account_number": string|null, '
+        '"account_name": string|null, '
+        '"period_start": "YYYY-MM-DD"|null, '
+        '"period_end": "YYYY-MM-DD"|null, '
+        '"total_due": decimal|null, '
+        '"settlement_discount_total": decimal|null, '
+        '"opening_balance": decimal|null, '
+        '"closing_balance": decimal|null, '
+        '"note": string|null, '
+        '"entries": ['
+        '{"event_date":"YYYY-MM-DD"|null,"reference":string|null,"transaction_type":string|null,'
+        '"due_date":"YYYY-MM-DD"|null,"clearing_reference":string|null,"amount":decimal|null,"raw_text":string|null}'
+        "]"
+        "}\n\n"
+        f"Document text:\n{extracted_text}"
+    )
+
+    if not page_images:
+        return [system_message, {"role": "user", "content": user_text}]
+
+    content: list[dict] = [{"type": "text", "text": user_text}]
+    for image_bytes in page_images:
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{encoded}"},
+            }
+        )
+    return [system_message, {"role": "user", "content": content}]
 
 
 def _unique_reasons(reasons: list[str]) -> list[str]:
@@ -336,7 +437,13 @@ def _apply_statement_quality(
     existing_reasons = [
         reason
         for reason in merged.get("review_reasons", [])
-        if reason not in {"low_confidence_extraction", "statement_rows_missing_amounts", "statement_no_financial_rows"}
+        if reason
+        not in {
+            "low_confidence_extraction",
+            "statement_rows_missing_amounts",
+            "statement_no_financial_rows",
+            "statement_unbalanced",
+        }
     ]
     financial_rows = [entry for entry in ai_result.entries if _looks_like_financial_statement_row(entry)]
     rows_missing_amounts = [
@@ -378,13 +485,20 @@ def _apply_statement_quality(
             score = min(score, 0.64)
 
     review_reasons = list(existing_reasons)
-    if is_financial and statement_kind not in STATEMENT_KINDS_WITHOUT_ROW_SETTLEMENT and not financial_rows and not has_totals:
+    if is_financial and not is_non_settlement_statement_kind(statement_kind) and not financial_rows and not has_totals:
         review_reasons.append("statement_no_financial_rows")
         score -= 0.22
     if rows_missing_amounts:
         review_reasons.append("statement_rows_missing_amounts")
-    if not has_period and statement_kind not in STATEMENT_KINDS_WITHOUT_ROW_SETTLEMENT:
+    if not has_period and not is_non_settlement_statement_kind(statement_kind):
         score -= 0.08
+
+    arithmetic = statement_arithmetic_for_ai_result(ai_result)
+    if arithmetic.is_balanced:
+        score = max(score, 0.9)
+    elif arithmetic.is_unbalanced:
+        review_reasons.append("statement_unbalanced")
+        score = min(score, 0.55)
 
     score = round(max(0.0, min(score, 0.99)), 2)
     review_reasons = _unique_reasons(review_reasons)
@@ -406,12 +520,18 @@ def _statement_family_instructions(statement_family: str | None) -> str:
         return (
             "This is an ERP-style supplier statement. Flattened OCR may list columns in separate blocks. "
             "Reconstruct rows by aligning document references, transaction types, event dates, due dates, clearing docs, and row amounts in order. "
-            "Prefer row-level invoice/payment amounts over closing balance or settlement discount totals."
+            "Prefer row-level invoice/payment amounts over closing balance or settlement discount totals. "
+            "Use the Billing Doc column as each row's `reference` (a 10-digit number such as 9263290802 for invoices or 2503701436 for payments) "
+            "and the Clearing Doc column as `clearing_reference`; the Customer Reference values starting with 'D' belong in `raw_text` only. "
+            "The Total Due figure is the closing balance of these statements. "
+            "If the document is a SUB ACCOUNT STATEMENT tracking accumulated discounts, set `statement_kind` to `sub_account_statement`, "
+            "report the opening and closing balances, and return no entries."
         )
     if statement_family == PARSER_FAMILY_STATEMENT_OF_ACCOUNT:
         return (
             "This is a statement of account. Each financial row usually has a reference/document number, a document type, a document date, a due date, and an original or adjusted amount. "
-            "Capture invoice, payment, and credit rows separately. If both a reference number and a document number appear, use the main row identifier as `reference` and the other as `clearing_reference` when it is meaningfully distinct."
+            "Capture invoice, payment, and credit rows separately. If both a reference number and a document number appear, use the main row identifier as `reference` and the other as `clearing_reference` when it is meaningfully distinct. "
+            "If the layout shows an Amount Paid column per item, also emit one `PAYMNT` entry per non-zero paid amount, using the same document number as its `reference` and the paid amount's absolute value (or its sign if negative)."
         )
     if statement_family == PARSER_FAMILY_TRADE_STATEMENT:
         return (

@@ -1,0 +1,77 @@
+{
+  "supplier": "Heineken",
+  "document_type": "statement",
+  "attachment_name": "Heineken - 050 - Statement Summary - Date - 02-04-2026 - Linked.pdf",
+  "source_email_subject": "Statement Summaries - New/Careys Bar/Heineken - 050 - Statement Summary - Date - 02-04-2026 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "statement_of_account",
+  "control_totals": {
+    "opening_balance": "0.00",
+    "closing_balance": "0.00",
+    "total_due": null,
+    "settlement_discount_total": "3914.99"
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "invoice",
+      "reference": "1800060995",
+      "event_date": "2026-03-25",
+      "amount": "4217.21"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000034003",
+      "event_date": "2026-03-26",
+      "amount": "4217.21"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800056702",
+      "event_date": "2026-03-19",
+      "amount": "3154.31"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000032066",
+      "event_date": "2026-03-23",
+      "amount": "3154.31"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800048919",
+      "event_date": "2026-03-11",
+      "amount": "653.14"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000028407",
+      "event_date": "2026-03-12",
+      "amount": "653.14"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800043903",
+      "event_date": "2026-03-04",
+      "amount": "3719.56"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800043907",
+      "event_date": "2026-03-04",
+      "amount": "37.33"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "1800043911",
+      "event_date": "2026-03-04",
+      "amount": "59.73"
+    },
+    {
+      "row_type": "payment",
+      "reference": "2000025959",
+      "event_date": "2026-03-06",
+      "amount": "3816.62"
+    }
+  ]
+}

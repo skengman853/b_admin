@@ -1,0 +1,95 @@
+{
+  "supplier": "Connacht Bottlers",
+  "document_type": "statement",
+  "document_date": "2026-03-31",
+  "reference": null,
+  "amount": null,
+  "vat_amount": null,
+  "currency": null,
+  "confidence_score": null,
+  "is_financial": true,
+  "statement_kind": "trade_statement",
+  "account_number": "CAREY01",
+  "account_name": "CAREYS BAR LTD",
+  "period_start": null,
+  "period_end": "2026-03-31",
+  "total_due": "350.33",
+  "settlement_discount_total": null,
+  "opening_balance": "1790.78",
+  "closing_balance": "350.33",
+  "note": null,
+  "entries": [
+    {
+      "event_date": "2026-03-04",
+      "reference": "DD-04-03",
+      "transaction_type": "Receipt",
+      "due_date": null,
+      "clearing_reference": null,
+      "amount": "1790.78",
+      "raw_text": "04/03/2026 DD-04-03 Receipt 1,790.78"
+    },
+    {
+      "event_date": "2026-03-04",
+      "reference": "32553",
+      "transaction_type": "Invoice",
+      "due_date": null,
+      "clearing_reference": "35702",
+      "amount": "900.66",
+      "raw_text": "04/03/2026 32553 35702 Invoice 900.66"
+    },
+    {
+      "event_date": "2026-03-11",
+      "reference": "32826",
+      "transaction_type": "Invoice",
+      "due_date": null,
+      "clearing_reference": "36009",
+      "amount": "1001.45",
+      "raw_text": "11/03/2026 32826 36009 Invoice 1,001.45"
+    },
+    {
+      "event_date": "2026-03-11",
+      "reference": "DD-11-03",
+      "transaction_type": "Receipt",
+      "due_date": null,
+      "clearing_reference": null,
+      "amount": "900.66",
+      "raw_text": "11/03/2026 DD-11-03 Receipt 900.66"
+    },
+    {
+      "event_date": "2026-03-18",
+      "reference": "DD-18-03",
+      "transaction_type": "Receipt",
+      "due_date": null,
+      "clearing_reference": null,
+      "amount": "1001.45",
+      "raw_text": "18/03/2026 DD-18-03 Receipt 1,001.45"
+    },
+    {
+      "event_date": "2026-03-18",
+      "reference": "33144",
+      "transaction_type": "Invoice",
+      "due_date": "2026-03-25",
+      "clearing_reference": "36374",
+      "amount": "1368.47",
+      "raw_text": "18/03/2026 33144 36374 Invoice 1,368.47"
+    },
+    {
+      "event_date": "2026-03-25",
+      "reference": "DD-25-03",
+      "transaction_type": "Receipt",
+      "due_date": null,
+      "clearing_reference": null,
+      "amount": "1368.47",
+      "raw_text": "25/03/2026 DD-25-03 Receipt 1,368.47"
+    },
+    {
+      "event_date": "2026-03-25",
+      "reference": "33404",
+      "transaction_type": "Invoice",
+      "due_date": null,
+      "clearing_reference": "36648",
+      "amount": "350.33",
+      "raw_text": "25/03/2026 33404 36648 Invoice 350.33"
+    }
+  ]
+}

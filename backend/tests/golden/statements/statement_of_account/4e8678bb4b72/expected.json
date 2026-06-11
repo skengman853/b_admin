@@ -1,0 +1,83 @@
+{
+  "supplier": "Bulmers",
+  "document_type": "statement",
+  "attachment_name": "Bulmers Ireland - Stmt 018 - Date 30-04-2026 - Linked.pdf",
+  "source_email_subject": "Bulmers Ireland/Statements/Careys Bar/Bulmers Ireland - Stmt 018 - Date 30-04-2026 - Linked.pdf",
+  "verified": true,
+  "statement_kind": "statement_of_account",
+  "control_totals": {
+    "opening_balance": null,
+    "closing_balance": null,
+    "total_due": "851.87",
+    "settlement_discount_total": null
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "invoice",
+      "reference": "4100706",
+      "event_date": "2026-03-25",
+      "amount": "876.10"
+    },
+    {
+      "row_type": "payment",
+      "reference": "4100706",
+      "event_date": "2026-03-25",
+      "amount": "876.10"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "4112987",
+      "event_date": "2026-03-31",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "payment",
+      "reference": "4112987",
+      "event_date": "2026-03-31",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "4120677",
+      "event_date": "2026-04-02",
+      "amount": "939.96"
+    },
+    {
+      "row_type": "payment",
+      "reference": "4120677",
+      "event_date": "2026-04-02",
+      "amount": "939.96"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "4150604",
+      "event_date": "2026-04-15",
+      "amount": "1112.45"
+    },
+    {
+      "row_type": "payment",
+      "reference": "4150604",
+      "event_date": "2026-04-15",
+      "amount": "1112.45"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "4150707",
+      "event_date": "2026-04-15",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "payment",
+      "reference": "4150707",
+      "event_date": "2026-04-15",
+      "amount": "18.00"
+    },
+    {
+      "row_type": "invoice",
+      "reference": "4188699",
+      "event_date": "2026-04-30",
+      "amount": "851.87"
+    }
+  ]
+}

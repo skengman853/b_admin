@@ -17,12 +17,14 @@ from app.models import (
 from app.services.document_extraction import EXTRACTION_VERSION
 from app.services.document_ledger import (
     LEDGER_ENTRY_CREDIT_NOTE,
+    LEDGER_ENTRY_DISCOUNT,
     LEDGER_ENTRY_INVOICE,
     LEDGER_ENTRY_PAYMENT,
     ParsedDocumentLedger,
     ParsedLedgerEntry,
     build_statement_settlements,
 )
+from app.services.statement_arithmetic import amounts_match
 
 MATCHER_VERSION = "reconciliation_matcher_v1"
 
@@ -345,7 +347,7 @@ def _matching_support_settlements(*, transaction: Transaction, supporting_matche
         if ledger is None:
             continue
         for settlement in build_statement_settlements(ledger):
-            if settlement.payment_entry.amount == amount:
+            if amounts_match(settlement.payment_entry.amount, amount):
                 settlements.append(settlement)
     return settlements
 
@@ -440,6 +442,8 @@ def _entry_item_role(entry_kind: str) -> str:
         return "credit_note"
     if entry_kind == LEDGER_ENTRY_PAYMENT:
         return "payment_row"
+    if entry_kind == LEDGER_ENTRY_DISCOUNT:
+        return "discount"
     return "support_doc"
 
 
@@ -656,7 +660,7 @@ def _evaluate_deterministic_verifier(
         component_items = [
             item
             for item in suggestion.items
-            if item.item_role in {"invoice", "credit_note", "invoice_exact", "credit_note_exact"}
+            if item.item_role in {"invoice", "credit_note", "discount", "invoice_exact", "credit_note_exact"}
         ]
         metrics["payment_row_count"] = len(payment_items)
         metrics["component_count"] = len(component_items)
@@ -674,7 +678,18 @@ def _evaluate_deterministic_verifier(
             )
         )
         metrics["matching_payment_row_count"] = matching_payment_count
+        unbalanced_statement_count = _count_unbalanced_statements(
+            suggestion=suggestion,
+            document_by_id=document_by_id,
+        )
+        metrics["unbalanced_statement_count"] = unbalanced_statement_count
         if payment_items and matching_payment_count and component_items:
+            if unbalanced_statement_count:
+                return (
+                    "partial",
+                    ["A statement payment row matches the bank amount, but the supporting statement does not internally balance, so its rows cannot be fully trusted yet."],
+                    metrics,
+                )
             return "passed", ["A stored statement payment row matches the bank amount and has linked invoice or credit components."], metrics
         if payment_items and matching_payment_count:
             return "partial", ["A stored statement payment row matches the bank amount, but the linked invoice or credit components are incomplete."], metrics
@@ -690,6 +705,26 @@ def _evaluate_deterministic_verifier(
         return "failed", ["No deterministic supporting-document evidence was stored for this suggestion."], metrics
 
     return suggestion.verifier_status or "partial", ["Verifier did not recognize this suggestion type."], metrics
+
+
+def _count_unbalanced_statements(*, suggestion: ReconciliationSuggestion, document_by_id: dict) -> int:
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy.orm.attributes import NO_VALUE
+
+    count = 0
+    seen: set = set()
+    for item in suggestion.items:
+        document = document_by_id.get(item.document_id) if item.document_id else None
+        if document is None or document.id in seen or document.document_type != "statement":
+            continue
+        seen.add(document.id)
+        fact_attr = sa_inspect(document).attrs.financial_fact
+        if fact_attr.loaded_value is NO_VALUE:
+            continue
+        fact = fact_attr.loaded_value
+        if fact is not None and fact.arithmetic_status == "unbalanced":
+            count += 1
+    return count
 
 
 def _sum_item_signed_amounts(*, items: list[ReconciliationSuggestionItem], document_by_id: dict, financial_row_by_id: dict) -> Decimal | None:
@@ -746,9 +781,7 @@ def _item_amount(*, item: ReconciliationSuggestionItem, document_by_id: dict, fi
 
 
 def _amount_matches(left: Decimal | None, right: Decimal | None) -> bool:
-    if left is None or right is None:
-        return False
-    return abs(left - right) <= Decimal("0.01")
+    return amounts_match(left, right)
 
 
 def _suggestion_rank(suggestion: ReconciliationSuggestion) -> tuple[int, int, int]:

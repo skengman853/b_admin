@@ -1,0 +1,23 @@
+{
+  "supplier": "BOC",
+  "document_type": "statement",
+  "attachment_name": "BOC Gases Stmt 003 - Account Number - 1441655 - Date - 31 July 2020.pdf",
+  "source_email_subject": "BOC Gases/Statements/Careys Bar/Archive/BOC Gases Stmt 003 - Account Number - 1441655 - Date - 31 July 2020.pdf",
+  "verified": true,
+  "statement_kind": "generic_statement",
+  "control_totals": {
+    "opening_balance": null,
+    "closing_balance": null,
+    "total_due": "73.92",
+    "settlement_discount_total": null
+  },
+  "expected_arithmetic_status": "balanced",
+  "rows": [
+    {
+      "row_type": "invoice",
+      "reference": "3055538907",
+      "event_date": "2019-11-11",
+      "amount": "73.92"
+    }
+  ]
+}

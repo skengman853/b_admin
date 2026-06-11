@@ -35,3 +35,7 @@ backend/data/
 backend/bankstatements/
 backend/vatbook/
 backend/import_sources/
+
+# Extraction eval harness
+backend/.eval_cache/
+backend/tests/golden/statements/results.json

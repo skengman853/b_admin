@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import io
+import logging
 import shutil
 import subprocess
 import tempfile
 
 import pdfplumber
+
+logger = logging.getLogger(__name__)
+
+_warned_missing_pdftotext = False
 
 
 def _extract_with_pdfplumber(pdf_bytes: bytes, *, max_pages: int) -> str:
@@ -19,7 +24,14 @@ def _extract_with_pdfplumber(pdf_bytes: bytes, *, max_pages: int) -> str:
 
 
 def _extract_with_pdftotext(pdf_bytes: bytes) -> str:
+    global _warned_missing_pdftotext
     if not shutil.which("pdftotext"):
+        if not _warned_missing_pdftotext:
+            _warned_missing_pdftotext = True
+            logger.warning(
+                "pdftotext is not installed; falling back to pdfplumber, which caps extraction "
+                "at the first pages and degrades multi-page statement quality."
+            )
         return ""
 
     try:
@@ -37,7 +49,7 @@ def _extract_with_pdftotext(pdf_bytes: bytes) -> str:
         return ""
 
 
-def extract_pdf_text(pdf_bytes: bytes, *, max_pages: int = 2) -> str:
+def extract_pdf_text(pdf_bytes: bytes, *, max_pages: int = 8) -> str:
     pdfplumber_text = _extract_with_pdfplumber(pdf_bytes, max_pages=max_pages)
     pdftotext_text = _extract_with_pdftotext(pdf_bytes)
 

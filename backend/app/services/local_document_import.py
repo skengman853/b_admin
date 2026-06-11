@@ -16,7 +16,7 @@ from app.services.document_metadata import extract_document_date, extract_refere
 from app.services.document_registry import upsert_document_record
 from app.services.local_storage import copy_to_final_storage
 from app.services.object_storage import sync_document_to_object_storage
-from app.services.supplier_profiles import match_supplier_profile
+from app.services.supplier_profiles import is_operator_entity, match_supplier_profile
 from app.services.supplier_rules import canonicalize_supplier_name, detect_supplier
 from app.services.vatbook_import import backend_root
 
@@ -444,9 +444,16 @@ def _infer_supplier(relative_path: Path) -> str:
         attachment_name=relative_path.name,
         email_text=relative_path.as_posix(),
     )
-    if detected != "Other":
+    if detected != "Other" and not is_operator_entity(detected):
         return detected
+    # Archives are often organised as <pub>/<document type>/... — the pub folder
+    # names the customer, not the supplier, so fall through to "Other" and let
+    # extraction recover the supplier from the document itself.
+    if is_operator_entity(first_segment):
+        return "Other"
     canonical = canonicalize_supplier_name(first_segment)
+    if canonical and is_operator_entity(canonical):
+        return "Other"
     return canonical or "Other"
 
 
