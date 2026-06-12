@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Transactions</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --card: #ffffff;
+    --ink: #1a1d21;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --accent: #2563eb;
+    --good: #15803d;
+    --warn: #b45309;
+    --bad: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 28px;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  header input[type="month"], header input[type="search"] {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font: inherit;
+    background: var(--bg);
+  }
+  header input[type="search"] { width: 260px; }
+  #summary { margin-left: auto; color: var(--muted); font-size: 13px; }
+  main { max-width: 980px; margin: 24px auto 80px; padding: 0 20px; }
+  #banner {
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .txn {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+  .txn-row {
+    display: grid;
+    grid-template-columns: 92px 1fr 110px 120px;
+    gap: 14px;
+    align-items: center;
+    padding: 13px 18px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .txn-row:hover { background: #f3f6fd; }
+  .txn-date { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13.5px; }
+  .txn-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .txn-desc small { display: block; color: var(--muted); font-weight: 400; }
+  .txn-amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .txn-amount.credit { color: var(--good); }
+  .chip {
+    justify-self: end;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    background: var(--bg);
+    white-space: nowrap;
+  }
+  .chip.matched { color: var(--good); border-color: #bbe3c8; background: #f0faf3; }
+  .chip.partial, .chip.suggested { color: var(--warn); border-color: #f3d9ab; background: #fdf7ec; }
+  .chip.unmatched { color: var(--muted); }
+  .docs {
+    display: none;
+    border-top: 1px solid var(--line);
+    background: #fcfcfd;
+    padding: 8px 18px 14px;
+  }
+  .txn.open .docs { display: block; }
+  .doc {
+    display: grid;
+    grid-template-columns: 86px 1fr 110px 110px 70px;
+    gap: 12px;
+    align-items: center;
+    padding: 9px 4px;
+    border-bottom: 1px solid #f0f1f3;
+  }
+  .doc:last-child { border-bottom: none; }
+  .doc-kind {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .doc-kind.confirmed { color: var(--good); font-weight: 650; }
+  .doc-main { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .doc-main small { color: var(--muted); }
+  .doc-date { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .doc-amount { text-align: right; font-variant-numeric: tabular-nums; }
+  .doc button {
+    border: 1px solid var(--line);
+    background: var(--card);
+    border-radius: 7px;
+    padding: 5px 10px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--accent);
+  }
+  .doc button:hover { border-color: var(--accent); }
+  .docs .empty { color: var(--muted); padding: 12px 4px; font-size: 14px; }
+  .docs .note { color: var(--muted); font-size: 12.5px; padding: 6px 4px 0; }
+  #loading { text-align: center; color: var(--muted); padding: 40px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Transactions</h1>
+  <input type="month" id="month" />
+  <input type="search" id="filter" placeholder="Filter description / amount…" />
+  <div id="summary"></div>
+</header>
+<main>
+  <div id="banner"></div>
+  <div id="loading">Loading…</div>
+  <div id="list"></div>
+</main>
+<script>
+  const state = {
+    token: localStorage.getItem("b_admin_token") || "",
+    items: [],
+  };
+
+  const monthInput = document.getElementById("month");
+  const filterInput = document.getElementById("filter");
+  const list = document.getElementById("list");
+  const loading = document.getElementById("loading");
+  const banner = document.getElementById("banner");
+  const summary = document.getElementById("summary");
+
+  const now = new Date();
+  monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  function headers() {
+    const h = new Headers();
+    if (state.token) h.set("Authorization", `Bearer ${state.token}`);
+    return h;
+  }
+
+  function money(value) {
+    if (value === null || value === undefined) return "";
+    return Number(value).toLocaleString("en-IE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function statusChip(item) {
+    const status = item.status || "unmatched";
+    const labels = { matched: "Matched", partial: "Partial", suggested: "Suggested", unmatched: "No docs yet" };
+    return `<span class="chip ${status}">${labels[status] || status}</span>`;
+  }
+
+  function collectDocuments(item) {
+    const seen = new Set();
+    const docs = [];
+    const push = (kind, kindClass, entry) => {
+      const id = entry.document_id || (entry.document && entry.document.id);
+      if (!id || seen.has(String(id))) return;
+      seen.add(String(id));
+      const doc = entry.document || entry;
+      docs.push({
+        id,
+        kind,
+        kindClass,
+        type: doc.document_type || "",
+        supplier: doc.supplier || "",
+        reference: doc.reference || entry.reference || "",
+        date: doc.document_date || "",
+        amount: entry.amount_applied ?? doc.amount ?? entry.amount ?? null,
+        reason: entry.match_reason || entry.reason || "",
+      });
+    };
+    (item.persisted_links || [])
+      .filter((link) => link.status === "confirmed")
+      .forEach((link) => push("confirmed", "confirmed", link));
+    (item.exact_matches || []).forEach((m) => push("exact", "", m));
+    (item.suggested_matches || []).forEach((m) => push("suggested", "", m));
+    (item.supporting_matches || []).forEach((m) => push("supporting", "", m));
+    return docs;
+  }
+
+  function renderDocs(item) {
+    const docs = collectDocuments(item);
+    if (!docs.length) {
+      return `<div class="empty">No documents found for this transaction yet.</div>`;
+    }
+    const rows = docs
+      .map(
+        (d) => `
+      <div class="doc">
+        <span class="doc-kind ${d.kindClass}">${d.kind}</span>
+        <span class="doc-main">${d.supplier} ${d.type ? "· " + d.type.replace("_", " ") : ""}
+          <small>${d.reference ? "ref " + d.reference : ""}</small></span>
+        <span class="doc-date">${d.date || ""}</span>
+        <span class="doc-amount">${money(d.amount)}</span>
+        <button data-doc="${d.id}">Open</button>
+      </div>`
+      )
+      .join("");
+    const note = item.resolution_reason || item.analysis_note || "";
+    return rows + (note ? `<div class="note">${note}</div>` : "");
+  }
+
+  function render() {
+    const query = filterInput.value.trim().toLowerCase();
+    const visible = state.items.filter((item) => {
+      if (!query) return true;
+      const t = item.transaction;
+      const haystack = `${t.description1 || ""} ${t.description2 || ""} ${t.debit_amount || ""} ${t.credit_amount || ""}`.toLowerCase();
+      return haystack.includes(query);
+    });
+    summary.textContent = `${visible.length} transactions`;
+    list.innerHTML = visible
+      .map((item, index) => {
+        const t = item.transaction;
+        const debit = t.debit_amount !== null && t.debit_amount !== undefined;
+        const amount = debit ? t.debit_amount : t.credit_amount;
+        const docCount = collectDocuments(item).length;
+        return `
+        <div class="txn" data-index="${index}">
+          <div class="txn-row">
+            <span class="txn-date">${t.transaction_date || ""}</span>
+            <span class="txn-desc">${t.description1 || ""}<small>${t.description2 || ""}${docCount ? ` · ${docCount} document${docCount > 1 ? "s" : ""}` : ""}</small></span>
+            <span class="txn-amount ${debit ? "" : "credit"}">${debit ? "" : "+"}${money(amount)}</span>
+            ${statusChip(item)}
+          </div>
+          <div class="docs">${renderDocs(item)}</div>
+        </div>`;
+      })
+      .join("");
+    list.querySelectorAll(".txn-row").forEach((row) => {
+      row.addEventListener("click", () => row.parentElement.classList.toggle("open"));
+    });
+    list.querySelectorAll(".doc button").forEach((button) => {
+      button.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        button.disabled = true;
+        try {
+          const response = await fetch(`/api/documents/${button.dataset.doc}/file`, { headers: headers() });
+          if (!response.ok) throw new Error(`file fetch failed (${response.status})`);
+          const blob = await response.blob();
+          window.open(URL.createObjectURL(blob), "_blank");
+        } catch (error) {
+          alert(error.message);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
+  }
+
+  async function load() {
+    if (!state.token) {
+      banner.style.display = "block";
+      banner.textContent = "No saved session found. Sign in on /review first, then come back here.";
+      loading.style.display = "none";
+      return;
+    }
+    banner.style.display = "none";
+    loading.style.display = "block";
+    list.innerHTML = "";
+    state.items = [];
+    try {
+      let page = 1;
+      let pages = 1;
+      while (page <= pages && page <= 10) {
+        const params = new URLSearchParams({
+          month: monthInput.value,
+          annotated_only: "false",
+          limit: "200",
+          page: String(page),
+        });
+        const response = await fetch(`/api/transactions/review-queue?${params}`, { headers: headers() });
+        if (response.status === 401) throw new Error("Session expired — sign in on /review again.");
+        if (!response.ok) throw new Error(`load failed (${response.status})`);
+        const data = await response.json();
+        state.items.push(...data.transactions);
+        pages = data.pages || 1;
+        page += 1;
+      }
+      loading.style.display = "none";
+      render();
+    } catch (error) {
+      loading.style.display = "none";
+      banner.style.display = "block";
+      banner.textContent = error.message;
+    }
+  }
+
+  monthInput.addEventListener("change", load);
+  filterInput.addEventListener("input", render);
+  load();
+</script>
+</body>
+</html>

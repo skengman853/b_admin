@@ -10,6 +10,7 @@ REVIEW_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "reconciliatio
 SUPPLIER_DOCUMENTS_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "supplier-documents.html"
 STATEMENT_WORKBENCH_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "statement-workbench.html"
 MONTH_AUDIT_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "month-audit.html"
+TRANSACTIONS_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "transactions.html"
 
 
 @router.get("/review")
@@ -30,3 +31,8 @@ async def get_statement_workbench_page():
 @router.get("/month-audit")
 async def get_month_audit_page():
     return FileResponse(MONTH_AUDIT_UI_PATH)
+
+
+@router.get("/transactions")
+async def get_transactions_page():
+    return FileResponse(TRANSACTIONS_UI_PATH)
