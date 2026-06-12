@@ -35,7 +35,7 @@
     z-index: 5;
   }
   header h1 { font-size: 17px; margin: 0; font-weight: 650; }
-  header input[type="month"], header input[type="search"] {
+  header input[type="month"], header input[type="search"], header select {
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 7px 10px;
@@ -135,6 +135,12 @@
 <header>
   <h1>Transactions</h1>
   <input type="month" id="month" />
+  <select id="pub"><option value="">All pubs</option></select>
+  <select id="source">
+    <option value="">Bank + VAT book</option>
+    <option value="bank_statement">Bank only</option>
+    <option value="vatbook">VAT book only</option>
+  </select>
   <input type="search" id="filter" placeholder="Filter description / amount…" />
   <div id="summary"></div>
 </header>
@@ -150,6 +156,8 @@
   };
 
   const monthInput = document.getElementById("month");
+  const pubSelect = document.getElementById("pub");
+  const sourceSelect = document.getElementById("source");
   const filterInput = document.getElementById("filter");
   const list = document.getElementById("list");
   const loading = document.getElementById("loading");
@@ -181,9 +189,15 @@
     const docs = [];
     const push = (kind, kindClass, entry) => {
       const id = entry.document_id || (entry.document && entry.document.id);
-      if (!id || seen.has(String(id))) return;
-      seen.add(String(id));
+      if (!id) return;
       const doc = entry.document || entry;
+      // The same invoice can exist as two imported copies; collapse on content.
+      const contentKey = doc.reference
+        ? `${doc.document_type}|${doc.supplier}|${doc.reference}|${doc.amount ?? ""}`
+        : String(id);
+      if (seen.has(String(id)) || seen.has(contentKey)) return;
+      seen.add(String(id));
+      seen.add(contentKey);
       docs.push({
         id,
         kind,
@@ -230,8 +244,10 @@
   function render() {
     const query = filterInput.value.trim().toLowerCase();
     const visible = state.items.filter((item) => {
-      if (!query) return true;
       const t = item.transaction;
+      if (pubSelect.value && (t.pub || "") !== pubSelect.value) return false;
+      if (sourceSelect.value && t.source_type !== sourceSelect.value) return false;
+      if (!query) return true;
       const haystack = `${t.description1 || ""} ${t.description2 || ""} ${t.debit_amount || ""} ${t.credit_amount || ""}`.toLowerCase();
       return haystack.includes(query);
     });
@@ -246,7 +262,7 @@
         <div class="txn" data-index="${index}">
           <div class="txn-row">
             <span class="txn-date">${t.transaction_date || ""}</span>
-            <span class="txn-desc">${t.description1 || ""}<small>${t.description2 || ""}${docCount ? ` · ${docCount} document${docCount > 1 ? "s" : ""}` : ""}</small></span>
+            <span class="txn-desc">${t.description1 || ""}<small>${[t.pub, t.source_type === "bank_statement" ? "bank" : "VAT book", t.description2].filter(Boolean).join(" · ")}${docCount ? ` · ${docCount} document${docCount > 1 ? "s" : ""}` : ""}</small></span>
             <span class="txn-amount ${debit ? "" : "credit"}">${debit ? "" : "+"}${money(amount)}</span>
             ${statusChip(item)}
           </div>
@@ -305,6 +321,8 @@
         page += 1;
       }
       loading.style.display = "none";
+      const pubs = [...new Set(state.items.map((item) => item.transaction.pub).filter(Boolean))].sort();
+      pubSelect.innerHTML = `<option value="">All pubs</option>` + pubs.map((p) => `<option ${pubSelect.value === p ? "selected" : ""}>${p}</option>`).join("");
       render();
     } catch (error) {
       loading.style.display = "none";
@@ -314,6 +332,8 @@
   }
 
   monthInput.addEventListener("change", load);
+  pubSelect.addEventListener("change", render);
+  sourceSelect.addEventListener("change", render);
   filterInput.addEventListener("input", render);
   load();
 </script>

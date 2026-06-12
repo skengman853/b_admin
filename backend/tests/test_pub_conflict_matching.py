@@ -24,7 +24,10 @@ _missing_dependencies: str | None = None
 try:
     from app.models import Document, Transaction  # noqa: E402
     from app.services.document_ledger import build_document_ledgers  # noqa: E402
-    from app.services.transaction_reconciliation import _find_suggested_matches  # noqa: E402
+    from app.services.transaction_reconciliation import (  # noqa: E402
+        _find_exact_matches,
+        _find_suggested_matches,
+    )
 except ModuleNotFoundError as exc:  # pragma: no cover - host Python may not have app deps
     _missing_dependencies = str(exc)
 
@@ -129,6 +132,42 @@ else:
             references = self._suggested_references("Careys", date(2026, 4, 20))
             self.assertIn("194159926", references)
             self.assertNotIn("194149047", references)
+
+    class AnnotationReferenceSupplierGuardTests(unittest.TestCase):
+        """Archive filenames embed counters ("Diageo Inv - 262 - …") that must
+        not claim another supplier's short invoice reference."""
+
+        def test_reference_in_other_suppliers_filename_does_not_match(self) -> None:
+            transaction = _vatbook_transaction("Careys", date(2026, 4, 2))
+            transaction.annotation_notes = [
+                "Invoice - Diageo Inv - 262 - Invoice Number - 9263305332 - Date - 26-03-2026.pdf"
+            ]
+            diageo_invoice = _invoice("9263305332", "Diageo invoice text", date(2026, 3, 26))
+            diageo_invoice.supplier = "Diageo"
+            little_luxuries_invoice = _invoice("262", "Little Luxuries invoice text", date(2026, 4, 23))
+            little_luxuries_invoice.supplier = "Little Luxuries"
+
+            matches = _find_exact_matches(
+                transaction=transaction,
+                documents=[diageo_invoice, little_luxuries_invoice],
+            )
+
+            references = {match.reference for match in matches}
+            self.assertIn("9263305332", references)
+            self.assertNotIn("262", references)
+
+        def test_reference_in_neutral_note_still_matches(self) -> None:
+            transaction = _vatbook_transaction("Careys", date(2026, 4, 2))
+            transaction.annotation_notes = ["paid against inv 262"]
+            little_luxuries_invoice = _invoice("262", "Little Luxuries invoice text", date(2026, 4, 23))
+            little_luxuries_invoice.supplier = "Little Luxuries"
+
+            matches = _find_exact_matches(
+                transaction=transaction,
+                documents=[little_luxuries_invoice],
+            )
+
+            self.assertEqual({match.reference for match in matches}, {"262"})
 
 
 if __name__ == "__main__":

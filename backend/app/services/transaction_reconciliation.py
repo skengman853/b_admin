@@ -34,6 +34,7 @@ from app.services.supplier_profiles import (
     TRANSACTION_PUB_ALIASES,
     build_supplier_lookup_keys,
     compact_profile_key,
+    match_known_supplier_in_text,
     match_supplier_profile,
 )
 
@@ -1356,13 +1357,26 @@ def _document_is_matchable(document: Document) -> bool:
     return document.amount is not None
 
 
+def _annotation_note_supports_document(note: str, document: Document) -> bool:
+    """A reference hit only counts when the note's named supplier (if any)
+    matches the document's. Filenames embed archive counters ("Diageo Inv -
+    262 - …") that collide with other suppliers' short invoice references."""
+    note_supplier = match_known_supplier_in_text(note)
+    if note_supplier is None:
+        return True
+    document_profile = match_supplier_profile(document.supplier)
+    if document_profile is None:
+        return True
+    return note_supplier == document_profile.canonical_name
+
+
 def _find_exact_matches(
     *,
     transaction: Transaction,
     documents: list[Document],
 ) -> list[ReconciliationDocumentMatch]:
-    notes_text = " ".join(transaction.annotation_notes or []).lower()
-    if not notes_text:
+    notes = [note.lower() for note in (transaction.annotation_notes or []) if note]
+    if not notes:
         return []
 
     matches: list[ReconciliationDocumentMatch] = []
@@ -1372,7 +1386,12 @@ def _find_exact_matches(
             continue
         reference = document.reference.lower().strip()
         pattern = rf"(?<![a-z0-9]){re.escape(reference)}(?![a-z0-9])"
-        if not re.search(pattern, notes_text) or document.id in seen_document_ids:
+        supporting_notes = [
+            note
+            for note in notes
+            if re.search(pattern, note) and _annotation_note_supports_document(note, document)
+        ]
+        if not supporting_notes or document.id in seen_document_ids:
             continue
         seen_document_ids.add(document.id)
         matches.append(
