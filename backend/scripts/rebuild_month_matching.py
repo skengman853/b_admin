@@ -35,10 +35,13 @@ async def main(months: list[str]) -> None:
                     persist_exact_matches=True,
                     persist_suggestions=True,
                 )
-                statuses: dict[str, int] = {}
-                for item in report.items:
-                    statuses[item.status] = statuses.get(item.status, 0) + 1
-                print(f"user={user.email} month={month} items={len(report.items)} statuses={statuses}", flush=True)
+                print(
+                    f"user={user.email} month={month} "
+                    f"expense_txns={report.expense_transactions} matched={report.matched_transactions} "
+                    f"partial={report.partial_transactions} suggested={report.suggested_transactions} "
+                    f"unmatched={report.unmatched_transactions} buckets={report.resolution_bucket_counts}",
+                    flush=True,
+                )
                 await session.commit()
     print("ALL_DONE", flush=True)
 
