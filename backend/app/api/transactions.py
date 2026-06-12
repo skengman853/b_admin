@@ -129,7 +129,9 @@ def _parse_month(month: str) -> tuple[date, date]:
 def _parse_source_type(
     source_type: str | None,
     *,
-    default: str | None = "vatbook",
+    # Bank statements are the source of truth for transactions; the VAT book
+    # is reference material and must be requested explicitly.
+    default: str | None = "bank_statement",
 ) -> str | None:
     normalized = (source_type or default)
     if normalized is None:

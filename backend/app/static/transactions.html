@@ -137,9 +137,9 @@
   <input type="month" id="month" />
   <select id="pub"><option value="">All pubs</option></select>
   <select id="source">
-    <option value="">Bank + VAT book</option>
-    <option value="bank_statement">Bank only</option>
-    <option value="vatbook">VAT book only</option>
+    <option value="bank_statement" selected>Bank (source of truth)</option>
+    <option value="vatbook">VAT book (reference)</option>
+    <option value="">Both</option>
   </select>
   <input type="search" id="filter" placeholder="Filter description / amount…" />
   <div id="summary"></div>
@@ -308,6 +308,7 @@
       while (page <= pages && page <= 10) {
         const params = new URLSearchParams({
           month: monthInput.value,
+          source_type: "all",
           annotated_only: "false",
           limit: "200",
           page: String(page),

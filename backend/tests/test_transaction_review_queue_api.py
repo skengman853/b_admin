@@ -251,6 +251,7 @@ else:
             async with self.session_factory() as session:
                 queue = await get_transaction_review_queue(
                     month="2026-04",
+                    source_type="vatbook",
                     pub=None,
                     status=None,
                     annotated_only=True,
@@ -263,6 +264,7 @@ else:
 
                 filtered_queue = await get_transaction_review_queue(
                     month="2026-04",
+                    source_type="vatbook",
                     pub=None,
                     status="suggested,unmatched",
                     annotated_only=True,
@@ -275,6 +277,7 @@ else:
 
                 bucket_filtered_queue = await get_transaction_review_queue(
                     month="2026-04",
+                    source_type="vatbook",
                     pub=None,
                     status=None,
                     resolution_bucket="confirm_match",
@@ -288,6 +291,7 @@ else:
 
                 hard_copy_queue = await get_transaction_review_queue(
                     month="2026-04",
+                    source_type="vatbook",
                     pub=None,
                     status=None,
                     review_status="hard_copy_available",
@@ -300,6 +304,7 @@ else:
                 )
                 vat_period_queue = await get_transaction_review_queue(
                     month="2026-04",
+                    source_type="vatbook",
                     months="2026-03,2026-04",
                     pub=None,
                     status=None,
@@ -367,6 +372,7 @@ else:
             async with self.session_factory() as session:
                 payload = await get_transaction_review_queue(
                     month="2026-04",
+                    source_type="vatbook",
                     pub=None,
                     status=None,
                     annotated_only=True,
@@ -435,6 +441,7 @@ else:
             async with self.session_factory() as session:
                 queue = await get_transaction_review_queue(
                     month="2026-04",
+                    source_type="vatbook",
                     pub=None,
                     status=None,
                     annotated_only=True,
