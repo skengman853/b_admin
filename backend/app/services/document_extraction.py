@@ -159,6 +159,7 @@ async def extract_documents(
             document=document,
             extracted_text=extracted_text,
             pdf_bytes=pdf_bytes,
+            force=force,
         )
         for field, value in extraction_fields.items():
             setattr(document, field, value)
@@ -260,9 +261,19 @@ async def _build_document_extraction_fields(
     document: Document,
     extracted_text: str,
     pdf_bytes: bytes | None = None,
+    force: bool = False,
 ) -> dict:
-    page_images = _render_statement_page_images(document=document, pdf_bytes=pdf_bytes)
-    document.ai_extraction_input_kind = "text_and_images" if page_images else "text_only"
+    document.ai_extraction_input_kind = "text_only"
+    page_images: list[bytes] | None = None
+
+    def _page_images() -> list[bytes]:
+        # Rendered lazily: only documents that actually reach the model pay
+        # the rendering cost.
+        nonlocal page_images
+        if page_images is None:
+            page_images = _render_document_page_images(document=document, pdf_bytes=pdf_bytes)
+            document.ai_extraction_input_kind = "text_and_images" if page_images else "text_only"
+        return page_images
 
     ai_attempted = False
     if document.document_type == "statement" and should_attempt_ai_extraction(document=document, extraction_fields={}):
@@ -271,7 +282,7 @@ async def _build_document_extraction_fields(
             ai_result = await extract_document_with_ai(
                 document=document,
                 extracted_text=extracted_text,
-                page_images=page_images,
+                page_images=_page_images(),
             )
         except Exception:
             document.ai_extraction_status = "failed"
@@ -280,7 +291,7 @@ async def _build_document_extraction_fields(
                 ai_result = await _maybe_repair_statement_extraction(
                     document=document,
                     extracted_text=extracted_text,
-                    page_images=page_images,
+                    page_images=_page_images(),
                     ai_result=ai_result,
                 )
                 seeded_fields = _build_statement_ai_primary_fields(
@@ -307,12 +318,17 @@ async def _build_document_extraction_fields(
         existing_review_reasons=document.review_reasons,
         needs_review=document.needs_review,
     )
-    if not ai_attempted and should_attempt_ai_extraction(document=document, extraction_fields=extraction_fields):
+    # A forced re-extraction always consults the model: it exists to correct
+    # documents whose stored fields are wrong, which gap-filling alone cannot do.
+    force_ai = force and document.document_type in {"invoice", "credit_note", "receipt"}
+    if not ai_attempted and (
+        force_ai or should_attempt_ai_extraction(document=document, extraction_fields=extraction_fields)
+    ):
         try:
             ai_result = await extract_document_with_ai(
                 document=document,
                 extracted_text=extracted_text,
-                page_images=page_images,
+                page_images=_page_images(),
             )
         except Exception:
             document.ai_extraction_status = "failed"
@@ -322,6 +338,7 @@ async def _build_document_extraction_fields(
                     document=document,
                     extraction_fields=extraction_fields,
                     ai_result=ai_result,
+                    prefer_ai_amount=bool(page_images),
                 )
             else:
                 document.ai_extraction_status = "skipped"
@@ -370,8 +387,8 @@ async def _maybe_repair_statement_extraction(
     return ai_result
 
 
-def _render_statement_page_images(*, document: Document, pdf_bytes: bytes | None) -> list[bytes]:
-    if document.document_type != "statement" or not pdf_bytes:
+def _render_document_page_images(*, document: Document, pdf_bytes: bytes | None) -> list[bytes]:
+    if document.document_type not in {"statement", "invoice", "credit_note", "receipt"} or not pdf_bytes:
         return []
     if not settings.ai_document_extraction_send_page_images:
         return []

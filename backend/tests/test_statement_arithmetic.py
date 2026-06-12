@@ -342,6 +342,81 @@ class NormalizeCurrencyCodeTests(unittest.TestCase):
 
 
 @unittest.skipIf(_ai_import_error is not None, f"AI extraction helper unavailable: {_ai_import_error}")
+class InvoiceAmountOverrideTests(unittest.TestCase):
+    def _document(self):
+        return types.SimpleNamespace(
+            document_type="invoice",
+            supplier="Diageo",
+            attachment_name="diageo_invoice.pdf",
+            source_email_subject="Diageo invoice",
+            ai_extraction_status=None,
+            ai_extraction_provider=None,
+            ai_extraction_model=None,
+            ai_extraction_payload=None,
+            ai_extracted_at=None,
+        )
+
+    def _fields(self) -> dict:
+        return {
+            "document_date": Decimal("0"),
+            "reference": "9263312263",
+            "amount": Decimal("3945.57"),
+            "vat_amount": Decimal("700.00"),
+            "currency": "EUR",
+            "confidence_score": 0.8,
+            "review_reasons": [],
+            "needs_review": False,
+            "extraction_status": "extracted",
+        }
+
+    def _ai_result(self, **overrides):
+        kwargs = {
+            "reference": "9263312263",
+            "amount": "4027.43",
+            "vat_amount": "715.21",
+            "confidence_score": 0.92,
+        }
+        kwargs.update(overrides)
+        return AIDocumentExtractionResult(**kwargs)
+
+    def test_confident_ai_amount_overrides_rules_amount_when_preferred(self) -> None:
+        merged = merge_ai_extraction(
+            document=self._document(),
+            extraction_fields=self._fields(),
+            ai_result=self._ai_result(),
+            prefer_ai_amount=True,
+        )
+        self.assertEqual(merged["amount"], Decimal("4027.43"))
+        self.assertEqual(merged["vat_amount"], Decimal("715.21"))
+
+    def test_no_override_without_prefer_flag(self) -> None:
+        merged = merge_ai_extraction(
+            document=self._document(),
+            extraction_fields=self._fields(),
+            ai_result=self._ai_result(),
+        )
+        self.assertEqual(merged["amount"], Decimal("3945.57"))
+
+    def test_no_override_when_reference_differs(self) -> None:
+        merged = merge_ai_extraction(
+            document=self._document(),
+            extraction_fields=self._fields(),
+            ai_result=self._ai_result(reference="9999999999"),
+            prefer_ai_amount=True,
+        )
+        self.assertEqual(merged["amount"], Decimal("3945.57"))
+
+    def test_no_override_when_ai_confidence_low(self) -> None:
+        merged = merge_ai_extraction(
+            document=self._document(),
+            extraction_fields=self._fields(),
+            ai_result=self._ai_result(confidence_score=0.5),
+            prefer_ai_amount=True,
+        )
+        self.assertEqual(merged["amount"], Decimal("3945.57"))
+
+
+@unittest.skipIf(_ai_import_error is not None, f"AI extraction helper unavailable: {_ai_import_error}")
 class StatementQualityArithmeticTests(unittest.TestCase):
     def _document(self):
         return types.SimpleNamespace(

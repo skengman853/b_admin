@@ -190,6 +190,7 @@ def merge_ai_extraction(
     document: Document,
     extraction_fields: dict,
     ai_result: AIDocumentExtractionResult,
+    prefer_ai_amount: bool = False,
 ) -> dict:
     merged = dict(extraction_fields)
 
@@ -206,10 +207,20 @@ def merge_ai_extraction(
     if ai_result.reference and _weak_reference(merged.get("reference"), document.document_type):
         merged["reference"] = ai_result.reference
 
-    if ai_result.amount is not None and _weak_amount(merged.get("amount")):
+    # With page images the model reads the document's true layout; allow it to
+    # correct a rules-extracted amount (e.g. a discounted total grabbed instead
+    # of the gross), but only when it is confident and clearly read the same
+    # document (matching reference).
+    ai_amount_override = (
+        prefer_ai_amount
+        and ai_result.amount is not None
+        and (ai_result.confidence_score or 0.0) >= settings.ai_document_extraction_min_confidence
+        and _same_reference(ai_result.reference, merged.get("reference"))
+    )
+    if ai_result.amount is not None and (_weak_amount(merged.get("amount")) or ai_amount_override):
         merged["amount"] = ai_result.amount
 
-    if ai_result.vat_amount is not None and merged.get("vat_amount") is None:
+    if ai_result.vat_amount is not None and (merged.get("vat_amount") is None or ai_amount_override):
         merged["vat_amount"] = ai_result.vat_amount
 
     if ai_result.currency and not merged.get("currency"):
@@ -272,6 +283,13 @@ def _weak_reference(reference: str | None, document_type: str) -> bool:
 
 def _weak_amount(amount: Decimal | None) -> bool:
     return amount is None or amount <= Decimal("0.00")
+
+
+def _same_reference(left: str | None, right: str | None) -> bool:
+    if not left or not right:
+        return False
+    normalize = lambda value: "".join(ch for ch in value.lower() if ch.isalnum()).lstrip("0")  # noqa: E731
+    return normalize(left) == normalize(right)
 
 
 def _has_configured_openai_key(api_key: str | None) -> bool:
