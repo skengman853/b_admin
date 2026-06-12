@@ -1501,7 +1501,9 @@ def _find_single_document_suggestions(
             transaction=transaction,
             document=document,
         )
-        if transaction.source_type == BANK_STATEMENT_SOURCE_TYPE and pub_conflict:
+        # A document naming the other pub is disqualifying no matter where the
+        # transaction came from; vatbook rows carry operator-assigned pubs.
+        if pub_conflict:
             continue
 
         document_tokens = _build_document_tokens(document)
@@ -1788,7 +1790,9 @@ def _find_grouped_suggestion(
             transaction=transaction,
             document=document,
         )
-        if transaction.source_type == BANK_STATEMENT_SOURCE_TYPE and pub_conflict:
+        # A document naming the other pub is disqualifying no matter where the
+        # transaction came from; vatbook rows carry operator-assigned pubs.
+        if pub_conflict:
             continue
         if (
             transaction.source_type == BANK_STATEMENT_SOURCE_TYPE
@@ -2321,7 +2325,7 @@ def _collect_related_statement_ledgers(
                 transaction=transaction,
                 document=document,
             )
-            if transaction.source_type == BANK_STATEMENT_SOURCE_TYPE and pub_conflict:
+            if pub_conflict:
                 continue
             if transaction_supplier_keys and not _supplier_keys_overlap(
                 transaction_supplier_keys,
@@ -2525,7 +2529,7 @@ def _build_flow_component_documents(
                 transaction=transaction,
                 document=document,
             )
-            if transaction.source_type == BANK_STATEMENT_SOURCE_TYPE and pub_conflict:
+            if pub_conflict:
                 continue
             ledger = invoice_ledger_by_id.get(document.id)
             entry = _primary_invoice_entry(ledger) if ledger else None
@@ -2576,7 +2580,9 @@ def _build_flow_component_documents(
             transaction=transaction,
             document=document,
         )
-        if transaction.source_type == BANK_STATEMENT_SOURCE_TYPE and pub_conflict:
+        # A document naming the other pub is disqualifying no matter where the
+        # transaction came from; vatbook rows carry operator-assigned pubs.
+        if pub_conflict:
             continue
         component_documents.append(
             ReconciliationFlowDocument(
