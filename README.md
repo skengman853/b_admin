@@ -172,7 +172,9 @@ scores. Every extraction bug an operator finds should become a fixture before it
 
 Start here:
 
-- statement trust implementation (latest): [docs/25-statement-trust-implementation.md](docs/25-statement-trust-implementation.md)
+- the operating cycle — how the system is used (latest): [docs/26-operating-cycle.md](docs/26-operating-cycle.md)
+- VAT book automation — the deliverable: [docs/27-vat-book-automation.md](docs/27-vat-book-automation.md)
+- statement trust implementation: [docs/25-statement-trust-implementation.md](docs/25-statement-trust-implementation.md)
 - system overview: [docs/23-system-overview.md](docs/23-system-overview.md)
 - roadmap ahead: [docs/24-roadmap-ahead.md](docs/24-roadmap-ahead.md)
 - current product state: [docs/16-current-product.md](docs/16-current-product.md)
