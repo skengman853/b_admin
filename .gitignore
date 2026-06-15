@@ -40,3 +40,6 @@ backend/import_sources/
 backend/.eval_cache/
 backend/tests/golden/statements/results.json
 backend/backups/
+
+# Client VAT book samples (sensitive, validation only)
+backend/vatbook_samples/

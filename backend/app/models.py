@@ -305,6 +305,7 @@ class Transaction(Base):
     credit_amount: Mapped[Decimal | None] = mapped_column()
     transaction_type: Mapped[str | None] = mapped_column(String(100))
     category: Mapped[str | None] = mapped_column(String(255))
+    category_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     resale_23_amount: Mapped[Decimal | None] = mapped_column()
     non_resale_23_amount: Mapped[Decimal | None] = mapped_column()
     non_resale_13_5_amount: Mapped[Decimal | None] = mapped_column()

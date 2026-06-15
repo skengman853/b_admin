@@ -825,12 +825,13 @@ async def get_vat_book(
     start, end = _parse_month(month)
     target_source = _parse_source_type(source_type)
 
-    # Training: every categorised vatbook transaction outside the target month.
+    # Training: the operator's categorised history outside the target month —
+    # the hand-made vatbook rows plus any categories the operator has confirmed.
     training_result = await db.execute(
         select(Transaction).where(
             Transaction.user_id == user.id,
-            Transaction.source_type == "vatbook",
             Transaction.category.is_not(None),
+            (Transaction.source_type == "vatbook") | (Transaction.category_confirmed.is_(True)),
             ~((Transaction.transaction_date >= start) & (Transaction.transaction_date < end)),
         )
     )
@@ -874,14 +875,77 @@ async def get_vat_book(
                 "debit_amount": str(r.debit_amount) if r.debit_amount is not None else None,
                 "credit_amount": str(r.credit_amount) if r.credit_amount is not None else None,
                 "predicted_category": r.predicted_category,
+                "predicted_band": r.predicted_band,
                 "predicted_band_label": r.predicted_band_label,
                 "source": r.source,
                 "actual_category": r.actual_category,
                 "category_correct": r.category_correct,
+                "confirmed": r.confirmed,
             }
             for r in rows
         ],
     }
+
+
+@router.get("/vat-categories")
+async def get_vat_categories(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Distinct categories the operator has used, with each one's usual VAT band —
+    powers the inline category picker."""
+    from app.services.vat_categorisation import VAT_BANDS, band_label, learn_ruleset
+
+    result = await db.execute(
+        select(Transaction).where(
+            Transaction.user_id == user.id,
+            Transaction.category.is_not(None),
+            (Transaction.source_type == "vatbook") | (Transaction.category_confirmed.is_(True)),
+        )
+    )
+    ruleset = learn_ruleset(list(result.scalars().all()))
+    categories = sorted(set(ruleset.by_description.values()) | set(ruleset.category_band.keys()))
+    return {
+        "bands": [{"key": key, "label": label} for key, label, _ in VAT_BANDS],
+        "categories": [
+            {
+                "category": c,
+                "default_band": ruleset.category_band.get(c),
+                "default_band_label": band_label(ruleset.category_band.get(c)),
+            }
+            for c in categories
+        ],
+    }
+
+
+@router.patch("/{transaction_id}/category")
+async def set_transaction_category_endpoint(
+    transaction_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Persist an operator category decision (and its VAT band). The decision
+    sticks on the transaction and teaches future categorisation."""
+    from app.services.vat_categorisation import BAND_KEYS, set_transaction_category
+
+    category = (body.get("category") or "").strip()
+    if not category:
+        raise HTTPException(status_code=422, detail="category is required")
+    band = body.get("band")
+    if band is not None and band not in BAND_KEYS:
+        raise HTTPException(status_code=422, detail=f"band must be one of {', '.join(BAND_KEYS)} or null")
+
+    result = await db.execute(
+        select(Transaction).where(Transaction.id == transaction_id, Transaction.user_id == user.id)
+    )
+    transaction = result.scalar_one_or_none()
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    set_transaction_category(transaction, category=category, band=band)
+    await db.commit()
+    return {"transaction_id": str(transaction_id), "category": category, "band": band, "confirmed": True}
 
 
 @router.get("", response_model=TransactionListResponse)

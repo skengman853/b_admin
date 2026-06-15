@@ -31,6 +31,22 @@
   .actual{font-size:12px;color:var(--bad);}
   #loading{text-align:center;color:var(--muted);padding:40px;}
   .legend{font-size:12px;color:var(--muted);margin:10px 2px 0;}
+  tr.row{cursor:pointer;}
+  tr.row:hover{background:#f3f6fd;}
+  tr.confirmed td:first-child{box-shadow:inset 3px 0 0 var(--good);}
+  .detail td{background:#fcfcfd;padding:14px 16px;}
+  .detail .docs{margin-bottom:12px;}
+  .doc{display:grid;grid-template-columns:90px 1fr 110px 70px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #f0f1f3;font-size:13px;}
+  .doc:last-child{border-bottom:none;}
+  .doc .k{font-size:11px;text-transform:uppercase;color:var(--muted);}
+  .doc button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 9px;font:inherit;font-size:12px;color:var(--accent);cursor:pointer;}
+  .editor{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--line);}
+  .editor select{border:1px solid var(--line);border-radius:7px;padding:6px 9px;font:inherit;}
+  .editor select.cat{min-width:280px;}
+  .editor .save{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:7px 14px;font:inherit;cursor:pointer;}
+  .editor .save:disabled{opacity:.5;}
+  .editor .saved{color:var(--good);font-size:13px;}
+  .docs .none{color:var(--muted);font-size:13px;padding:4px 0;}
 </style>
 </head>
 <body>
@@ -62,7 +78,9 @@
         loading=document.getElementById("loading"), content=document.getElementById("content"),
         legend=document.getElementById("legend");
   const now=new Date(); monthEl.value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-  let data=null;
+  let data=null, categories=null, bands=null;
+
+  function authHeaders(){const h=new Headers(); if(token) h.set("Authorization",`Bearer ${token}`); return h;}
 
   function money(v){return v==null?"":Number(v).toLocaleString("en-IE",{minimumFractionDigits:2,maximumFractionDigits:2});}
 
@@ -78,31 +96,86 @@
     if(pubEl.value) rows = rows.filter(r=>(r.pub||"")===pubEl.value);
     if(showEl.value==="miss") rows = rows.filter(r=> r.source==="unknown" || r.category_correct===false);
     const head = `<tr><th></th><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>VAT band</th></tr>`;
-    const body = rows.map(r=>{
-      let mark="", cls="";
-      if(r.category_correct===true){mark='<span class="mark ok">✓</span>';}
-      else if(r.source==="unknown"){mark='<span class="mark unk">?</span>'; cls="miss";}
-      else if(r.category_correct===false){mark='<span class="mark bad">✗</span>'; cls="miss";}
+    const body = rows.map((r,i)=>{
+      let mark="", cls="row";
+      if(r.confirmed){mark='<span class="mark ok">●</span>';}
+      else if(r.category_correct===true){mark='<span class="mark ok">✓</span>';}
+      else if(r.source==="unknown"){mark='<span class="mark unk">?</span>'; cls+=" miss";}
+      else if(r.category_correct===false){mark='<span class="mark bad">✗</span>'; cls+=" miss";}
+      if(r.confirmed) cls+=" confirmed";
       const cat = r.predicted_category || '<span class="src">— needs naming —</span>';
       const actual = (validating && r.category_correct===false && r.actual_category)
         ? `<div class="actual">should be: ${r.actual_category}</div>` : "";
-      return `<tr class="${cls}">
+      return `<tr class="${cls}" data-id="${r.transaction_id}" data-i="${i}">
         <td>${mark}</td>
         <td class="date">${r.transaction_date||""}</td>
         <td>${r.description||""}</td>
         <td class="amt">${r.debit_amount?money(r.debit_amount):(r.credit_amount?"+"+money(r.credit_amount):"")}</td>
-        <td>${cat}${actual}<div class="src">${r.source.replace("_"," ")}</div></td>
+        <td>${cat}${actual}<div class="src">${(r.source||"").replace("_"," ")}</div></td>
         <td class="band">${r.predicted_band_label||""}</td>
-      </tr>`;
+      </tr>
+      <tr class="detail" id="detail-${r.transaction_id}" style="display:none"><td colspan="6">loading…</td></tr>`;
     }).join("");
     content.innerHTML = `<table>${head}${body}</table>`;
+    content.querySelectorAll("tr.row").forEach(tr=>{
+      tr.addEventListener("click", ()=> toggleRow(tr.dataset.id, rows[+tr.dataset.i]));
+    });
     legend.textContent = validating
       ? `✓ system matched your hand-made category · ✗ system disagreed · ? new payee the system hasn't seen (name once and it's learned). Rules trained on every other period.`
       : `Generated from bank transactions. ? = new payee to name. No hand-made book to compare this view against.`;
   }
 
+  async function toggleRow(id, row){
+    const detail=document.getElementById(`detail-${id}`);
+    if(detail.style.display!=="none"){detail.style.display="none"; return;}
+    document.querySelectorAll("tr.detail").forEach(d=>d.style.display="none");
+    detail.style.display="";
+    detail.firstElementChild.innerHTML="loading…";
+    let docsHtml='<div class="docs"><div class="none">No documents linked to this transaction.</div></div>';
+    try{
+      const res=await fetch(`/api/transactions/${id}/links`,{headers:authHeaders()});
+      if(res.ok){
+        const d=await res.json();
+        const seen=new Set(); const docs=[];
+        const add=(role,entry)=>{const doc=entry.document||entry; const did=entry.document_id||(doc&&doc.id); if(!did||seen.has(String(did)))return; seen.add(String(did));
+          docs.push({id:did,role,supplier:doc.supplier||"",type:doc.document_type||"",ref:doc.reference||entry.reference||"",amount:entry.amount_applied??doc.amount??entry.amount});};
+        (d.persisted_links||[]).filter(l=>l.status==="confirmed").forEach(l=>add("confirmed",l));
+        (d.exact_matches||[]).forEach(m=>add("match",m)); (d.suggested_matches||[]).forEach(m=>add("suggested",m)); (d.supporting_matches||[]).forEach(m=>add("support",m));
+        if(docs.length) docsHtml='<div class="docs">'+docs.map(x=>`<div class="doc"><span class="k">${x.role}</span><span>${x.supplier} ${x.type?"· "+x.type.replace("_"," "):""} ${x.ref?"· "+x.ref:""}</span><span class="amt">${x.amount?money(x.amount):""}</span><button data-doc="${x.id}">Open</button></div>`).join("")+'</div>';
+      }
+    }catch(e){}
+    const opts=(categories||[]).map(c=>`<option value="${c.category}" data-band="${c.default_band||""}" ${c.category===(row.actual_category||row.predicted_category)?"selected":""}>${c.category}</option>`).join("");
+    const bandOpts=(bands||[]).map(b=>`<option value="${b.key}" ${b.key===row.predicted_band?"selected":""}>${b.label}</option>`).join("");
+    detail.firstElementChild.innerHTML = docsHtml +
+      `<div class="editor">
+         <select class="cat"><option value="">— choose category —</option>${opts}</select>
+         <select class="bandsel"><option value="">no VAT band</option>${bandOpts}</select>
+         <button class="save">Save category</button>
+         <span class="saved" style="display:none">saved ✓</span>
+       </div>`;
+    detail.querySelectorAll(".doc button").forEach(b=>b.addEventListener("click",async ev=>{
+      ev.stopPropagation(); b.disabled=true;
+      try{const r=await fetch(`/api/documents/${b.dataset.doc}/file`,{headers:authHeaders()}); if(!r.ok)throw 0;
+        window.open(URL.createObjectURL(await r.blob()),"_blank");}catch(e){alert("Could not open document");} finally{b.disabled=false;}
+    }));
+    const catSel=detail.querySelector(".cat"), bandSel=detail.querySelector(".bandsel"), saveBtn=detail.querySelector(".save"), savedMsg=detail.querySelector(".saved");
+    catSel.addEventListener("change",()=>{const o=catSel.selectedOptions[0]; if(o&&o.dataset.band) bandSel.value=o.dataset.band;});
+    saveBtn.addEventListener("click",async ev=>{
+      ev.stopPropagation();
+      if(!catSel.value){alert("Choose a category first");return;}
+      saveBtn.disabled=true;
+      try{
+        const r=await fetch(`/api/transactions/${id}/category`,{method:"PATCH",headers:Object.assign({"Content-Type":"application/json"},Object.fromEntries(authHeaders())),
+          body:JSON.stringify({category:catSel.value,band:bandSel.value||null})});
+        if(!r.ok)throw new Error("save failed ("+r.status+")");
+        savedMsg.style.display=""; await load();
+      }catch(e){alert(e.message); saveBtn.disabled=false;}
+    });
+  }
+
   async function load(){
     if(!token){banner.style.display="block";banner.textContent="No saved session — sign in on /review first, then come back.";loading.style.display="none";return;}
+    if(!categories){try{const r=await fetch("/api/transactions/vat-categories",{headers:authHeaders()}); if(r.ok){const d=await r.json(); categories=d.categories; bands=d.bands;}}catch(e){}}
     banner.style.display="none"; loading.style.display="block"; content.innerHTML="";
     try{
       const p=new URLSearchParams({month:monthEl.value,source_type:srcEl.value});

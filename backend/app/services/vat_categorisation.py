@@ -27,8 +27,21 @@ VAT_BANDS = (
     ("non_resale_9", "Non-Resale @ 9%", "non_resale_9_amount"),
     ("non_resale_0", "Non-Resale @ 0%", "non_resale_0_amount"),
 )
-_BAND_COLUMN = {key: column for key, _, column in VAT_BANDS}
-_BAND_LABEL = {key: label for key, label, _ in VAT_BANDS}
+BAND_COLUMN = {key: column for key, _, column in VAT_BANDS}
+BAND_LABEL = {key: label for key, label, _ in VAT_BANDS}
+BAND_KEYS = tuple(key for key, _, _ in VAT_BANDS)
+_BAND_COLUMN = BAND_COLUMN
+_BAND_LABEL = BAND_LABEL
+
+
+def set_transaction_category(transaction: Transaction, *, category: str, band: str | None) -> None:
+    """Apply an operator category decision: set category, mark confirmed, and
+    place the gross debit into the chosen VAT band (clearing the others)."""
+    transaction.category = category
+    transaction.category_confirmed = True
+    gross = transaction.debit_amount
+    for key, _, column in VAT_BANDS:
+        setattr(transaction, column, gross if (band == key and gross is not None) else None)
 
 _PREFIXES = (
     "d/d ", "vdc-", "vdp-", "pos ", "*inet ", "paymentsense", "lodgment", "lodgement",
@@ -147,6 +160,7 @@ class VatBookRow:
     actual_category: str | None
     actual_band: str | None
     category_correct: bool | None  # None when no ground truth to compare
+    confirmed: bool = False
 
 
 def build_vat_book(
@@ -180,6 +194,7 @@ def build_vat_book(
                 actual_category=actual_category,
                 actual_band=transaction_band(txn),
                 category_correct=category_correct,
+                confirmed=bool(getattr(txn, "category_confirmed", False)),
             )
         )
     return rows
