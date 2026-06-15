@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tools</title>
+<style>
+  :root{--bg:#fafafa;--card:#fff;--ink:#1a1d21;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;--good:#15803d;--bad:#b91c1c;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  header{padding:18px 28px;background:var(--card);border-bottom:1px solid var(--line);}
+  header h1{font-size:17px;margin:0;font-weight:650;}
+  main{max-width:760px;margin:24px auto 80px;padding:0 20px;display:flex;flex-direction:column;gap:16px;}
+  #banner{background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:12px 16px;display:none;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;}
+  .card h2{font-size:15px;margin:0 0 4px;}
+  .card p{margin:0 0 14px;color:var(--muted);font-size:13.5px;}
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  input,select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;background:var(--bg);}
+  button.run{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 16px;font:inherit;cursor:pointer;}
+  button.run:disabled{opacity:.5;}
+  .result{margin-top:12px;font-size:13px;white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:none;}
+  .result.ok{border-color:#bbe3c8;}
+  .result.err{border-color:#f3c0c0;color:var(--bad);}
+  .spin{color:var(--muted);font-size:13px;}
+</style>
+</head>
+<body>
+<header><h1>Tools — run the pipeline</h1></header>
+<main>
+  <div id="banner"></div>
+
+  <div class="card">
+    <h2>1. Scan Gmail for new invoices</h2>
+    <p>Pull recent supplier emails into the document store so there's something to match.</p>
+    <div class="controls">
+      <label>Days back <input type="number" id="scanDays" value="30" min="1" max="365" style="width:80px"></label>
+      <button class="run" data-op="scan">Scan Gmail</button>
+    </div>
+    <div class="result" id="r-scan"></div>
+  </div>
+
+  <div class="card">
+    <h2>2. Run the invoice extractor</h2>
+    <p>Read amounts, references, VAT and statement rows out of imported documents.</p>
+    <div class="controls">
+      <label><input type="checkbox" id="extractForce"> Re-extract already-done</label>
+      <label>Max <input type="number" id="extractLimit" value="200" min="1" max="500" style="width:80px"></label>
+      <button class="run" data-op="extract">Run extractor</button>
+    </div>
+    <div class="result" id="r-extract"></div>
+  </div>
+
+  <div class="card">
+    <h2>3. Run the matcher</h2>
+    <p>Match a month's bank transactions to their documents and save the suggestions. Safe to re-run.</p>
+    <div class="controls">
+      <input type="month" id="matchMonth">
+      <button class="run" data-op="match">Run matcher</button>
+    </div>
+    <div class="result" id="r-match"></div>
+  </div>
+</main>
+<script>
+  const token = localStorage.getItem("b_admin_token") || "";
+  const banner = document.getElementById("banner");
+  const now = new Date();
+  document.getElementById("matchMonth").value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  if(!token){ banner.style.display="block"; banner.textContent="No saved session — sign in on /review first, then come back."; }
+
+  function hdrs(){ const h=new Headers({"Content-Type":"application/json"}); if(token) h.set("Authorization",`Bearer ${token}`); return h; }
+  function show(id, ok, text){ const el=document.getElementById(id); el.style.display="block"; el.className="result "+(ok?"ok":"err"); el.textContent=text; }
+
+  async function run(op, button){
+    button.disabled = true;
+    const orig = button.textContent; button.textContent = "Running…";
+    try{
+      let res, body, id;
+      if(op==="scan"){
+        id="r-scan";
+        res = await fetch("/api/pipeline/scan-recent", {method:"POST", headers:hdrs(), body:JSON.stringify({days:+document.getElementById("scanDays").value, max_messages:200})});
+      } else if(op==="extract"){
+        id="r-extract";
+        res = await fetch("/api/documents/extract", {method:"POST", headers:hdrs(), body:JSON.stringify({limit:+document.getElementById("extractLimit").value, force:document.getElementById("extractForce").checked})});
+      } else {
+        id="r-match";
+        const m=document.getElementById("matchMonth").value;
+        res = await fetch(`/api/transactions/rebuild-matching?month=${m}`, {method:"POST", headers:hdrs()});
+      }
+      body = await res.json();
+      if(!res.ok) throw new Error(body.detail || `failed (${res.status})`);
+      show(id, true, summarise(op, body));
+    }catch(e){
+      const id = op==="scan"?"r-scan":op==="extract"?"r-extract":"r-match";
+      show(id, false, String(e.message||e));
+    }finally{ button.disabled=false; button.textContent=orig; }
+  }
+
+  function summarise(op, b){
+    if(op==="scan") return `Imported ${b.imported ?? b.new_documents ?? "?"} document(s); scanned ${b.scanned ?? b.messages_scanned ?? "?"} message(s).`;
+    if(op==="extract") return `Extracted ${b.extracted ?? "?"}, skipped ${b.skipped ?? "?"} of ${b.requested ?? "?"}.`;
+    return `${b.month}: matched ${b.matched}, partial ${b.partial}, suggested ${b.suggested}, unmatched ${b.unmatched}.\nbuckets: ${JSON.stringify(b.buckets)}`;
+  }
+
+  document.querySelectorAll("button.run").forEach(btn=>btn.addEventListener("click",()=>run(btn.dataset.op, btn)));
+</script>
+</body>
+</html>

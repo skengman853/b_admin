@@ -938,6 +938,38 @@ async def get_vat_book(
     }
 
 
+@router.post("/rebuild-matching")
+async def rebuild_matching(
+    month: str,
+    pub: str | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run the matcher for a month and persist the suggestions/exact links.
+    This is the 'Run matcher' action — safe to re-run any time."""
+    _parse_month(month)
+    report = await build_reconciliation_report(
+        db=db,
+        user_id=user.id,
+        month=month,
+        pub=pub,
+        limit=2000,
+        annotated_only=False,
+        persist_exact_matches=True,
+        persist_suggestions=True,
+    )
+    return {
+        "month": month,
+        "pub": pub,
+        "expense_transactions": report.expense_transactions,
+        "matched": report.matched_transactions,
+        "partial": report.partial_transactions,
+        "suggested": report.suggested_transactions,
+        "unmatched": report.unmatched_transactions,
+        "buckets": report.resolution_bucket_counts,
+    }
+
+
 @router.get("/vat-book/export")
 async def export_vat_book(
     month: str,
