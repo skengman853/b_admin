@@ -30,6 +30,7 @@ _HEADERS = {
     "M": "Non-Resale @ 13.5%",
     "N": "Non-Resale @ 9%",
     "O": "Non-Resale @ 0%",
+    "P": "Supporting Documents",
 }
 _BAND_COLUMN = {
     "resale_23": "K",
@@ -44,12 +45,26 @@ def _num(value: Decimal | None) -> float | None:
     return float(value) if value is not None else None
 
 
+def _document_summary(documents: list[dict]) -> str:
+    parts = []
+    for doc in documents:
+        bits = [doc.get("type", "").replace("_", " ").title()] if doc.get("type") else []
+        if doc.get("supplier"):
+            bits.append(doc["supplier"])
+        if doc.get("reference"):
+            bits.append(str(doc["reference"]))
+        parts.append(" ".join(bits).strip())
+    return "; ".join(p for p in parts if p)
+
+
 def write_vat_book_xlsx(
     *,
     targets: list[Transaction],
     rows_by_id: dict,
+    documents_by_transaction: dict | None = None,
     period_label: str,
 ) -> bytes:
+    documents_by_transaction = documents_by_transaction or {}
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
@@ -96,6 +111,7 @@ def write_vat_book_xlsx(
             ws[f"{column}{r}"] = _num(txn.debit_amount)
             ws[f"{column}{r}"].number_format = money_fmt
             band_totals[band] += txn.debit_amount
+        ws[f"P{r}"] = _document_summary(documents_by_transaction.get(txn.id, []))
         r += 1
 
     # Totals row.
@@ -114,6 +130,7 @@ def write_vat_book_xlsx(
         ws.column_dimensions[col].width = w
     for col in _BAND_COLUMN.values():
         ws.column_dimensions[col].width = 15
+    ws.column_dimensions["P"].width = 40
     ws.freeze_panes = "A2"
 
     buffer = io.BytesIO()

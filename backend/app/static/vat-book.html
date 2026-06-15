@@ -49,6 +49,9 @@
   .editor .save:disabled{opacity:.5;}
   .editor .saved{color:var(--good);font-size:13px;}
   .docs .none{color:var(--muted);font-size:13px;padding:4px 0;}
+  .docs-cell{font-size:12.5px;}
+  .hasdoc{color:var(--good);}
+  .nodoc{color:var(--muted);}
 </style>
 </head>
 <body>
@@ -86,6 +89,14 @@
   function authHeaders(){const h=new Headers(); if(token) h.set("Authorization",`Bearer ${token}`); return h;}
 
   function money(v){return v==null?"":Number(v).toLocaleString("en-IE",{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function docCell(r){
+    const docs=r.documents||[];
+    if(docs.length){const d=docs[0]; const extra=docs.length>1?` +${docs.length-1}`:"";
+      return `<span class="hasdoc" title="${docs.map(x=>`${x.type||""} ${x.supplier||""} ${x.reference||""}`).join("; ")}">📎 ${(d.supplier||d.type||"doc")} ${d.reference||""}${extra}</span>`;}
+    // a lodgement/credit usually needs no document
+    if(r.credit_amount && !r.debit_amount) return '<span class="nodoc">—</span>';
+    return '<span class="nodoc">no doc</span>';
+  }
 
   function render(){
     if(!data) return;
@@ -98,7 +109,7 @@
     let rows = data.rows;
     if(pubEl.value) rows = rows.filter(r=>(r.pub||"")===pubEl.value);
     if(showEl.value==="miss") rows = rows.filter(r=> r.source==="unknown" || r.category_correct===false);
-    const head = `<tr><th></th><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>VAT band</th></tr>`;
+    const head = `<tr><th></th><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>VAT band</th><th>Document</th></tr>`;
     const body = rows.map((r,i)=>{
       let mark="", cls="row";
       if(r.confirmed){mark='<span class="mark ok">●</span>';}
@@ -116,6 +127,7 @@
         <td class="amt">${r.debit_amount?money(r.debit_amount):(r.credit_amount?"+"+money(r.credit_amount):"")}</td>
         <td>${cat}${actual}<div class="src">${(r.source||"").replace("_"," ")}</div></td>
         <td class="band">${r.predicted_band_label||""}${r.band_source==="matched_invoice"?'<div class="src">from invoice</div>':""}</td>
+        <td class="docs-cell">${docCell(r)}</td>
       </tr>
       <tr class="detail" id="detail-${r.transaction_id}" style="display:none"><td colspan="6">loading…</td></tr>`;
     }).join("");

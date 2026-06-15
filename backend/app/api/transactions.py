@@ -843,6 +843,7 @@ async def _build_period_vat_book(
 
     supplier_by_transaction: dict = {}
     document_vat_by_transaction: dict = {}
+    documents_by_transaction: dict = {}
     target_ids = [t.id for t in targets]
     if target_ids:
         link_result = await db.execute(
@@ -863,6 +864,15 @@ async def _build_period_vat_book(
                 confirmed or link.transaction_id not in document_vat_by_transaction
             ):
                 document_vat_by_transaction[link.transaction_id] = (document.amount, document.vat_amount)
+            docs = documents_by_transaction.setdefault(link.transaction_id, [])
+            if not any(d["document_id"] == str(document.id) for d in docs):
+                docs.append({
+                    "document_id": str(document.id),
+                    "type": document.document_type,
+                    "supplier": document.supplier,
+                    "reference": document.reference,
+                    "confirmed": confirmed,
+                })
 
     rows = build_vat_book(
         targets=targets,
@@ -870,7 +880,7 @@ async def _build_period_vat_book(
         supplier_by_transaction=supplier_by_transaction,
         document_vat_by_transaction=document_vat_by_transaction,
     )
-    return targets, rows, ruleset, target_source
+    return targets, rows, ruleset, target_source, documents_by_transaction
 
 
 @router.get("/vat-book")
@@ -888,7 +898,7 @@ async def get_vat_book(
     genuine held-out measure. For source_type=bank_statement it is pure
     generation (no ground truth to compare).
     """
-    _, rows, ruleset, target_source = await _build_period_vat_book(
+    _, rows, ruleset, target_source, documents_by_transaction = await _build_period_vat_book(
         db=db, user=user, month=month, pub=pub, source_type=source_type
     )
     scored = [r for r in rows if r.category_correct is not None]
@@ -921,6 +931,7 @@ async def get_vat_book(
                 "actual_category": r.actual_category,
                 "category_correct": r.category_correct,
                 "confirmed": r.confirmed,
+                "documents": documents_by_transaction.get(r.transaction_id, []),
             }
             for r in rows
         ],
@@ -938,12 +949,17 @@ async def export_vat_book(
     """Stage D: download the period's VAT book as .xlsx in O'Farrell's format."""
     from app.services.vat_book_export import write_vat_book_xlsx
 
-    targets, rows, _ruleset, _src = await _build_period_vat_book(
+    targets, rows, _ruleset, _src, documents_by_transaction = await _build_period_vat_book(
         db=db, user=user, month=month, pub=pub, source_type=source_type
     )
     rows_by_id = {r.transaction_id: r for r in rows}
     period_label = month.replace("-", " ")
-    content = write_vat_book_xlsx(targets=targets, rows_by_id=rows_by_id, period_label=period_label)
+    content = write_vat_book_xlsx(
+        targets=targets,
+        rows_by_id=rows_by_id,
+        documents_by_transaction=documents_by_transaction,
+        period_label=period_label,
+    )
 
     pub_part = f" - {pub}" if pub else ""
     filename = f"CAREYS BAR - VAT-CASH - {month}{pub_part}.xlsx"
