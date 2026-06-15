@@ -8,6 +8,55 @@ This is not a new subsystem. The VAT book is the *output view* of the
 reconciliation engine that already exists. Everything below leans on data the
 system already produces.
 
+## Confirmed file format (from the real Mar–Apr book)
+
+Columns, left to right:
+- **B** Posted Account · **C** Pub · **D** Date · **E** Description1 ·
+  **F** Description2 · **G** Debit · **H** Credit · **I** Transaction Type ·
+  **J** Category
+- **K** Resale @ 23% · **L** Non-Resale @ 23% · **M** Non-Resale @ 13.5% ·
+  **N** Non-Resale @ 9% · **O** Non-Resale @ 0%
+- Bottom row: column totals per band (feeds the return).
+- Annotation rows sit under each transaction (Invoice / Statement / Credit Note /
+  flags like "Hard copy available", "Awaited", "To be reconciled").
+
+Confirmed behaviours (verified against the file):
+- **Input/purchases only.** Income/lodgement rows carry no VAT band; the sales /
+  output-VAT side is not in this file (see open question).
+- **Whole gross amount, one band per transaction.** The book classifies the
+  gross debit into a single band; it does not split a payment or net out VAT.
+- **Category ≈ determines band.** 49 of 55 categories map to one band cleanly.
+  The exceptions need the invoice's actual VAT lines: Misc, Renovation,
+  Maintenance, Software, Electricity, and the occasional 0% resale (e.g.
+  M&J Gleeson / Bulmers bottle-return / deposit refund).
+
+## VAT bands — meaning (from John, the bookkeeper)
+
+- **23% Resale (K)** — stock bought to resell at standard VAT: bottled drinks,
+  snacks, cigarettes, retail merchandise. The core drink-supplier purchases.
+- **23% Non-Resale (L)** — standard-rate costs that aren't resale stock
+  (most overheads, sundries, fuel, etc.).
+- **13.5% Non-Resale (M)** — hospitality/service rate: some food service,
+  accommodation, certain hospitality services, and reduced-rate works.
+- **9% Non-Resale (N)** — legacy reduced hospitality rate (e.g. food during
+  reduced-rate periods); few transactions, kept for continuity.
+- **0% Non-Resale (O)** — no VAT: lottery, tips, exempt income,
+  deposits/refunds, bottle returns.
+
+## Why the documents matter (from Jack)
+
+Every matched document is kept for two reasons: **audit defence** (Revenue can
+ask for proof of any transaction) and **price verification** (catching when a
+supplier has overcharged). The document chain the reconciliation engine builds
+*is* that proof — which is why the deliverable is a "VAT File – **Audit
+Report**".
+
+## Open question (for John / O'Farrell)
+
+The VAT book is purchases/input only. **Where does output VAT on sales come
+from** — separate file, till Z-readings, or O'Farrell's side? This decides
+whether our deliverable is "purchases + audit trail" or the full return.
+
 ## What a VAT book row is
 
 For each bank transaction, the hand-made VAT book records two things:
