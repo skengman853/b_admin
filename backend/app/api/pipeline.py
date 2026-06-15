@@ -46,15 +46,20 @@ async def scan_recent_pipeline(
     )
     connection = result.scalar_one_or_none()
     if not connection:
-        raise HTTPException(status_code=400, detail="Gmail is not connected")
+        raise HTTPException(status_code=400, detail="Gmail is not connected. Use Connect Gmail first.")
 
-    summary = await scan_recent_documents(
-        user=user,
-        connection=connection,
-        db=db,
-        days=body.days,
-        max_messages=body.max_messages,
-        force=body.force,
-        sync_drive=settings.pipeline_auto_sync_to_drive if body.sync_drive is None else body.sync_drive,
-    )
+    try:
+        summary = await scan_recent_documents(
+            user=user,
+            connection=connection,
+            db=db,
+            days=body.days,
+            max_messages=body.max_messages,
+            force=body.force,
+            sync_drive=settings.pipeline_auto_sync_to_drive if body.sync_drive is None else body.sync_drive,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # surface a clean message instead of a raw 500
+        raise HTTPException(status_code=502, detail=f"Gmail scan failed: {exc}") from exc
     return PipelineScanResponse.model_validate(summary)

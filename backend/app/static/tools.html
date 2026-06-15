@@ -31,9 +31,10 @@
   <div id="banner"></div>
 
   <div class="card">
-    <h2>1. Scan Gmail for new invoices</h2>
-    <p>Pull recent supplier emails into the document store so there's something to match.</p>
+    <h2>1. Gmail</h2>
+    <p>Connect the business inbox, then pull recent supplier emails into the document store.</p>
     <div class="controls">
+      <button class="run" data-op="connect" style="background:#0a7">Connect Gmail</button>
       <label>Days back <input type="number" id="scanDays" value="30" min="1" max="365" style="width:80px"></label>
       <button class="run" data-op="scan">Scan Gmail</button>
     </div>
@@ -71,34 +72,72 @@
   function hdrs(){ const h=new Headers({"Content-Type":"application/json"}); if(token) h.set("Authorization",`Bearer ${token}`); return h; }
   function show(id, ok, text){ const el=document.getElementById(id); el.style.display="block"; el.className="result "+(ok?"ok":"err"); el.textContent=text; }
 
+  // Parse a response that may be JSON or a plain-text error (timeouts, 500s).
+  async function parseResponse(res){
+    const text = await res.text();
+    try { return { ok: res.ok, body: JSON.parse(text) }; }
+    catch { return { ok: res.ok, body: { detail: text.slice(0, 200) } }; }
+  }
+
+  async function doConnect(button){
+    button.disabled = true;
+    try{
+      const res = await fetch("/api/gmail/auth-url", { headers: hdrs() });
+      const { ok, body } = await parseResponse(res);
+      if(!ok || !body.url) throw new Error(body.detail || "could not get auth URL");
+      window.open(body.url, "_blank");
+      show("r-scan", true, "Opened Google sign-in in a new tab. Approve access, then come back and Scan Gmail.");
+    }catch(e){ show("r-scan", false, String(e.message||e)); }
+    finally{ button.disabled=false; }
+  }
+
+  // Extraction runs synchronously per request, so do it in small chunks the
+  // server can finish before any proxy timeout, looping until nothing is left.
+  async function doExtractChunked(button){
+    const force = document.getElementById("extractForce").checked;
+    const target = +document.getElementById("extractLimit").value;
+    const CHUNK = 15;
+    let extracted=0, skipped=0, done=0;
+    show("r-extract", true, "Starting…");
+    while(done < target){
+      const limit = Math.min(CHUNK, target - done);
+      let res;
+      try{ res = await fetch("/api/documents/extract", {method:"POST", headers:hdrs(), body:JSON.stringify({limit, force})}); }
+      catch(e){ show("r-extract", false, `Network error after ${done} processed: ${e.message}`); return; }
+      const { ok, body } = await parseResponse(res);
+      if(!ok){ show("r-extract", false, `Stopped after ${done}: ${body.detail}`); return; }
+      const req = body.requested ?? 0;
+      extracted += body.extracted ?? 0; skipped += body.skipped ?? 0; done += req;
+      show("r-extract", true, `Working… extracted ${extracted}, skipped ${skipped} so far.`);
+      if(req === 0) break;  // nothing left to do
+    }
+    show("r-extract", true, `Done. Extracted ${extracted}, skipped ${skipped}.`);
+  }
+
   async function run(op, button){
+    if(op==="connect") return doConnect(button);
+    if(op==="extract") { button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doExtractChunked(button); button.disabled=false; button.textContent=o; return; }
     button.disabled = true;
     const orig = button.textContent; button.textContent = "Running…";
+    const id = op==="scan" ? "r-scan" : "r-match";
     try{
-      let res, body, id;
+      let res;
       if(op==="scan"){
-        id="r-scan";
-        res = await fetch("/api/pipeline/scan-recent", {method:"POST", headers:hdrs(), body:JSON.stringify({days:+document.getElementById("scanDays").value, max_messages:200})});
-      } else if(op==="extract"){
-        id="r-extract";
-        res = await fetch("/api/documents/extract", {method:"POST", headers:hdrs(), body:JSON.stringify({limit:+document.getElementById("extractLimit").value, force:document.getElementById("extractForce").checked})});
+        res = await fetch("/api/pipeline/scan-recent", {method:"POST", headers:hdrs(), body:JSON.stringify({days:+document.getElementById("scanDays").value, max_messages:100})});
       } else {
-        id="r-match";
         const m=document.getElementById("matchMonth").value;
         res = await fetch(`/api/transactions/rebuild-matching?month=${m}`, {method:"POST", headers:hdrs()});
       }
-      body = await res.json();
-      if(!res.ok) throw new Error(body.detail || `failed (${res.status})`);
+      const { ok, body } = await parseResponse(res);
+      if(!ok) throw new Error(body.detail || `failed (${res.status})`);
       show(id, true, summarise(op, body));
     }catch(e){
-      const id = op==="scan"?"r-scan":op==="extract"?"r-extract":"r-match";
       show(id, false, String(e.message||e));
     }finally{ button.disabled=false; button.textContent=orig; }
   }
 
   function summarise(op, b){
-    if(op==="scan") return `Imported ${b.imported ?? b.new_documents ?? "?"} document(s); scanned ${b.scanned ?? b.messages_scanned ?? "?"} message(s).`;
-    if(op==="extract") return `Extracted ${b.extracted ?? "?"}, skipped ${b.skipped ?? "?"} of ${b.requested ?? "?"}.`;
+    if(op==="scan") return `Imported ${b.imported ?? b.new_documents ?? b.documents_imported ?? "?"} document(s); scanned ${b.scanned ?? b.messages_scanned ?? "?"} message(s).`;
     return `${b.month}: matched ${b.matched}, partial ${b.partial}, suggested ${b.suggested}, unmatched ${b.unmatched}.\nbuckets: ${JSON.stringify(b.buckets)}`;
   }
 
