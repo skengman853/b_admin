@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -805,28 +806,17 @@ async def import_transactions(
     return response
 
 
-@router.get("/vat-book")
-async def get_vat_book(
-    month: str,
-    pub: str | None = None,
-    source_type: str = "vatbook",
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+async def _build_period_vat_book(
+    *, db: AsyncSession, user: User, month: str, pub: str | None, source_type: str
 ):
-    """Stage A: generate VAT-book rows for a period.
-
-    Rules are learned from the operator's categorised history (vatbook rows)
-    *outside* the selected month, so accuracy shown for a vatbook month is a
-    genuine held-out measure. For source_type=bank_statement it is pure
-    generation (no ground truth to compare).
-    """
+    """Shared generator: train rules, load the period's transactions + their
+    matched documents, and build VAT-book rows. Used by both the JSON view and
+    the Excel export."""
     from app.services.vat_categorisation import build_vat_book, learn_ruleset
 
     start, end = _parse_month(month)
     target_source = _parse_source_type(source_type)
 
-    # Training: the operator's categorised history outside the target month —
-    # the hand-made vatbook rows plus any categories the operator has confirmed.
     training_result = await db.execute(
         select(Transaction).where(
             Transaction.user_id == user.id,
@@ -851,8 +841,6 @@ async def get_vat_book(
     )
     targets = list(target_result.scalars().all())
 
-    # Matched documents per transaction: supplier strengthens resale prediction,
-    # and the document's real gross+VAT drives the band for ambiguous costs.
     supplier_by_transaction: dict = {}
     document_vat_by_transaction: dict = {}
     target_ids = [t.id for t in targets]
@@ -869,7 +857,6 @@ async def get_vat_book(
         )
         for link, document in link_result.all():
             confirmed = link.status == "confirmed"
-            # Prefer a confirmed link's supplier; first one wins otherwise.
             if document.supplier and (confirmed or link.transaction_id not in supplier_by_transaction):
                 supplier_by_transaction[link.transaction_id] = document.supplier
             if document.amount is not None and document.vat_amount is not None and (
@@ -882,6 +869,27 @@ async def get_vat_book(
         ruleset=ruleset,
         supplier_by_transaction=supplier_by_transaction,
         document_vat_by_transaction=document_vat_by_transaction,
+    )
+    return targets, rows, ruleset, target_source
+
+
+@router.get("/vat-book")
+async def get_vat_book(
+    month: str,
+    pub: str | None = None,
+    source_type: str = "vatbook",
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stage A: generate VAT-book rows for a period.
+
+    Rules are learned from the operator's categorised history (vatbook rows)
+    *outside* the selected month, so accuracy shown for a vatbook month is a
+    genuine held-out measure. For source_type=bank_statement it is pure
+    generation (no ground truth to compare).
+    """
+    _, rows, ruleset, target_source = await _build_period_vat_book(
+        db=db, user=user, month=month, pub=pub, source_type=source_type
     )
     scored = [r for r in rows if r.category_correct is not None]
     correct = sum(1 for r in scored if r.category_correct)
@@ -917,6 +925,33 @@ async def get_vat_book(
             for r in rows
         ],
     }
+
+
+@router.get("/vat-book/export")
+async def export_vat_book(
+    month: str,
+    pub: str | None = None,
+    source_type: str = "bank_statement",
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stage D: download the period's VAT book as .xlsx in O'Farrell's format."""
+    from app.services.vat_book_export import write_vat_book_xlsx
+
+    targets, rows, _ruleset, _src = await _build_period_vat_book(
+        db=db, user=user, month=month, pub=pub, source_type=source_type
+    )
+    rows_by_id = {r.transaction_id: r for r in rows}
+    period_label = month.replace("-", " ")
+    content = write_vat_book_xlsx(targets=targets, rows_by_id=rows_by_id, period_label=period_label)
+
+    pub_part = f" - {pub}" if pub else ""
+    filename = f"CAREYS BAR - VAT-CASH - {month}{pub_part}.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/vat-categories")

@@ -11,6 +11,8 @@
   header{display:flex;align-items:center;gap:14px;padding:16px 24px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap;}
   header h1{font-size:16px;margin:0;font-weight:650;}
   header input,header select{border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;background:var(--bg);}
+  #export{background:var(--good);color:#fff;border:none;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer;}
+  #export:disabled{opacity:.5;}
   #stats{margin-left:auto;display:flex;gap:18px;align-items:center;}
   .stat{text-align:right;}
   .stat b{display:block;font-size:18px;}
@@ -62,6 +64,7 @@
     <option value="all">All rows</option>
     <option value="miss">Only mismatches / unknown</option>
   </select>
+  <button id="export">Export Excel</button>
   <div id="stats"></div>
 </header>
 <main>
@@ -188,6 +191,22 @@
       loading.style.display="none"; render();
     }catch(e){loading.style.display="none";banner.style.display="block";banner.textContent=e.message;}
   }
+  const exportBtn=document.getElementById("export");
+  exportBtn.addEventListener("click", async ()=>{
+    exportBtn.disabled=true; const label=exportBtn.textContent; exportBtn.textContent="Exporting…";
+    try{
+      const p=new URLSearchParams({month:monthEl.value, source_type:srcEl.value});
+      if(pubEl.value) p.set("pub", pubEl.value);
+      const res=await fetch(`/api/transactions/vat-book/export?${p}`,{headers:authHeaders()});
+      if(!res.ok) throw new Error(`export failed (${res.status})`);
+      const blob=await res.blob();
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download=`CAREYS BAR - VAT-CASH - ${monthEl.value}${pubEl.value?" - "+pubEl.value:""}.xlsx`;
+      a.click();
+    }catch(e){alert(e.message);} finally{exportBtn.disabled=false; exportBtn.textContent=label;}
+  });
+
   monthEl.onchange=load; srcEl.onchange=load;
   pubEl.onchange=render; showEl.onchange=render;
   load();
