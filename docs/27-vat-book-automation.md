@@ -51,11 +51,39 @@ supplier has overcharged). The document chain the reconciliation engine builds
 *is* that proof — which is why the deliverable is a "VAT File – **Audit
 Report**".
 
-## Open question (for John / O'Farrell)
+## Sales side — in scope via weekly takings (Jack, confirmed)
 
-The VAT book is purchases/input only. **Where does output VAT on sales come
-from** — separate file, till Z-readings, or O'Farrell's side? This decides
-whether our deliverable is "purchases + audit trail" or the full return.
+The VAT book file is purchases/input only, but **sales are in scope**: Jack will
+provide the **weekly takings, per night**, alongside the bank statement. So the
+weekly input is two streams — **money out** (bank statement → purchases) and
+**money in** (nightly takings → sales). Output VAT comes from takings, input VAT
+from categorised purchases; the system can show the full VAT position.
+
+Open detail for John: how do takings split for VAT (drink @23% vs food
+@13.5%/9%)? Are nightly takings a single figure or already broken down? This sets
+how output VAT is computed.
+
+## Codes taxonomy = the category master
+
+The MAY-JUN file carries a **"Codes" sheet** — the canonical chart of accounts:
+each Category, its pub prefix (CAR-), its group (009 Resale, 010 Wages,
+004 Power & Heat, 006 Maintenance & Renov, 011 Govt, 001 Bank, 002 Comms, …),
+and the full validation list. The automation should adopt this taxonomy directly
+rather than inferring categories — it is the operator's own answer key, and new
+suppliers (Bulmers Direct, Counterpoint, Primeline) already appear in it.
+
+## Stage A result (cross-period, honest)
+
+Trained category rules on MAR-APR, tested on the unseen MAY data (95 txns):
+- **category correct: 81%** (93% of those a rule existed for),
+- **13 unknowns** → correctly routed to review; all new payees/staff
+  (the evolving-staff case),
+- band accuracy is the weak spot **by description alone** — the ambiguous
+  categories need the matched invoice's VAT lines, which this test did not use.
+
+This is the floor: description-only, no document-matching signal yet. The
+document layer raises both category (supplier confirmation) and band (actual
+invoice VAT) from here.
 
 ## What a VAT book row is
 

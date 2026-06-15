@@ -116,12 +116,15 @@ Ordered to extract the knowledge that's about to walk out the door.
 12. Anything that arrives **outside Gmail** (cash purchases, card receipts,
     direct paper)?
 
-### The two pubs & income
+### The two pubs & income / takings
 13. Are Careys and Canal **separate VAT returns or combined**? One VAT
     registration or two?
-14. How is **income/sales** (the lodgements) recorded, and how do you get the
+14. **Takings:** we'll provide weekly takings per night. How should they split
+    for VAT — drink @23% vs food @13.5%/9%? One figure per night, or already
+    broken down? (This sets how output VAT is computed.)
+15. How does **output VAT on takings** reconcile against the **lodgements** in
+    the bank (card via Valitor/Paymentsense, cash) — and how do you get the
     **gross margin** figure?
-15. How is **cash takings vs card (BOI Card lodgements)** handled?
 
 ### The hard parts
 16. What are the **most error-prone / fiddly** parts of the current process —

@@ -24,13 +24,14 @@ no clutter, nothing on screen that isn't part of the decision in front of you.
   document store (`documents`), get extracted into financial facts/rows, and
   are pushed to R2. This already runs.
 
-### Weekly (one action)
-- The operator uploads **that week's bank transactions** (the bank statement).
-  Bank statements are the source of truth for transactions — nothing else
-  creates a transaction.
-- On import the system automatically matches each transaction to its
-  documents: direct invoice matches, statement settlements, supporting docs.
-  The operator does nothing here — they just upload.
+### Weekly (two inputs)
+- **Money out:** the operator uploads **that week's bank statement**. Bank
+  statements are the source of truth for transactions — nothing else creates a
+  transaction. On import the system auto-matches each to its documents (direct
+  invoice, statement settlement, supporting docs).
+- **Money in:** the operator provides the **week's takings, per night**. This is
+  the sales side — it drives output VAT.
+- Both are quick inputs; the matching and categorisation happen automatically.
 
 ### Working a period (the only real "work")
 The organizing unit is the **week**, aligned to the weekly upload. The operator
