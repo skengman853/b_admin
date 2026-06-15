@@ -115,6 +115,7 @@
   .doc-main small { color: var(--muted); }
   .doc-date { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .doc-amount { text-align: right; font-variant-numeric: tabular-nums; }
+  .doc-actions { display: flex; gap: 6px; justify-content: flex-end; }
   .doc button {
     border: 1px solid var(--line);
     background: var(--card);
@@ -126,6 +127,12 @@
     color: var(--accent);
   }
   .doc button:hover { border-color: var(--accent); }
+  .doc button:disabled { opacity: 0.5; }
+  .link-btn.confirm { color: #fff; background: var(--good); border-color: var(--good); }
+  .link-btn.reject { color: var(--bad); }
+  .doc.is-confirmed { background: #f0faf3; }
+  .confirmed-tag { color: var(--good); font-size: 12px; align-self: center; }
+  .doc { grid-template-columns: 86px 1fr 96px 96px auto; }
   .docs .empty { color: var(--muted); padding: 12px 4px; font-size: 14px; }
   .docs .note { color: var(--muted); font-size: 12.5px; padding: 6px 4px 0; }
   #loading { text-align: center; color: var(--muted); padding: 40px; }
@@ -154,6 +161,7 @@
     token: localStorage.getItem("b_admin_token") || "",
     items: [],
   };
+  const openRows = new Set();
 
   const monthInput = document.getElementById("month");
   const pubSelect = document.getElementById("pub");
@@ -202,6 +210,7 @@
         id,
         kind,
         kindClass,
+        confirmed: kind === "confirmed",
         type: doc.document_type || "",
         supplier: doc.supplier || "",
         reference: doc.reference || entry.reference || "",
@@ -221,24 +230,52 @@
 
   function renderDocs(item) {
     const docs = collectDocuments(item);
+    const txnId = item.transaction.id;
     if (!docs.length) {
-      return `<div class="empty">No documents found for this transaction yet.</div>`;
+      return `<div class="empty">No documents matched to this transaction yet.</div>`;
     }
     const rows = docs
       .map(
-        (d) => `
-      <div class="doc">
+        (d) => {
+          const role = ["invoice", "credit_note", "statement"].includes(d.type) ? d.type : "invoice";
+          const action = d.confirmed
+            ? `<span class="confirmed-tag">confirmed ✓</span>
+               <button class="link-btn reject" data-txn="${txnId}" data-doc="${d.id}" data-role="${role}">Unlink</button>`
+            : `<button class="link-btn confirm" data-txn="${txnId}" data-doc="${d.id}" data-role="${role}">Confirm</button>
+               <button class="link-btn reject" data-txn="${txnId}" data-doc="${d.id}" data-role="${role}">Reject</button>`;
+          return `
+      <div class="doc ${d.confirmed ? "is-confirmed" : ""}">
         <span class="doc-kind ${d.kindClass}">${d.kind}</span>
         <span class="doc-main">${d.supplier} ${d.type ? "· " + d.type.replace("_", " ") : ""}
           <small>${d.reference ? "ref " + d.reference : ""}</small></span>
         <span class="doc-date">${d.date || ""}</span>
         <span class="doc-amount">${money(d.amount)}</span>
-        <button data-doc="${d.id}">Open</button>
-      </div>`
+        <span class="doc-actions">
+          <button class="open-btn" data-doc="${d.id}">Open</button>
+          ${action}
+        </span>
+      </div>`;
+        }
       )
       .join("");
     const note = item.resolution_reason || item.analysis_note || "";
     return rows + (note ? `<div class="note">${note}</div>` : "");
+  }
+
+  async function linkAction(txnId, documentId, role, status, button) {
+    button.disabled = true;
+    try {
+      const response = await fetch(`/api/transactions/${txnId}/links`, {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json" }, Object.fromEntries(headers())),
+        body: JSON.stringify({ document_id: documentId, role, status }),
+      });
+      if (!response.ok) throw new Error(`save failed (${response.status})`);
+      await load();
+    } catch (error) {
+      alert(error.message);
+      button.disabled = false;
+    }
   }
 
   function render() {
@@ -259,7 +296,7 @@
         const amount = debit ? t.debit_amount : t.credit_amount;
         const docCount = collectDocuments(item).length;
         return `
-        <div class="txn" data-index="${index}">
+        <div class="txn" data-index="${index}" data-txnid="${t.id}">
           <div class="txn-row">
             <span class="txn-date">${t.transaction_date || ""}</span>
             <span class="txn-desc">${t.description1 || ""}<small>${[t.pub, t.source_type === "bank_statement" ? "bank" : "VAT book", t.description2].filter(Boolean).join(" · ")}${docCount ? ` · ${docCount} document${docCount > 1 ? "s" : ""}` : ""}</small></span>
@@ -270,10 +307,19 @@
         </div>`;
       })
       .join("");
-    list.querySelectorAll(".txn-row").forEach((row) => {
-      row.addEventListener("click", () => row.parentElement.classList.toggle("open"));
+    list.querySelectorAll(".txn").forEach((el) => {
+      const id = el.dataset.txnid;
+      if (openRows.has(id)) el.classList.add("open");
     });
-    list.querySelectorAll(".doc button").forEach((button) => {
+    list.querySelectorAll(".txn-row").forEach((row) => {
+      row.addEventListener("click", () => {
+        const txn = row.parentElement;
+        txn.classList.toggle("open");
+        if (txn.classList.contains("open")) openRows.add(txn.dataset.txnid);
+        else openRows.delete(txn.dataset.txnid);
+      });
+    });
+    list.querySelectorAll(".open-btn").forEach((button) => {
       button.addEventListener("click", async (event) => {
         event.stopPropagation();
         button.disabled = true;
@@ -287,6 +333,13 @@
         } finally {
           button.disabled = false;
         }
+      });
+    });
+    list.querySelectorAll(".link-btn").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const status = button.classList.contains("confirm") ? "confirmed" : "rejected";
+        linkAction(button.dataset.txn, button.dataset.doc, button.dataset.role, status, button);
       });
     });
   }
