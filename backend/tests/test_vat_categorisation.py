@@ -25,10 +25,12 @@ try:
     from app.models import Transaction  # noqa: E402
     from app.services.vat_categorisation import (  # noqa: E402
         build_vat_book,
+        derive_nonresale_band,
         learn_ruleset,
         normalize_description,
         predict,
     )
+    from decimal import Decimal as D
 except ModuleNotFoundError as exc:  # pragma: no cover
     _missing = str(exc)
 
@@ -108,6 +110,52 @@ class RulesetTests(unittest.TestCase):
         self.assertTrue(rows[0].category_correct)
         self.assertEqual(rows[1].source, "unknown")
         self.assertFalse(rows[1].category_correct)
+
+
+@unittest.skipIf(_missing is not None, f"requires app deps: {_missing}")
+class DeriveBandTests(unittest.TestCase):
+    def test_derives_standard_rates(self) -> None:
+        self.assertEqual(derive_nonresale_band(D("123.00"), D("23.00")), "non_resale_23")
+        self.assertEqual(derive_nonresale_band(D("113.50"), D("13.50")), "non_resale_13_5")
+        self.assertEqual(derive_nonresale_band(D("109.00"), D("9.00")), "non_resale_9")
+        self.assertEqual(derive_nonresale_band(D("100.00"), D("0.00")), "non_resale_0")
+
+    def test_picks_nearest_for_messy_numbers(self) -> None:
+        # 13.4% effective -> 13.5 band
+        self.assertEqual(derive_nonresale_band(D("226.80"), D("26.80")), "non_resale_13_5")
+
+    def test_none_when_data_missing(self) -> None:
+        self.assertIsNone(derive_nonresale_band(None, D("23")))
+        self.assertIsNone(derive_nonresale_band(D("100"), None))
+
+
+@unittest.skipIf(_missing is not None, f"requires app deps: {_missing}")
+class BandFromInvoiceTests(unittest.TestCase):
+    def test_matched_invoice_overrides_category_default_band(self) -> None:
+        # train: "Renovation" usually 23%
+        training = [_txn("BUILDER A", "Careys", "Renovation", "1000", nr23="1000")]
+        ruleset = learn_ruleset(training)
+        # a Renovation transaction whose matched invoice is actually 13.5%
+        target = _txn("BUILDER A", "Careys", "Renovation", "227.00", nr135="227.00")
+        rows = build_vat_book(
+            targets=[target],
+            ruleset=ruleset,
+            document_vat_by_transaction={target.id: (D("227.00"), D("27.00"))},
+        )
+        self.assertEqual(rows[0].predicted_band, "non_resale_13_5")
+        self.assertEqual(rows[0].band_source, "matched_invoice")
+
+    def test_resale_band_not_overridden(self) -> None:
+        training = [_txn("D/D DIAGEO IRELAND", "Careys", "Resale - Diageo - Careys", "100", r23="100")]
+        ruleset = learn_ruleset(training)
+        target = _txn("D/D DIAGEO IRELAND", "Careys")
+        rows = build_vat_book(
+            targets=[target],
+            ruleset=ruleset,
+            document_vat_by_transaction={target.id: (D("100"), D("0"))},  # would imply 0% if applied
+        )
+        self.assertEqual(rows[0].predicted_band, "resale_23")
+        self.assertEqual(rows[0].band_source, "category_default")
 
 
 if __name__ == "__main__":

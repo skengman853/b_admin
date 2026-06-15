@@ -851,7 +851,38 @@ async def get_vat_book(
     )
     targets = list(target_result.scalars().all())
 
-    rows = build_vat_book(targets=targets, ruleset=ruleset)
+    # Matched documents per transaction: supplier strengthens resale prediction,
+    # and the document's real gross+VAT drives the band for ambiguous costs.
+    supplier_by_transaction: dict = {}
+    document_vat_by_transaction: dict = {}
+    target_ids = [t.id for t in targets]
+    if target_ids:
+        link_result = await db.execute(
+            select(TransactionDocumentLink, Document)
+            .join(Document, Document.id == TransactionDocumentLink.document_id)
+            .where(
+                TransactionDocumentLink.user_id == user.id,
+                TransactionDocumentLink.transaction_id.in_(target_ids),
+                TransactionDocumentLink.role.in_(["invoice", "credit_note", "statement"]),
+            )
+            .order_by(TransactionDocumentLink.created_at.asc())
+        )
+        for link, document in link_result.all():
+            confirmed = link.status == "confirmed"
+            # Prefer a confirmed link's supplier; first one wins otherwise.
+            if document.supplier and (confirmed or link.transaction_id not in supplier_by_transaction):
+                supplier_by_transaction[link.transaction_id] = document.supplier
+            if document.amount is not None and document.vat_amount is not None and (
+                confirmed or link.transaction_id not in document_vat_by_transaction
+            ):
+                document_vat_by_transaction[link.transaction_id] = (document.amount, document.vat_amount)
+
+    rows = build_vat_book(
+        targets=targets,
+        ruleset=ruleset,
+        supplier_by_transaction=supplier_by_transaction,
+        document_vat_by_transaction=document_vat_by_transaction,
+    )
     scored = [r for r in rows if r.category_correct is not None]
     correct = sum(1 for r in scored if r.category_correct)
     unknown = sum(1 for r in rows if r.source == "unknown")
@@ -878,6 +909,7 @@ async def get_vat_book(
                 "predicted_band": r.predicted_band,
                 "predicted_band_label": r.predicted_band_label,
                 "source": r.source,
+                "band_source": r.band_source,
                 "actual_category": r.actual_category,
                 "category_correct": r.category_correct,
                 "confirmed": r.confirmed,

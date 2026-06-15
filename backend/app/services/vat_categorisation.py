@@ -70,6 +70,32 @@ def band_label(band: str | None) -> str | None:
     return _BAND_LABEL.get(band) if band else None
 
 
+# Non-resale rate -> band key. Resale is always 23% in the operator's taxonomy,
+# so rate derivation only ever picks a *non-resale* band.
+_NONRESALE_RATE_BAND = (
+    (Decimal("0.23"), "non_resale_23"),
+    (Decimal("0.135"), "non_resale_13_5"),
+    (Decimal("0.09"), "non_resale_9"),
+    (Decimal("0.0"), "non_resale_0"),
+)
+
+
+def derive_nonresale_band(gross: Decimal | None, vat: Decimal | None) -> str | None:
+    """Infer the non-resale VAT band from a document's actual gross + VAT.
+
+    rate = VAT / (gross - VAT); matched to the nearest Irish rate. This is how
+    an ambiguous cost (Renovation 23 vs 13.5, Electricity 13.5 vs 9) gets its
+    band from the real invoice rather than a category default.
+    """
+    if gross is None or vat is None:
+        return None
+    net = gross - vat
+    if net <= 0:
+        return "non_resale_0" if vat == 0 else None
+    rate = vat / net
+    return min(_NONRESALE_RATE_BAND, key=lambda rb: abs(rate - rb[0]))[1]
+
+
 @dataclass(slots=True)
 class CategoryRuleset:
     # (normalized description, pub) -> category
@@ -157,6 +183,7 @@ class VatBookRow:
     predicted_band: str | None
     predicted_band_label: str | None
     source: str
+    band_source: str  # "category_default" | "matched_invoice" | "none"
     actual_category: str | None
     actual_band: str | None
     category_correct: bool | None  # None when no ground truth to compare
@@ -168,13 +195,29 @@ def build_vat_book(
     targets: list[Transaction],
     ruleset: CategoryRuleset,
     supplier_by_transaction: dict | None = None,
+    document_vat_by_transaction: dict | None = None,
 ) -> list[VatBookRow]:
     supplier_by_transaction = supplier_by_transaction or {}
+    document_vat_by_transaction = document_vat_by_transaction or {}
     rows: list[VatBookRow] = []
     for txn in targets:
         prediction = predict(
             txn, ruleset, matched_supplier=supplier_by_transaction.get(txn.id)
         )
+        band = prediction.band
+        band_source = "category_default" if band else "none"
+
+        # Stage C: for non-resale costs, prefer the band implied by the matched
+        # invoice's real VAT over the category default (fixes Renovation 23 vs
+        # 13.5, Electricity 13.5 vs 9, etc.).
+        if prediction.category and not prediction.category.lower().startswith("resale"):
+            gross_vat = document_vat_by_transaction.get(txn.id)
+            if gross_vat is not None:
+                derived = derive_nonresale_band(*gross_vat)
+                if derived is not None:
+                    band = derived
+                    band_source = "matched_invoice"
+
         actual_category = txn.category or None
         category_correct = (
             (prediction.category == actual_category) if actual_category else None
@@ -188,9 +231,10 @@ def build_vat_book(
                 debit_amount=txn.debit_amount,
                 credit_amount=txn.credit_amount,
                 predicted_category=prediction.category,
-                predicted_band=prediction.band,
-                predicted_band_label=band_label(prediction.band),
+                predicted_band=band,
+                predicted_band_label=band_label(band),
                 source=prediction.source,
+                band_source=band_source,
                 actual_category=actual_category,
                 actual_band=transaction_band(txn),
                 category_correct=category_correct,

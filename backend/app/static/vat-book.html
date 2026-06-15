@@ -112,7 +112,7 @@
         <td>${r.description||""}</td>
         <td class="amt">${r.debit_amount?money(r.debit_amount):(r.credit_amount?"+"+money(r.credit_amount):"")}</td>
         <td>${cat}${actual}<div class="src">${(r.source||"").replace("_"," ")}</div></td>
-        <td class="band">${r.predicted_band_label||""}</td>
+        <td class="band">${r.predicted_band_label||""}${r.band_source==="matched_invoice"?'<div class="src">from invoice</div>':""}</td>
       </tr>
       <tr class="detail" id="detail-${r.transaction_id}" style="display:none"><td colspan="6">loading…</td></tr>`;
     }).join("");
