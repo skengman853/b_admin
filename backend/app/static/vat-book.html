@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VAT Book (generated)</title>
+<style>
+  :root{--bg:#fafafa;--card:#fff;--ink:#1a1d21;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;--good:#15803d;--warn:#b45309;--bad:#b91c1c;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  header{display:flex;align-items:center;gap:14px;padding:16px 24px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap;}
+  header h1{font-size:16px;margin:0;font-weight:650;}
+  header input,header select{border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;background:var(--bg);}
+  #stats{margin-left:auto;display:flex;gap:18px;align-items:center;}
+  .stat{text-align:right;}
+  .stat b{display:block;font-size:18px;}
+  .stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .acc b{color:var(--good);}
+  main{max-width:1080px;margin:18px auto 80px;padding:0 18px;}
+  #banner{background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:none;}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid #f0f1f3;font-size:14px;}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:#fcfcfd;position:sticky;top:64px;}
+  td.amt{text-align:right;font-variant-numeric:tabular-nums;}
+  td.date{color:var(--muted);white-space:nowrap;}
+  .mark{display:inline-block;width:20px;text-align:center;font-weight:700;}
+  .ok{color:var(--good);} .bad{color:var(--bad);} .unk{color:var(--warn);}
+  tr.miss{background:#fffaf3;}
+  .band{font-size:12px;color:var(--muted);}
+  .src{font-size:11px;color:var(--muted);}
+  .actual{font-size:12px;color:var(--bad);}
+  #loading{text-align:center;color:var(--muted);padding:40px;}
+  .legend{font-size:12px;color:var(--muted);margin:10px 2px 0;}
+</style>
+</head>
+<body>
+<header>
+  <h1>VAT Book <span style="font-weight:400;color:var(--muted)">(auto-generated)</span></h1>
+  <input type="month" id="month" />
+  <select id="pub"><option value="">All pubs</option></select>
+  <select id="source">
+    <option value="vatbook">Validate vs hand-made</option>
+    <option value="bank_statement">Generate from bank</option>
+  </select>
+  <select id="show">
+    <option value="all">All rows</option>
+    <option value="miss">Only mismatches / unknown</option>
+  </select>
+  <div id="stats"></div>
+</header>
+<main>
+  <div id="banner"></div>
+  <div id="loading">Loading…</div>
+  <div id="content"></div>
+  <div class="legend" id="legend"></div>
+</main>
+<script>
+  const token = localStorage.getItem("b_admin_token") || "";
+  const monthEl=document.getElementById("month"), pubEl=document.getElementById("pub"),
+        srcEl=document.getElementById("source"), showEl=document.getElementById("show"),
+        stats=document.getElementById("stats"), banner=document.getElementById("banner"),
+        loading=document.getElementById("loading"), content=document.getElementById("content"),
+        legend=document.getElementById("legend");
+  const now=new Date(); monthEl.value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  let data=null;
+
+  function money(v){return v==null?"":Number(v).toLocaleString("en-IE",{minimumFractionDigits:2,maximumFractionDigits:2});}
+
+  function render(){
+    if(!data) return;
+    const validating = data.source_type==="vatbook";
+    stats.innerHTML =
+      (validating && data.category_accuracy!=null
+        ? `<div class="stat acc"><b>${Math.round(data.category_accuracy*100)}%</b><span>category match</span></div>` : "")
+      + `<div class="stat"><b>${data.total}</b><span>transactions</span></div>`
+      + `<div class="stat"><b>${data.unknown}</b><span>need naming</span></div>`;
+    let rows = data.rows;
+    if(pubEl.value) rows = rows.filter(r=>(r.pub||"")===pubEl.value);
+    if(showEl.value==="miss") rows = rows.filter(r=> r.source==="unknown" || r.category_correct===false);
+    const head = `<tr><th></th><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>VAT band</th></tr>`;
+    const body = rows.map(r=>{
+      let mark="", cls="";
+      if(r.category_correct===true){mark='<span class="mark ok">✓</span>';}
+      else if(r.source==="unknown"){mark='<span class="mark unk">?</span>'; cls="miss";}
+      else if(r.category_correct===false){mark='<span class="mark bad">✗</span>'; cls="miss";}
+      const cat = r.predicted_category || '<span class="src">— needs naming —</span>';
+      const actual = (validating && r.category_correct===false && r.actual_category)
+        ? `<div class="actual">should be: ${r.actual_category}</div>` : "";
+      return `<tr class="${cls}">
+        <td>${mark}</td>
+        <td class="date">${r.transaction_date||""}</td>
+        <td>${r.description||""}</td>
+        <td class="amt">${r.debit_amount?money(r.debit_amount):(r.credit_amount?"+"+money(r.credit_amount):"")}</td>
+        <td>${cat}${actual}<div class="src">${r.source.replace("_"," ")}</div></td>
+        <td class="band">${r.predicted_band_label||""}</td>
+      </tr>`;
+    }).join("");
+    content.innerHTML = `<table>${head}${body}</table>`;
+    legend.textContent = validating
+      ? `✓ system matched your hand-made category · ✗ system disagreed · ? new payee the system hasn't seen (name once and it's learned). Rules trained on every other period.`
+      : `Generated from bank transactions. ? = new payee to name. No hand-made book to compare this view against.`;
+  }
+
+  async function load(){
+    if(!token){banner.style.display="block";banner.textContent="No saved session — sign in on /review first, then come back.";loading.style.display="none";return;}
+    banner.style.display="none"; loading.style.display="block"; content.innerHTML="";
+    try{
+      const p=new URLSearchParams({month:monthEl.value,source_type:srcEl.value});
+      const res=await fetch(`/api/transactions/vat-book?${p}`,{headers:{Authorization:`Bearer ${token}`}});
+      if(res.status===401) throw new Error("Session expired — sign in on /review again.");
+      if(!res.ok) throw new Error(`load failed (${res.status})`);
+      data=await res.json();
+      const pubs=[...new Set(data.rows.map(r=>r.pub).filter(Boolean))].sort();
+      pubEl.innerHTML=`<option value="">All pubs</option>`+pubs.map(x=>`<option ${pubEl.value===x?"selected":""}>${x}</option>`).join("");
+      loading.style.display="none"; render();
+    }catch(e){loading.style.display="none";banner.style.display="block";banner.textContent=e.message;}
+  }
+  monthEl.onchange=load; srcEl.onchange=load;
+  pubEl.onchange=render; showEl.onchange=render;
+  load();
+</script>
+</body>
+</html>

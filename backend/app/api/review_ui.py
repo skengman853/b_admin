@@ -11,6 +11,7 @@ SUPPLIER_DOCUMENTS_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "s
 STATEMENT_WORKBENCH_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "statement-workbench.html"
 MONTH_AUDIT_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "month-audit.html"
 TRANSACTIONS_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "transactions.html"
+VAT_BOOK_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "vat-book.html"
 
 
 @router.get("/review")
@@ -36,3 +37,8 @@ async def get_month_audit_page():
 @router.get("/transactions")
 async def get_transactions_page():
     return FileResponse(TRANSACTIONS_UI_PATH)
+
+
+@router.get("/vat-book")
+async def get_vat_book_page():
+    return FileResponse(VAT_BOOK_UI_PATH)

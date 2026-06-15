@@ -805,6 +805,85 @@ async def import_transactions(
     return response
 
 
+@router.get("/vat-book")
+async def get_vat_book(
+    month: str,
+    pub: str | None = None,
+    source_type: str = "vatbook",
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stage A: generate VAT-book rows for a period.
+
+    Rules are learned from the operator's categorised history (vatbook rows)
+    *outside* the selected month, so accuracy shown for a vatbook month is a
+    genuine held-out measure. For source_type=bank_statement it is pure
+    generation (no ground truth to compare).
+    """
+    from app.services.vat_categorisation import build_vat_book, learn_ruleset
+
+    start, end = _parse_month(month)
+    target_source = _parse_source_type(source_type)
+
+    # Training: every categorised vatbook transaction outside the target month.
+    training_result = await db.execute(
+        select(Transaction).where(
+            Transaction.user_id == user.id,
+            Transaction.source_type == "vatbook",
+            Transaction.category.is_not(None),
+            ~((Transaction.transaction_date >= start) & (Transaction.transaction_date < end)),
+        )
+    )
+    ruleset = learn_ruleset(list(training_result.scalars().all()))
+
+    target_query = select(Transaction).where(
+        Transaction.user_id == user.id,
+        Transaction.transaction_date >= start,
+        Transaction.transaction_date < end,
+    )
+    if target_source:
+        target_query = target_query.where(Transaction.source_type == target_source)
+    if pub:
+        target_query = target_query.where(Transaction.pub == pub)
+    target_result = await db.execute(
+        target_query.order_by(Transaction.transaction_date.asc(), Transaction.row_number.asc())
+    )
+    targets = list(target_result.scalars().all())
+
+    rows = build_vat_book(targets=targets, ruleset=ruleset)
+    scored = [r for r in rows if r.category_correct is not None]
+    correct = sum(1 for r in scored if r.category_correct)
+    unknown = sum(1 for r in rows if r.source == "unknown")
+
+    return {
+        "month": month,
+        "pub": pub,
+        "source_type": target_source or "all",
+        "rule_categories": ruleset.category_count(),
+        "total": len(rows),
+        "scored": len(scored),
+        "category_correct": correct,
+        "category_accuracy": round(correct / len(scored), 3) if scored else None,
+        "unknown": unknown,
+        "rows": [
+            {
+                "transaction_id": str(r.transaction_id),
+                "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
+                "pub": r.pub,
+                "description": r.description,
+                "debit_amount": str(r.debit_amount) if r.debit_amount is not None else None,
+                "credit_amount": str(r.credit_amount) if r.credit_amount is not None else None,
+                "predicted_category": r.predicted_category,
+                "predicted_band_label": r.predicted_band_label,
+                "source": r.source,
+                "actual_category": r.actual_category,
+                "category_correct": r.category_correct,
+            }
+            for r in rows
+        ],
+    }
+
+
 @router.get("", response_model=TransactionListResponse)
 async def list_transactions(
     month: str | None = None,
