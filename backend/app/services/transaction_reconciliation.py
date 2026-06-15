@@ -75,6 +75,7 @@ GENERIC_SUPPLIER_TOKENS = {
     "attached",
     "billing",
     "business",
+    "canal",
     "careys",
     "copy",
     "credit",
@@ -95,6 +96,19 @@ GENERIC_SUPPLIER_TOKENS = {
     "services",
     "service",
     "the",
+    # Filename / note boilerplate the operator uses ("... - Date - ... - Linked").
+    # These appear in almost every document name and annotation, so they must
+    # never count as a meaningful supplier overlap.
+    "linked",
+    "date",
+    "dated",
+    "stmt",
+    "archive",
+    "scan",
+    "scanned",
+    "document",
+    "number",
+    "turn",
 }
 NO_DOCUMENT_EXPECTED_PATTERNS = (
     re.compile(r"\bbank\s+(?:charge|fee|interest)\b", re.IGNORECASE),

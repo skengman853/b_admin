@@ -25,8 +25,11 @@ try:
     from app.models import Document, Transaction  # noqa: E402
     from app.services.document_ledger import build_document_ledgers  # noqa: E402
     from app.services.transaction_reconciliation import (  # noqa: E402
+        _build_document_tokens,
+        _build_transaction_tokens,
         _find_exact_matches,
         _find_suggested_matches,
+        _supplier_compatibility,
     )
 except ModuleNotFoundError as exc:  # pragma: no cover - host Python may not have app deps
     _missing_dependencies = str(exc)
@@ -168,6 +171,44 @@ else:
             )
 
             self.assertEqual({match.reference for match in matches}, {"262"})
+
+
+@unittest.skipIf(_missing_dependencies is not None, f"requires app deps: {_missing_dependencies}")
+class FilenameBoilerplateOverlapTests(unittest.TestCase):
+    """Filename/note boilerplate ('- Linked', '- Date -') must not make an
+    unrelated supplier's document look compatible with a transaction."""
+
+    def test_radius_payment_not_compatible_with_connacht_statement(self) -> None:
+        txn = _vatbook_transaction("Careys", date(2026, 4, 7))
+        txn.source_type = "bank_statement"
+        txn.description1 = "D/D Radius Business"
+        txn.debit_amount = Decimal("22.51")
+        txn.annotation_notes = ["Invoice - DCI Velocity - INV041 - Date - 29_03_2026 - Linked"]
+
+        statement = Document(
+            id=uuid.uuid4(), user_id=uuid.uuid4(), gmail_message_id="c1",
+            attachment_index=0, derivation_index=0,
+            attachment_name="JJ Mahon - Stmt - 058 - Date - 30-04-2026 - Linked.pdf",
+            supplier="Connacht Bottlers", document_type="statement",
+        )
+        overlap = _build_transaction_tokens(txn) & _build_document_tokens(statement)
+        ok, _ = _supplier_compatibility(transaction=txn, document=statement, overlap=overlap)
+        self.assertFalse(ok, f"should not match; overlap was {overlap}")
+
+    def test_real_supplier_overlap_still_matches(self) -> None:
+        txn = _vatbook_transaction("Careys", date(2026, 4, 7))
+        txn.source_type = "bank_statement"
+        txn.description1 = "D/D CONNACHT BOTTLERS"
+        txn.debit_amount = Decimal("740.98")
+        statement = Document(
+            id=uuid.uuid4(), user_id=uuid.uuid4(), gmail_message_id="c2",
+            attachment_index=0, derivation_index=0,
+            attachment_name="JJ Mahon - Stmt - 058 - Linked.pdf",
+            supplier="Connacht Bottlers", document_type="statement",
+        )
+        overlap = _build_transaction_tokens(txn) & _build_document_tokens(statement)
+        ok, _ = _supplier_compatibility(transaction=txn, document=statement, overlap=overlap)
+        self.assertTrue(ok)
 
 
 if __name__ == "__main__":
