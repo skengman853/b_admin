@@ -168,6 +168,62 @@ def _build_document_detail_response(
     )
 
 
+@router.get("/store-summary")
+async def get_document_store_summary(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """The document store as a tree, rendered from the DB (doc 29).
+
+    Stage is derived, never stored, so it can't drift:
+      captured        -> supplier still unknown ('Other')
+      supplier_sorted -> supplier known, type still unknown
+      extracted       -> typed + data pulled
+    """
+    result = await db.execute(
+        select(Document).where(Document.user_id == user.id, Document.derivation_index == 0)
+    )
+    documents = list(result.scalars().all())
+
+    def stage_of(d: Document) -> str:
+        if not d.supplier or d.supplier == "Other":
+            return "captured"
+        if not d.document_type or d.document_type == "unknown":
+            return "supplier_sorted"
+        return "extracted"
+
+    def in_r2(d: Document) -> bool:
+        return d.storage_provider == "s3" and bool(d.storage_key)
+
+    stages = {"captured": 0, "supplier_sorted": 0, "extracted": 0}
+    storage = {"r2": 0, "local_only": 0}
+    suppliers: dict[str, dict] = {}
+    for d in documents:
+        st = stage_of(d)
+        stages[st] += 1
+        storage["r2" if in_r2(d) else "local_only"] += 1
+        key = d.supplier or "Other"
+        s = suppliers.setdefault(
+            key,
+            {"supplier": key, "total": 0, "captured": 0, "supplier_sorted": 0, "extracted": 0, "types": {}, "in_r2": 0},
+        )
+        s["total"] += 1
+        s[st] += 1
+        if in_r2(d):
+            s["in_r2"] += 1
+        if st == "extracted":
+            t = d.document_type or "unknown"
+            s["types"][t] = s["types"].get(t, 0) + 1
+
+    supplier_list = sorted(suppliers.values(), key=lambda x: (-x["total"], x["supplier"]))
+    return {
+        "total": len(documents),
+        "stages": stages,
+        "storage": storage,
+        "suppliers": supplier_list,
+    }
+
+
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
     needs_review: bool | None = None,

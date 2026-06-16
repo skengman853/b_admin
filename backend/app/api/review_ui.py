@@ -13,6 +13,7 @@ MONTH_AUDIT_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "month-au
 TRANSACTIONS_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "transactions.html"
 VAT_BOOK_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "vat-book.html"
 TOOLS_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "tools.html"
+DOCUMENT_STORE_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "document-store.html"
 
 
 @router.get("/review")
@@ -48,3 +49,8 @@ async def get_vat_book_page():
 @router.get("/tools")
 async def get_tools_page():
     return FileResponse(TOOLS_UI_PATH)
+
+
+@router.get("/document-store")
+async def get_document_store_page():
+    return FileResponse(DOCUMENT_STORE_UI_PATH)

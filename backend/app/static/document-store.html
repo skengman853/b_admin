@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Document Store</title>
+<style>
+  :root{--bg:#fafafa;--card:#fff;--ink:#1a1d21;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;--good:#15803d;--warn:#b45309;--bad:#b91c1c;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  header{display:flex;align-items:center;gap:14px;padding:16px 26px;background:var(--card);border-bottom:1px solid var(--line);}
+  header h1{font-size:17px;margin:0;font-weight:650;}
+  header button{margin-left:auto;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer;}
+  main{max-width:920px;margin:22px auto 80px;padding:0 20px;}
+  #banner{background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:none;}
+  .stages{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:10px;}
+  .stage{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;}
+  .stage b{font-size:26px;display:block;}
+  .stage span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .stage.captured{border-color:#f3d9ab;background:#fdf9f0;}
+  .storage{font-size:13px;color:var(--muted);margin:0 2px 18px;}
+  .storage .ok{color:var(--good);}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid #f0f1f3;font-size:14px;}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:#fcfcfd;}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
+  .supplier{font-weight:600;}
+  .types{color:var(--muted);font-size:12.5px;}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line);margin-right:4px;}
+  .pill.cap{color:var(--warn);border-color:#f3d9ab;background:#fdf7ec;}
+  .pill.r2{color:var(--good);border-color:#bbe3c8;background:#f0faf3;}
+  #loading{text-align:center;color:var(--muted);padding:40px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>Document Store</h1>
+  <button id="refresh">Refresh</button>
+</header>
+<main>
+  <div id="banner"></div>
+  <div id="loading">Loading…</div>
+  <div id="content"></div>
+</main>
+<script>
+  const token = localStorage.getItem("b_admin_token") || "";
+  const banner=document.getElementById("banner"), loading=document.getElementById("loading"), content=document.getElementById("content");
+
+  async function load(){
+    if(!token){ banner.style.display="block"; banner.textContent="No saved session — sign in on /review first."; loading.style.display="none"; return; }
+    loading.style.display="block"; content.innerHTML="";
+    try{
+      const res=await fetch("/api/documents/store-summary",{headers:{Authorization:`Bearer ${token}`}});
+      if(!res.ok){ const t=await res.text(); throw new Error(t.slice(0,160)); }
+      const d=await res.json();
+      loading.style.display="none";
+      render(d);
+    }catch(e){ loading.style.display="none"; banner.style.display="block"; banner.textContent=String(e.message||e); }
+  }
+
+  function typesText(types){
+    const entries=Object.entries(types||{}).sort((a,b)=>b[1]-a[1]);
+    if(!entries.length) return '<span class="types">—</span>';
+    return entries.map(([t,n])=>`<span class="pill">${t.replace("_"," ")} ${n}</span>`).join("");
+  }
+
+  function render(d){
+    const s=d.stages;
+    const stages=`<div class="stages">
+      <div class="stage captured"><b>${s.captured}</b><span>Captured / unsorted</span></div>
+      <div class="stage"><b>${s.supplier_sorted}</b><span>Supplier known, not typed</span></div>
+      <div class="stage"><b>${s.extracted}</b><span>Extracted</span></div>
+    </div>
+    <div class="storage">${d.total} documents · <span class="ok">${d.storage.r2} in cloud storage (R2)</span> · ${d.storage.local_only} local-only</div>`;
+
+    const rows=d.suppliers.map(x=>`
+      <tr>
+        <td class="supplier">${x.supplier}</td>
+        <td class="num">${x.total}</td>
+        <td>${x.captured?`<span class="pill cap">unsorted ${x.captured}</span>`:""}${typesText(x.types)}</td>
+        <td class="num">${x.in_r2}/${x.total}</td>
+      </tr>`).join("");
+    content.innerHTML = stages + `<table>
+      <tr><th>Supplier</th><th class="num">Docs</th><th>Breakdown</th><th class="num">In R2</th></tr>${rows}</table>`;
+  }
+
+  document.getElementById("refresh").addEventListener("click", load);
+  load();
+</script>
+</body>
+</html>
