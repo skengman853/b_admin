@@ -59,7 +59,7 @@
 <header>
   <h1>VAT Book <span style="font-weight:400;color:var(--muted)">(auto-generated)</span></h1>
   <input type="month" id="month" />
-  <select id="pub"><option value="">All pubs</option></select>
+  <select id="pub" title="The VAT return is filed for one company — both pubs combined. Narrow to a single pub only to spot-check."><option value="">Both pubs (combined return)</option></select>
   <select id="source">
     <option value="bank_statement" selected>Bank statement — categorise</option>
     <option value="vatbook">Validate vs old VAT book</option>
@@ -233,7 +233,7 @@
       if(!res.ok) throw new Error(`load failed (${res.status})`);
       data=await res.json();
       const pubs=[...new Set(data.rows.map(r=>r.pub).filter(Boolean))].sort();
-      pubEl.innerHTML=`<option value="">All pubs</option>`+pubs.map(x=>`<option ${pubEl.value===x?"selected":""}>${x}</option>`).join("");
+      pubEl.innerHTML=`<option value="">Both pubs (combined return)</option>`+pubs.map(x=>`<option ${pubEl.value===x?"selected":""}>${x}</option>`).join("");
       loading.style.display="none"; render();
     }catch(e){loading.style.display="none";banner.style.display="block";banner.textContent=e.message;}
   }

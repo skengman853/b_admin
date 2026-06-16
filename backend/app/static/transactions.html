@@ -136,13 +136,16 @@
   .docs .empty { color: var(--muted); padding: 12px 4px; font-size: 14px; }
   .docs .note { color: var(--muted); font-size: 12.5px; padding: 6px 4px 0; }
   #loading { text-align: center; color: var(--muted); padding: 40px; }
+  .pubtabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .pubtabs button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 7px 16px; font: inherit; font-size: 13px; cursor: pointer; }
+  .pubtabs button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .pubtabs button .n { opacity: .7; margin-left: 6px; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
 <header>
   <h1>Transactions</h1>
   <input type="month" id="month" />
-  <select id="pub"><option value="">All pubs</option></select>
   <select id="source">
     <option value="bank_statement" selected>Bank (source of truth)</option>
     <option value="vatbook">VAT book (reference)</option>
@@ -153,6 +156,7 @@
 </header>
 <main>
   <div id="banner"></div>
+  <div id="pubtabs" class="pubtabs"></div>
   <div id="loading">Loading…</div>
   <div id="list"></div>
 </main>
@@ -160,11 +164,12 @@
   const state = {
     token: localStorage.getItem("b_admin_token") || "",
     items: [],
+    pub: "",  // "" = all pubs
   };
   const openRows = new Set();
 
   const monthInput = document.getElementById("month");
-  const pubSelect = document.getElementById("pub");
+  const pubTabs = document.getElementById("pubtabs");
   const sourceSelect = document.getElementById("source");
   const filterInput = document.getElementById("filter");
   const list = document.getElementById("list");
@@ -278,15 +283,43 @@
     }
   }
 
+  function matchesNonPub(item, query) {
+    const t = item.transaction;
+    if (sourceSelect.value && t.source_type !== sourceSelect.value) return false;
+    if (!query) return true;
+    const haystack = `${t.description1 || ""} ${t.description2 || ""} ${t.debit_amount || ""} ${t.credit_amount || ""}`.toLowerCase();
+    return haystack.includes(query);
+  }
+
+  function renderPubTabs(query) {
+    // Counts respect the current source/search filter, not the pub filter.
+    // Bucket key "" = All; "__none__" = no pub set (Unknown).
+    const pool = state.items.filter((item) => matchesNonPub(item, query));
+    const counts = {};
+    pool.forEach((item) => { const p = item.transaction.pub || "__none__"; counts[p] = (counts[p] || 0) + 1; });
+    const order = ["Careys", "Canal", "Corrcross", "__none__"];
+    const keys = Object.keys(counts).sort((a, b) => {
+      const ia = order.indexOf(a), ib = order.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+    if (keys.length <= 1 && !state.pub) { pubTabs.innerHTML = ""; return; }
+    const tab = (val, label, n) => `<button data-pub="${val}" class="${state.pub === val ? "on" : ""}">${label}<span class="n">${n}</span></button>`;
+    pubTabs.innerHTML = tab("", "All", pool.length)
+      + keys.map((k) => tab(k, k === "__none__" ? "Unknown" : k, counts[k])).join("");
+    pubTabs.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+      state.pub = b.dataset.pub;
+      render();
+    }));
+  }
+
   function render() {
     const query = filterInput.value.trim().toLowerCase();
+    renderPubTabs(query);
     const visible = state.items.filter((item) => {
       const t = item.transaction;
-      if (pubSelect.value && (t.pub || "") !== pubSelect.value) return false;
-      if (sourceSelect.value && t.source_type !== sourceSelect.value) return false;
-      if (!query) return true;
-      const haystack = `${t.description1 || ""} ${t.description2 || ""} ${t.debit_amount || ""} ${t.credit_amount || ""}`.toLowerCase();
-      return haystack.includes(query);
+      if (state.pub === "__none__") { if (t.pub) return false; }
+      else if (state.pub && (t.pub || "") !== state.pub) return false;
+      return matchesNonPub(item, query);
     });
     summary.textContent = `${visible.length} transactions`;
     list.innerHTML = visible
@@ -377,8 +410,6 @@
         page += 1;
       }
       loading.style.display = "none";
-      const pubs = [...new Set(state.items.map((item) => item.transaction.pub).filter(Boolean))].sort();
-      pubSelect.innerHTML = `<option value="">All pubs</option>` + pubs.map((p) => `<option ${pubSelect.value === p ? "selected" : ""}>${p}</option>`).join("");
       render();
     } catch (error) {
       loading.style.display = "none";
@@ -388,7 +419,6 @@
   }
 
   monthInput.addEventListener("change", load);
-  pubSelect.addEventListener("change", render);
   sourceSelect.addEventListener("change", render);
   filterInput.addEventListener("input", render);
   load();
