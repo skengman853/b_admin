@@ -818,6 +818,12 @@ async def import_drive_documents(
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - surface the real cause to the UI
+        await db.rollback()
+        detail = f"{type(exc).__name__}: {exc}"
+        if "insufficientPermissions" in detail or "insufficient" in detail.lower() or "scope" in detail.lower():
+            detail += " — reconnect Google on the Tools page and approve Drive access."
+        raise HTTPException(status_code=502, detail=detail[:500]) from exc
 
     return {
         "folder": result.folder,

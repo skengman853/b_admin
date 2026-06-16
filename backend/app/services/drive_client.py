@@ -50,6 +50,21 @@ def find_folder_by_name(service, *, name: str, parent_id: str | None = None) -> 
     return _find_named_child(service, name=name, parent_id=parent_id, mime_type=FOLDER_MIME_TYPE)
 
 
+def find_folder_by_path(service, path: str) -> dict | None:
+    """Resolve a slash-separated folder path, e.g.
+    'Careys Bar Limited/Invoices - Careys Bar - Jack Keenan', walking each
+    segment from the Drive root. Returns the leaf folder, or None if any
+    segment is missing."""
+    parent_id: str | None = None
+    found: dict | None = None
+    for segment in [p.strip() for p in path.split("/") if p.strip()]:
+        found = _find_named_child(service, name=segment, parent_id=parent_id, mime_type=FOLDER_MIME_TYPE)
+        if found is None:
+            return None
+        parent_id = found["id"]
+    return found
+
+
 def _list_children(service, parent_id: str) -> list[dict]:
     children: list[dict] = []
     page_token: str | None = None
