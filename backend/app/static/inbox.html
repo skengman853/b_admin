@@ -85,8 +85,8 @@
   function renderTabs(){
     const s=payload.sources||{};
     const total=Object.values(s).reduce((a,b)=>a+b,0);
-    const labels={email:"📧 Email",archive:"🗄 Archive / Drive"};
-    const order=["email","archive"];
+    const labels={email:"📧 Email",drive:"📁 Google Drive",archive:"🗄 Local archive"};
+    const order=["email","drive","archive"];
     const keys=Object.keys(s).sort((a,b)=>order.indexOf(a)-order.indexOf(b));
     const tab=(val,label,n)=>`<button data-src="${val}" class="${source===val?'on':''}">${label}<span class="n">${n}</span></button>`;
     tabsEl.innerHTML=keys.map(k=>tab(k,labels[k]||k,s[k])).join("")+tab("all","All",total);

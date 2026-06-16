@@ -42,7 +42,17 @@
   </div>
 
   <div class="card">
-    <h2>2. Import bank transactions (BOI CSV)</h2>
+    <h2>2. Import invoices from Google Drive</h2>
+    <p>Pull the client's existing invoice folders out of Google Drive. Name the top folder (e.g. the year or "Invoices"). Deduped on Drive file id, so it's safe to run repeatedly — it picks up where it left off. Reconnect Google first if you haven't since Drive read access was added.</p>
+    <div class="controls">
+      <label>Folder name <input type="text" id="driveFolder" placeholder="e.g. Careys Invoices" style="width:220px"></label>
+      <button class="run" data-op="importdrive">Import from Drive</button>
+    </div>
+    <div class="result" id="r-importdrive"></div>
+  </div>
+
+  <div class="card">
+    <h2>3. Import bank transactions (BOI CSV)</h2>
     <p>Upload the Bank of Ireland CSV export(s). They're cumulative and overlap — duplicates are skipped automatically, so it's safe to upload all of them or re-upload. Careys only for now.</p>
     <div class="controls">
       <input type="file" id="csvFiles" accept=".csv" multiple>
@@ -52,7 +62,7 @@
   </div>
 
   <div class="card">
-    <h2>3. Run the invoice extractor</h2>
+    <h2>4. Run the invoice extractor</h2>
     <p>Read amounts, references, VAT and statement rows out of imported documents.</p>
     <div class="controls">
       <label><input type="checkbox" id="extractForce"> Re-extract already-done</label>
@@ -63,7 +73,7 @@
   </div>
 
   <div class="card">
-    <h2>4. Run the matcher</h2>
+    <h2>5. Run the matcher</h2>
     <p>Match a month's bank transactions to their documents and save the suggestions. Safe to re-run.</p>
     <div class="controls">
       <input type="month" id="matchMonth">
@@ -140,9 +150,34 @@
     }catch(e){ show("r-importcsv", false, String(e.message||e)); }
   }
 
+  // Drive import is chunked & deduped: loop small batches until nothing new
+  // comes in, so each request finishes well under the proxy timeout.
+  async function doImportDrive(button){
+    const folder = document.getElementById("driveFolder").value.trim();
+    if(!folder){ show("r-importdrive", false, "Enter the Drive folder name first."); return; }
+    let imported=0, calls=0, total=null, already=0;
+    show("r-importdrive", true, "Starting…");
+    while(true){
+      calls++;
+      let res;
+      try{
+        res = await fetch(`/api/documents/import-drive?folder_name=${encodeURIComponent(folder)}&limit=25`, {method:"POST", headers:hdrs()});
+      }catch(e){ show("r-importdrive", false, `Network error after ${imported} imported: ${e.message}`); return; }
+      const { ok, body } = await parseResponse(res);
+      if(!ok){ show("r-importdrive", false, `Stopped after ${imported}: ${body.detail}`); return; }
+      total = body.total_files_in_drive; already = body.already_imported;
+      imported += body.imported || 0;
+      show("r-importdrive", true, `Working… imported ${imported} so far (${body.eligible_files} PDFs in "${folder}", ${already} already in).`);
+      if((body.imported || 0) === 0) break;       // nothing new this batch
+      if(calls > 400) break;                       // safety stop
+    }
+    show("r-importdrive", true, `Done. Imported ${imported} new document(s) from "${folder}". ${already} were already in. Now run the extractor, then the matcher.`);
+  }
+
   async function run(op, button){
     if(op==="connect") return doConnect(button);
     if(op==="importcsv"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportCsv(button); button.disabled=false; button.textContent=o; return; }
+    if(op==="importdrive"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportDrive(button); button.disabled=false; button.textContent=o; return; }
     if(op==="extract") { button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doExtractChunked(button); button.disabled=false; button.textContent=o; return; }
     button.disabled = true;
     const orig = button.textContent; button.textContent = "Running…";

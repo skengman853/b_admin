@@ -11,6 +11,9 @@ from app.services.encryption import decrypt_token, encrypt_token
 GOOGLE_API_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/drive.file",
+    # drive.readonly lets us read the client's *existing* invoice folders to
+    # import them. drive.file alone only exposes files this app itself created.
+    "https://www.googleapis.com/auth/drive.readonly",
 ]
 
 

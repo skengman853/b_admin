@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import GmailConnection
@@ -41,6 +42,55 @@ def _find_named_child(service, *, name: str, parent_id: str | None, mime_type: s
     )
     files = response.get("files", [])
     return files[0] if files else None
+
+
+def find_folder_by_name(service, *, name: str, parent_id: str | None = None) -> dict | None:
+    """Find a folder by name (optionally within a parent). Used to resolve the
+    root invoice folder the operator names when importing from Drive."""
+    return _find_named_child(service, name=name, parent_id=parent_id, mime_type=FOLDER_MIME_TYPE)
+
+
+def _list_children(service, parent_id: str) -> list[dict]:
+    children: list[dict] = []
+    page_token: str | None = None
+    while True:
+        response = (
+            service.files()
+            .list(
+                q=f"'{parent_id}' in parents and trashed = false",
+                spaces="drive",
+                fields="nextPageToken, files(id, name, mimeType, size, modifiedTime)",
+                pageSize=1000,
+                pageToken=page_token,
+            )
+            .execute()
+        )
+        children.extend(response.get("files", []))
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+    return children
+
+
+def walk_drive_folder(service, root_id: str, *, _prefix: tuple[str, ...] = ()):
+    """Yield (file_dict, relative_path_parts) for every non-folder file under a
+    Drive folder, recursing subfolders. relative_path_parts excludes the file
+    name so callers can reconstruct '<sub>/<sub>/file.pdf'."""
+    for child in _list_children(service, root_id):
+        if child.get("mimeType") == FOLDER_MIME_TYPE:
+            yield from walk_drive_folder(service, child["id"], _prefix=_prefix + (child["name"],))
+        else:
+            yield child, _prefix
+
+
+def download_drive_file(service, file_id: str) -> bytes:
+    request = service.files().get_media(fileId=file_id)
+    buffer = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    return buffer.getvalue()
 
 
 def ensure_drive_folder(service, *, name: str, parent_id: str | None = None) -> str:
