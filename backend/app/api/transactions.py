@@ -1002,6 +1002,35 @@ async def export_vat_book(
     )
 
 
+@router.post("/vat-book/confirm-all")
+async def confirm_all_vat_guesses(
+    month: str,
+    pub: str | None = None,
+    source_type: str = "bank_statement",
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Accept every confident category guess for a period in one go — confirms
+    rows that have a predicted category and aren't already confirmed."""
+    from app.services.vat_categorisation import set_transaction_category
+
+    targets, rows, _ruleset, _src, _docs = await _build_period_vat_book(
+        db=db, user=user, month=month, pub=pub, source_type=source_type
+    )
+    targets_by_id = {t.id: t for t in targets}
+    confirmed = 0
+    for row in rows:
+        if row.source == "unknown" or not row.predicted_category or row.confirmed:
+            continue
+        txn = targets_by_id.get(row.transaction_id)
+        if txn is None:
+            continue
+        set_transaction_category(txn, category=row.predicted_category, band=row.predicted_band)
+        confirmed += 1
+    await db.commit()
+    return {"month": month, "confirmed": confirmed}
+
+
 @router.get("/vat-categories")
 async def get_vat_categories(
     user: User = Depends(get_current_user),
