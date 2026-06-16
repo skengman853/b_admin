@@ -1117,6 +1117,7 @@ async def get_transaction_review_queue(
     persist_exact_matches: bool = True,
     persist_suggestions: bool = True,
     window_months: int = 0,
+    include_all: bool = False,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     user: User = Depends(get_current_user),
@@ -1152,6 +1153,7 @@ async def get_transaction_review_queue(
         persist_exact_matches=persist_exact_matches,
         persist_suggestions=persist_suggestions,
         window_months=window_months,
+        include_all=include_all,
         page=page,
         limit=limit,
     )

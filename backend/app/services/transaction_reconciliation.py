@@ -525,6 +525,7 @@ async def build_transaction_review_queue(
     persist_exact_matches: bool = False,
     persist_suggestions: bool = False,
     window_months: int = 0,
+    include_all: bool = False,
     page: int = 1,
     limit: int = 50,
 ) -> TransactionReviewQueue:
@@ -561,10 +562,12 @@ async def build_transaction_review_queue(
         for transaction in all_transactions
         if transaction.debit_amount is not None and transaction.debit_amount > 0
     ]
+    # include_all = complete ledger: every transaction incl. income/credits.
+    base_transactions = all_transactions if include_all else expense_transactions
     review_transactions = (
-        [transaction for transaction in expense_transactions if transaction.annotation_notes]
+        [transaction for transaction in base_transactions if transaction.annotation_notes]
         if annotated_only
-        else expense_transactions
+        else base_transactions
     )
 
     candidate_documents = await load_candidate_documents_for_period(
@@ -627,9 +630,12 @@ async def build_transaction_review_queue(
         if item.status in normalized_statuses
         and (resolution_buckets is None or item.resolution_bucket in resolution_buckets)
         and (
-            (transaction_by_id[item.transaction_id].review_status in review_statuses)
-            if review_statuses is not None
-            else transaction_by_id[item.transaction_id].review_status not in RESOLVED_TRANSACTION_REVIEW_STATUSES
+            include_all
+            or (
+                (transaction_by_id[item.transaction_id].review_status in review_statuses)
+                if review_statuses is not None
+                else transaction_by_id[item.transaction_id].review_status not in RESOLVED_TRANSACTION_REVIEW_STATUSES
+            )
         )
     ]
     resolution_bucket_counts = {
