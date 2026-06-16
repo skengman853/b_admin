@@ -155,23 +155,22 @@
   async function doImportDrive(button){
     const folder = document.getElementById("driveFolder").value.trim();
     if(!folder){ show("r-importdrive", false, "Enter the Drive folder name first."); return; }
-    let imported=0, calls=0, total=null, already=0;
-    show("r-importdrive", true, "Starting…");
+    let imported=0, calls=0;
+    show("r-importdrive", true, "Starting… (this runs in small batches; leave the page open)");
     while(true){
       calls++;
       let res;
       try{
-        res = await fetch(`/api/documents/import-drive?folder_name=${encodeURIComponent(folder)}&limit=25`, {method:"POST", headers:hdrs()});
+        res = await fetch(`/api/documents/import-drive?folder_name=${encodeURIComponent(folder)}&limit=8`, {method:"POST", headers:hdrs()});
       }catch(e){ show("r-importdrive", false, `Network error after ${imported} imported: ${e.message}`); return; }
       const { ok, body } = await parseResponse(res);
-      if(!ok){ show("r-importdrive", false, `Stopped after ${imported}: ${body.detail}`); return; }
-      total = body.total_files_in_drive; already = body.already_imported;
+      if(!ok){ show("r-importdrive", false, `Stopped after ${imported} imported: ${body.detail}`); return; }
       imported += body.imported || 0;
-      show("r-importdrive", true, `Working… imported ${imported} so far (${body.eligible_files} PDFs in "${folder}", ${already} already in).`);
-      if((body.imported || 0) === 0) break;       // nothing new this batch
-      if(calls > 400) break;                       // safety stop
+      show("r-importdrive", true, `Working… ${imported} imported so far.`);
+      if(!body.more_remaining) break;   // walked the whole tree, nothing new left
+      if(calls > 2000) break;           // safety stop
     }
-    show("r-importdrive", true, `Done. Imported ${imported} new document(s) from "${folder}". ${already} were already in. Now run the extractor, then the matcher.`);
+    show("r-importdrive", true, `Done. Imported ${imported} new document(s) from "${folder}". Now run the extractor, then the matcher.`);
   }
 
   async function run(op, button){

@@ -51,12 +51,12 @@ _ALLOWED_SUFFIXES = {".pdf"}
 @dataclass(slots=True)
 class DriveImportResult:
     folder: str
-    total_files_in_drive: int = 0
-    eligible_files: int = 0
-    already_imported: int = 0
+    eligible_files: int = 0       # PDFs seen during this call's walk
+    already_imported: int = 0     # of those, already in the system
     imported_documents: int = 0
     extracted_documents: int = 0
-    skipped_files: int = 0
+    skipped_files: int = 0        # non-PDFs seen this call
+    more_remaining: bool = False  # hit the batch limit; call again to continue
     errors: list[str] = field(default_factory=list)
 
 
@@ -96,39 +96,38 @@ async def import_documents_from_drive(
 
     result = DriveImportResult(folder=folder_name or folder_id)
 
-    # Enumerate the tree (metadata only — cheap) and figure out what's new.
-    entries = list(walk_drive_folder(service, folder_id))
-    result.total_files_in_drive = len(entries)
-
-    eligible: list[tuple[dict, tuple[str, ...]]] = []
-    for file_meta, path_parts in entries:
-        name = file_meta.get("name", "")
-        if Path(name).suffix.lower() not in _ALLOWED_SUFFIXES:
-            result.skipped_files += 1
-            continue
-        eligible.append((file_meta, path_parts))
-    result.eligible_files = len(eligible)
-
+    # All Drive files already imported for this user (one cheap query). We dedupe
+    # against this so we never re-download — crucial because each chunked call
+    # re-walks the tree from the top.
     existing_ids = set(
         (
             await db.execute(
                 select(Document.gmail_message_id).where(
                     Document.user_id == user.id,
-                    Document.gmail_message_id.in_([_drive_message_id(m["id"]) for m, _ in eligible]),
+                    Document.gmail_message_id.like("drive-%"),
                 )
             )
         )
         .scalars()
         .all()
-    ) if eligible else set()
+    )
 
+    # Walk the tree lazily and STOP as soon as we have `limit` new files to
+    # download. Materialising the whole tree on every call is what blew the
+    # request timeout on large folders.
     imported_document_ids: list = []
-    for file_meta, path_parts in eligible:
+    for file_meta, path_parts in walk_drive_folder(service, folder_id):
+        name = file_meta.get("name", "")
+        if Path(name).suffix.lower() not in _ALLOWED_SUFFIXES:
+            result.skipped_files += 1
+            continue
+        result.eligible_files += 1
         message_id = _drive_message_id(file_meta["id"])
         if message_id in existing_ids:
             result.already_imported += 1
             continue
         if len(imported_document_ids) >= limit:
+            result.more_remaining = True
             break
 
         relative_path = Path(*path_parts, file_meta["name"]) if path_parts else Path(file_meta["name"])

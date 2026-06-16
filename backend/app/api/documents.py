@@ -827,12 +827,12 @@ async def import_drive_documents(
 
     return {
         "folder": result.folder,
-        "total_files_in_drive": result.total_files_in_drive,
         "eligible_files": result.eligible_files,
         "already_imported": result.already_imported,
         "imported": result.imported_documents,
         "extracted": result.extracted_documents,
         "skipped_non_pdf": result.skipped_files,
+        "more_remaining": result.more_remaining,
         "errors": result.errors[:20],
     }
 
