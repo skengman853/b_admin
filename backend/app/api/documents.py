@@ -227,17 +227,22 @@ async def get_document_store_summary(
 @router.get("/store-list")
 async def get_document_store_list(
     supplier: str | None = None,
+    document_type: str | None = None,
     unsorted: bool = False,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List the documents in one bucket of the store (a supplier, or the
-    unsorted/captured pile) so they can be browsed and opened."""
+    """List the documents in one bucket of the store — the unsorted/captured
+    pile, or a supplier optionally narrowed to one document type."""
     query = select(Document).where(Document.user_id == user.id, Document.derivation_index == 0)
     if unsorted:
         query = query.where(or_(Document.supplier.is_(None), Document.supplier == "Other"))
     elif supplier:
         query = query.where(Document.supplier == supplier)
+        if document_type == "unknown":
+            query = query.where(or_(Document.document_type.is_(None), Document.document_type == "unknown"))
+        elif document_type:
+            query = query.where(Document.document_type == document_type)
     else:
         raise HTTPException(status_code=422, detail="supplier or unsorted=true required")
 
