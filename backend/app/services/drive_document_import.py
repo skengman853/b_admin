@@ -28,6 +28,7 @@ from app.services.document_registry import upsert_document_record
 from app.services.drive_client import (
     download_drive_file,
     find_folder_by_name,
+    find_folder_by_path,
     get_drive_service,
     walk_drive_folder,
 )
@@ -83,9 +84,14 @@ async def import_documents_from_drive(
     if not folder_id:
         if not folder_name:
             raise ValueError("Provide a Drive folder name or folder id to import from.")
-        folder = find_folder_by_name(service, name=folder_name)
+        # Accept either a single folder name or a slash-separated path.
+        folder = (
+            find_folder_by_path(service, folder_name)
+            if "/" in folder_name
+            else find_folder_by_name(service, name=folder_name)
+        )
         if folder is None:
-            raise ValueError(f"No Drive folder named {folder_name!r} was found.")
+            raise ValueError(f"No Drive folder found for {folder_name!r}.")
         folder_id = folder["id"]
 
     result = DriveImportResult(folder=folder_name or folder_id)
