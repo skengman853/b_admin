@@ -96,7 +96,7 @@
   async function doExtractChunked(button){
     const force = document.getElementById("extractForce").checked;
     const target = +document.getElementById("extractLimit").value;
-    const CHUNK = 15;
+    const CHUNK = 5;  // small chunks so each request finishes well under the proxy timeout
     let extracted=0, skipped=0, done=0;
     show("r-extract", true, "Starting…");
     while(done < target){
