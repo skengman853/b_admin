@@ -224,6 +224,43 @@ async def get_document_store_summary(
     }
 
 
+@router.get("/store-list")
+async def get_document_store_list(
+    supplier: str | None = None,
+    unsorted: bool = False,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List the documents in one bucket of the store (a supplier, or the
+    unsorted/captured pile) so they can be browsed and opened."""
+    query = select(Document).where(Document.user_id == user.id, Document.derivation_index == 0)
+    if unsorted:
+        query = query.where(or_(Document.supplier.is_(None), Document.supplier == "Other"))
+    elif supplier:
+        query = query.where(Document.supplier == supplier)
+    else:
+        raise HTTPException(status_code=422, detail="supplier or unsorted=true required")
+
+    result = await db.execute(query.order_by(Document.created_at.desc()).limit(500))
+    docs = list(result.scalars().all())
+    return {
+        "count": len(docs),
+        "documents": [
+            {
+                "id": str(d.id),
+                "attachment_name": d.attachment_name,
+                "supplier": d.supplier,
+                "document_type": d.document_type,
+                "document_date": d.document_date.isoformat() if d.document_date else None,
+                "amount": str(d.amount) if d.amount is not None else None,
+                "in_r2": bool(d.storage_provider == "s3" and d.storage_key),
+                "captured_at": d.created_at.isoformat() if d.created_at else None,
+            }
+            for d in docs
+        ],
+    }
+
+
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
     needs_review: bool | None = None,

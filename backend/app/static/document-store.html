@@ -30,6 +30,16 @@
   .pill.cap{color:var(--warn);border-color:#f3d9ab;background:#fdf7ec;}
   .pill.r2{color:var(--good);border-color:#bbe3c8;background:#f0faf3;}
   #loading{text-align:center;color:var(--muted);padding:40px;}
+  tr.sup{cursor:pointer;} tr.sup:hover{background:#f3f6fd;}
+  .stage.captured{cursor:pointer;}
+  .docrow td{background:#fcfcfd;font-size:13px;}
+  .doc{display:grid;grid-template-columns:1fr 90px 90px 80px 60px;gap:10px;align-items:center;padding:6px 2px;border-bottom:1px solid #f0f1f3;}
+  .doc:last-child{border-bottom:none;}
+  .doc .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .doc .mut{color:var(--muted);}
+  .doc button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 9px;font:inherit;font-size:12px;color:var(--accent);cursor:pointer;}
+  .panel{margin:10px 0 18px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;}
+  .panel h3{margin:0 0 8px;font-size:14px;}
 </style>
 </head>
 <body>
@@ -67,14 +77,15 @@
   function render(d){
     const s=d.stages;
     const stages=`<div class="stages">
-      <div class="stage captured"><b>${s.captured}</b><span>Captured / unsorted</span></div>
+      <div class="stage captured" id="tile-unsorted" title="click to view"><b>${s.captured}</b><span>Captured / unsorted</span></div>
       <div class="stage"><b>${s.supplier_sorted}</b><span>Supplier known, not typed</span></div>
       <div class="stage"><b>${s.extracted}</b><span>Extracted</span></div>
     </div>
-    <div class="storage">${d.total} documents · <span class="ok">${d.storage.r2} in cloud storage (R2)</span> · ${d.storage.local_only} local-only</div>`;
+    <div class="storage">${d.total} documents · <span class="ok">${d.storage.r2} in cloud storage (R2)</span> · ${d.storage.local_only} local-only</div>
+    <div id="panel"></div>`;
 
     const rows=d.suppliers.map(x=>`
-      <tr>
+      <tr class="sup" data-supplier="${(x.supplier||'').replace(/"/g,'&quot;')}">
         <td class="supplier">${x.supplier}</td>
         <td class="num">${x.total}</td>
         <td>${x.captured?`<span class="pill cap">unsorted ${x.captured}</span>`:""}${typesText(x.types)}</td>
@@ -82,6 +93,42 @@
       </tr>`).join("");
     content.innerHTML = stages + `<table>
       <tr><th>Supplier</th><th class="num">Docs</th><th>Breakdown</th><th class="num">In R2</th></tr>${rows}</table>`;
+
+    content.querySelectorAll("tr.sup").forEach(tr=>tr.addEventListener("click",()=>showDocs({supplier:tr.dataset.supplier})));
+    const tile=document.getElementById("tile-unsorted");
+    if(tile) tile.addEventListener("click",()=>showDocs({unsorted:true}));
+  }
+
+  async function openDoc(id, btn){
+    btn.disabled=true;
+    try{
+      const r=await fetch(`/api/documents/${id}/file`,{headers:{Authorization:`Bearer ${token}`}});
+      if(!r.ok) throw new Error("open failed ("+r.status+")");
+      window.open(URL.createObjectURL(await r.blob()),"_blank");
+    }catch(e){ alert(e.message); } finally{ btn.disabled=false; }
+  }
+
+  async function showDocs(opts){
+    const panel=document.getElementById("panel");
+    panel.innerHTML='<div class="panel">loading…</div>';
+    const q = opts.unsorted ? "unsorted=true" : `supplier=${encodeURIComponent(opts.supplier)}`;
+    try{
+      const r=await fetch(`/api/documents/store-list?${q}`,{headers:{Authorization:`Bearer ${token}`}});
+      if(!r.ok) throw new Error("load failed ("+r.status+")");
+      const d=await r.json();
+      const title = opts.unsorted ? "Unsorted / captured" : opts.supplier;
+      const rows=d.documents.map(x=>`
+        <div class="doc">
+          <span class="nm" title="${(x.attachment_name||'').replace(/"/g,'&quot;')}">${x.attachment_name||"(no name)"}</span>
+          <span class="mut">${(x.document_type||"").replace("_"," ")}</span>
+          <span class="mut">${x.document_date||""}</span>
+          <span class="mut">${x.amount||""}</span>
+          <button data-id="${x.id}">Open</button>
+        </div>`).join("") || '<div class="mut">No documents.</div>';
+      panel.innerHTML=`<div class="panel"><h3>${title} — ${d.count} document(s)</h3>${rows}</div>`;
+      panel.querySelectorAll("button[data-id]").forEach(b=>b.addEventListener("click",()=>openDoc(b.dataset.id,b)));
+      panel.scrollIntoView({behavior:"smooth",block:"nearest"});
+    }catch(e){ panel.innerHTML=`<div class="panel">${e.message}</div>`; }
   }
 
   document.getElementById("refresh").addEventListener("click", load);
