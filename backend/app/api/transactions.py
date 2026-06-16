@@ -887,7 +887,7 @@ async def _build_period_vat_book(
 async def get_vat_book(
     month: str,
     pub: str | None = None,
-    source_type: str = "vatbook",
+    source_type: str = "bank_statement",
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
