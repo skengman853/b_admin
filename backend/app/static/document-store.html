@@ -48,6 +48,10 @@
   .folderbar{display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;}
   button.folder{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer;}
   button.folder:hover{border-color:var(--accent);color:var(--accent);}
+  .pubtabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .pubtabs button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 16px;font:inherit;font-size:13px;cursor:pointer;}
+  .pubtabs button.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .pubtabs button .n{opacity:.7;margin-left:6px;font-variant-numeric:tabular-nums;}
 </style>
 </head>
 <body>
@@ -63,12 +67,14 @@
 <script>
   const token = localStorage.getItem("b_admin_token") || "";
   const banner=document.getElementById("banner"), loading=document.getElementById("loading"), content=document.getElementById("content");
+  let currentPub = "";  // "" = all pubs
 
   async function load(){
     if(!token){ banner.style.display="block"; banner.textContent="No saved session — sign in on /review first."; loading.style.display="none"; return; }
     loading.style.display="block"; content.innerHTML="";
     try{
-      const res=await fetch("/api/documents/store-summary",{headers:{Authorization:`Bearer ${token}`}});
+      const q = currentPub ? `?pub=${encodeURIComponent(currentPub)}` : "";
+      const res=await fetch(`/api/documents/store-summary${q}`,{headers:{Authorization:`Bearer ${token}`}});
       if(!res.ok){ const t=await res.text(); throw new Error(t.slice(0,160)); }
       const d=await res.json();
       loading.style.display="none";
@@ -82,8 +88,18 @@
     return entries.map(([t,n])=>`<span class="pill">${t.replace("_"," ")} ${n}</span>`).join("");
   }
 
+  function pubTabs(pubs){
+    const order=["Careys","Canal","Corrcross","Unknown"];
+    const keys=Object.keys(pubs||{});
+    keys.sort((a,b)=>{const ia=order.indexOf(a),ib=order.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b);});
+    const total=keys.reduce((s,k)=>s+pubs[k],0);
+    const tab=(val,label,n)=>`<button data-pub="${val}" class="${currentPub===val?'on':''}">${label}<span class="n">${n}</span></button>`;
+    return `<div class="pubtabs">${tab("","All",total)}${keys.map(k=>tab(k,k,pubs[k])).join("")}</div>`;
+  }
+
   function render(d){
     const s=d.stages;
+    const tabs=pubTabs(d.pubs);
     const stages=`<div class="stages">
       <div class="stage captured" id="tile-unsorted" title="click to view"><b>${s.captured}</b><span>Captured / unsorted</span></div>
       <div class="stage"><b>${s.supplier_sorted}</b><span>Supplier known, not typed</span></div>
@@ -100,9 +116,10 @@
         <td class="num">${x.in_r2}/${x.total}</td>
       </tr>
       <tr class="folders" id="folders-${i}" style="display:none"><td colspan="4"></td></tr>`).join("");
-    content.innerHTML = stages + `<table>
+    content.innerHTML = tabs + stages + `<table>
       <tr><th>Supplier</th><th class="num">Docs</th><th>Breakdown</th><th class="num">In R2</th></tr>${rows}</table>`;
 
+    content.querySelectorAll(".pubtabs button").forEach(b=>b.addEventListener("click",()=>{ currentPub=b.dataset.pub; load(); }));
     content.querySelectorAll("tr.sup").forEach(tr=>tr.addEventListener("click",()=>toggleSupplier(tr, d.suppliers[+tr.dataset.i])));
     const tile=document.getElementById("tile-unsorted");
     if(tile) tile.addEventListener("click",()=>showDocs({unsorted:true}));
@@ -137,6 +154,7 @@
     panel.innerHTML='<div class="panel">loading…</div>';
     let q = opts.unsorted ? "unsorted=true" : `supplier=${encodeURIComponent(opts.supplier)}`;
     if(opts.document_type) q += `&document_type=${encodeURIComponent(opts.document_type)}`;
+    if(currentPub) q += `&pub=${encodeURIComponent(currentPub)}`;
     try{
       const r=await fetch(`/api/documents/store-list?${q}`,{headers:{Authorization:`Bearer ${token}`}});
       if(!r.ok) throw new Error("load failed ("+r.status+")");
@@ -154,7 +172,7 @@
         const rows=docs.map(x=>`
           <div class="doc">
             <span class="nm" title="${(x.attachment_name||'').replace(/"/g,'&quot;')}">${x.attachment_name||"(no name)"}</span>
-            <span class="mut">${(x.document_type||"").replace("_"," ")}</span>
+            <span class="mut">${(x.document_type||"").replace("_"," ")}${(!currentPub&&x.pub&&x.pub!=='Unknown')?` · <b>${x.pub}</b>`:""}</span>
             <span class="mut">${x.document_date||"—"}</span>
             <span class="amt">${x.amount?Number(x.amount).toLocaleString("en-IE",{minimumFractionDigits:2}):"—"}</span>
             <button data-id="${x.id}">Open</button>

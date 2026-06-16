@@ -39,6 +39,7 @@ from app.schemas import (
 from app.services.document_candidates import extract_multi_invoice_candidates
 from app.services.document_extraction import extract_documents
 from app.services.document_financial_backfill import backfill_document_financial_state
+from app.services.document_financial_state import _document_pub_hint
 from app.services.document_ledger import build_document_ledger, build_statement_settlements
 from app.services.local_document_import import (
     import_documents_from_local_archive,
@@ -168,8 +169,15 @@ def _build_document_detail_response(
     )
 
 
+def _document_pub_label(d: Document) -> str:
+    """Which pub a document belongs to, for the store tabs. Derived (never
+    stored) from the same hints the financial layer uses; None -> 'Unknown'."""
+    return _document_pub_hint(d) or "Unknown"
+
+
 @router.get("/store-summary")
 async def get_document_store_summary(
+    pub: str | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -179,11 +187,24 @@ async def get_document_store_summary(
       captured        -> supplier still unknown ('Other')
       supplier_sorted -> supplier known, type still unknown
       extracted       -> typed + data pulled
+
+    Optionally narrowed to one pub (Careys / Canal / Unknown). Pub is derived
+    per document; per-pub counts are always returned for the tab strip.
     """
     result = await db.execute(
         select(Document).where(Document.user_id == user.id, Document.derivation_index == 0)
     )
-    documents = list(result.scalars().all())
+    all_documents = list(result.scalars().all())
+
+    pubs: dict[str, int] = {}
+    for d in all_documents:
+        label = _document_pub_label(d)
+        pubs[label] = pubs.get(label, 0) + 1
+
+    if pub:
+        documents = [d for d in all_documents if _document_pub_label(d) == pub]
+    else:
+        documents = all_documents
 
     def stage_of(d: Document) -> str:
         if not d.supplier or d.supplier == "Other":
@@ -221,6 +242,8 @@ async def get_document_store_summary(
         "stages": stages,
         "storage": storage,
         "suppliers": supplier_list,
+        "pubs": pubs,
+        "pub": pub,
     }
 
 
@@ -229,11 +252,13 @@ async def get_document_store_list(
     supplier: str | None = None,
     document_type: str | None = None,
     unsorted: bool = False,
+    pub: str | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List the documents in one bucket of the store — the unsorted/captured
-    pile, or a supplier optionally narrowed to one document type."""
+    pile, or a supplier optionally narrowed to one document type. Optionally
+    restricted to one pub (Careys / Canal / Unknown)."""
     query = select(Document).where(Document.user_id == user.id, Document.derivation_index == 0)
     if unsorted:
         query = query.where(or_(Document.supplier.is_(None), Document.supplier == "Other"))
@@ -247,9 +272,12 @@ async def get_document_store_list(
         raise HTTPException(status_code=422, detail="supplier or unsorted=true required")
 
     result = await db.execute(
-        query.order_by(Document.document_date.desc().nulls_last(), Document.created_at.desc()).limit(500)
+        query.order_by(Document.document_date.desc().nulls_last(), Document.created_at.desc())
     )
     docs = list(result.scalars().all())
+    if pub:
+        docs = [d for d in docs if _document_pub_label(d) == pub]
+    docs = docs[:500]
     return {
         "count": len(docs),
         "documents": [
@@ -257,6 +285,7 @@ async def get_document_store_list(
                 "id": str(d.id),
                 "attachment_name": d.attachment_name,
                 "supplier": d.supplier,
+                "pub": _document_pub_label(d),
                 "document_type": d.document_type,
                 "document_date": d.document_date.isoformat() if d.document_date else None,
                 "amount": str(d.amount) if d.amount is not None else None,
