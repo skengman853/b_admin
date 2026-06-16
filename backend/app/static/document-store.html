@@ -41,6 +41,10 @@
   .panel{margin:10px 0 6px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;}
   .panel:empty{display:none;}
   .panel h3{margin:0 0 8px;font-size:14px;}
+  .doc .amt{text-align:right;font-variant-numeric:tabular-nums;}
+  .sortctl{font-weight:400;font-size:12px;color:var(--muted);margin-left:8px;}
+  .sortctl button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:2px 8px;font:inherit;font-size:12px;cursor:pointer;margin-left:4px;}
+  .sortctl button.on{background:var(--accent);color:#fff;border-color:var(--accent);}
   .folderbar{display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;}
   button.folder{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer;}
   button.folder:hover{border-color:var(--accent);color:var(--accent);}
@@ -138,16 +142,34 @@
       if(!r.ok) throw new Error("load failed ("+r.status+")");
       const d=await r.json();
       const title = opts.unsorted ? "Unsorted / captured" : opts.supplier + (opts.document_type? " · "+opts.document_type.replace("_"," "):"");
-      const rows=d.documents.map(x=>`
-        <div class="doc">
-          <span class="nm" title="${(x.attachment_name||'').replace(/"/g,'&quot;')}">${x.attachment_name||"(no name)"}</span>
-          <span class="mut">${(x.document_type||"").replace("_"," ")}</span>
-          <span class="mut">${x.document_date||""}</span>
-          <span class="mut">${x.amount||""}</span>
-          <button data-id="${x.id}">Open</button>
-        </div>`).join("") || '<div class="mut">No documents.</div>';
-      panel.innerHTML=`<div class="panel"><h3>${title} — ${d.count} document(s)</h3>${rows}</div>`;
-      panel.querySelectorAll("button[data-id]").forEach(b=>b.addEventListener("click",()=>openDoc(b.dataset.id,b)));
+      const docs=d.documents.slice();
+      const sortDocs=(mode)=>{
+        const dt=x=>x.document_date||"";
+        if(mode==="date_asc") docs.sort((a,b)=>dt(a).localeCompare(dt(b)));
+        else if(mode==="amount") docs.sort((a,b)=>(parseFloat(b.amount)||0)-(parseFloat(a.amount)||0));
+        else docs.sort((a,b)=>dt(b).localeCompare(dt(a)));
+      };
+      const draw=(mode)=>{
+        sortDocs(mode);
+        const rows=docs.map(x=>`
+          <div class="doc">
+            <span class="nm" title="${(x.attachment_name||'').replace(/"/g,'&quot;')}">${x.attachment_name||"(no name)"}</span>
+            <span class="mut">${(x.document_type||"").replace("_"," ")}</span>
+            <span class="mut">${x.document_date||"—"}</span>
+            <span class="amt">${x.amount?Number(x.amount).toLocaleString("en-IE",{minimumFractionDigits:2}):"—"}</span>
+            <button data-id="${x.id}">Open</button>
+          </div>`).join("") || '<div class="mut">No documents.</div>';
+        panel.innerHTML=`<div class="panel">
+          <h3>${title} — ${d.count} document(s)
+            <span class="sortctl">sort:
+              <button data-sort="date_desc" class="${mode==='date_desc'?'on':''}">Newest</button>
+              <button data-sort="date_asc" class="${mode==='date_asc'?'on':''}">Oldest</button>
+              <button data-sort="amount" class="${mode==='amount'?'on':''}">Amount</button>
+            </span></h3>${rows}</div>`;
+        panel.querySelectorAll("button[data-id]").forEach(b=>b.addEventListener("click",()=>openDoc(b.dataset.id,b)));
+        panel.querySelectorAll("button[data-sort]").forEach(b=>b.addEventListener("click",ev=>{ev.stopPropagation();draw(b.dataset.sort);}));
+      };
+      draw("date_desc");
       panel.scrollIntoView({behavior:"smooth",block:"nearest"});
     }catch(e){ panel.innerHTML=`<div class="panel">${e.message}</div>`; }
   }

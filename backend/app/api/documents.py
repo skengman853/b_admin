@@ -246,7 +246,9 @@ async def get_document_store_list(
     else:
         raise HTTPException(status_code=422, detail="supplier or unsorted=true required")
 
-    result = await db.execute(query.order_by(Document.created_at.desc()).limit(500))
+    result = await db.execute(
+        query.order_by(Document.document_date.desc().nulls_last(), Document.created_at.desc()).limit(500)
+    )
     docs = list(result.scalars().all())
     return {
         "count": len(docs),

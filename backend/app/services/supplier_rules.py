@@ -144,7 +144,44 @@ def _extract_supplier_from_email_text(email_text: str) -> str | None:
     return None
 
 
+_SUPPLIER_JUNK_PHRASES = (
+    "leave request", "request form", "roster", "timesheet", "booking form", "holiday request",
+)
+
+
+def _sanitize_supplier(name: str) -> str:
+    """Clean a detected supplier so the store doesn't fill with garbage names
+    like 'Canore Ltd - 09/06/2026' or document titles like 'Leave Request Form'.
+    Strips trailing date/id fragments; routes obvious non-suppliers to unsorted."""
+    if not name or name == "Other":
+        return "Other"
+    s = name.strip()
+    s = re.sub(r"\s*[-–]\s*\d{1,4}[/.\-]\d{1,2}[/.\-]\d{1,4}\s*$", "", s)   # " - 09/06/2026"
+    s = re.sub(r"\s+\d{4}[-/]\d{2}[-/]\d{2}\s*$", "", s)                     # " 2026-05-01"
+    s = re.sub(r"\s*[-–]\s*\d{3,}\s*$", "", s)                              # trailing long id
+    s = s.strip(" -–")
+    if not s:
+        return "Other"
+    if any(phrase in s.lower() for phrase in _SUPPLIER_JUNK_PHRASES):
+        return "Other"
+    if is_operator_entity(s):  # the pub's own name is never a supplier
+        return "Other"
+    return s
+
+
 def detect_supplier(
+    sender: str,
+    subject: str,
+    pdf_text: str = "",
+    attachment_name: str = "",
+    email_text: str = "",
+) -> str:
+    return _sanitize_supplier(
+        _detect_supplier_raw(sender, subject, pdf_text, attachment_name, email_text)
+    )
+
+
+def _detect_supplier_raw(
     sender: str,
     subject: str,
     pdf_text: str = "",
