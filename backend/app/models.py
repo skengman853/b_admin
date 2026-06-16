@@ -148,6 +148,11 @@ class Document(Base):
     transaction_document_links: Mapped[list["TransactionDocumentLink"]] = relationship(
         "TransactionDocumentLink",
         back_populates="document",
+        # The FK is ON DELETE CASCADE; let the DB remove links when a document is
+        # deleted (e.g. dedup merge) instead of the ORM nullifying the NOT NULL
+        # document_id column.
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     extraction_runs: Mapped[list["DocumentExtractionRun"]] = relationship(
         "DocumentExtractionRun",
