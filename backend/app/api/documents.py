@@ -298,13 +298,16 @@ async def get_document_store_list(
 
 
 def _document_source(d: Document) -> str:
-    """How the document entered the system. We only have two real intake paths:
+    """How the document entered the system:
+      drive   -> pulled from the client's Google Drive folders
+      archive -> bulk-imported from a local archive folder on disk
       email   -> pulled from the Gmail inbox (real sender + received time)
-      archive -> bulk-imported from the local/Drive archive folders
-    Local-archive imports are stamped with a synthetic message id and the
-    sentinel sender 'local-archive'."""
+    Drive and local-archive imports carry sentinel senders / id prefixes."""
     gid = d.gmail_message_id or ""
-    if gid.startswith("local-archive") or (d.source_email_sender or "") == "local-archive":
+    sender = d.source_email_sender or ""
+    if gid.startswith("drive-") or sender == "google-drive":
+        return "drive"
+    if gid.startswith("local-archive") or sender == "local-archive":
         return "archive"
     return "email"
 
@@ -357,8 +360,8 @@ async def get_document_inbox(
                 "document_date": d.document_date.isoformat() if d.document_date else None,
                 "amount": str(d.amount) if d.amount is not None else None,
                 "source": _document_source(d),
-                "sender": d.source_email_sender if _document_source(d) == "email" else None,
-                "subject": d.source_email_subject if _document_source(d) == "email" else None,
+                "sender": d.source_email_sender if _document_source(d) in ("email", "drive") else None,
+                "subject": d.source_email_subject if _document_source(d) in ("email", "drive") else None,
                 "received_at": d.source_received_at.isoformat() if d.source_received_at else None,
                 "imported_at": d.created_at.isoformat() if d.created_at else None,
                 "in_r2": bool(d.storage_provider == "s3" and d.storage_key),
@@ -787,6 +790,45 @@ async def import_local_documents(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return LocalDocumentImportResponse.model_validate(summary, from_attributes=True)
+
+
+@router.post("/import-drive")
+async def import_drive_documents(
+    folder_name: str | None = None,
+    folder_id: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    extract_after_import: bool = False,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Import documents from the client's Google Drive folders. Chunked (limit)
+    and deduped on Drive file id, so call it repeatedly until nothing new is
+    imported. Needs the drive.readonly scope (reconnect Google if older)."""
+    from app.services.drive_document_import import import_documents_from_drive
+
+    try:
+        result = await import_documents_from_drive(
+            user=user,
+            db=db,
+            folder_name=folder_name,
+            folder_id=folder_id,
+            limit=limit,
+            extract_after_import=extract_after_import,
+        )
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "folder": result.folder,
+        "total_files_in_drive": result.total_files_in_drive,
+        "eligible_files": result.eligible_files,
+        "already_imported": result.already_imported,
+        "imported": result.imported_documents,
+        "extracted": result.extracted_documents,
+        "skipped_non_pdf": result.skipped_files,
+        "errors": result.errors[:20],
+    }
 
 
 @router.post("/import-statement-context", response_model=StatementContextImportResponse)
