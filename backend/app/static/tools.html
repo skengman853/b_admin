@@ -137,7 +137,7 @@
   }
 
   function summarise(op, b){
-    if(op==="scan") return `Imported ${b.imported ?? b.new_documents ?? b.documents_imported ?? "?"} document(s); scanned ${b.scanned ?? b.messages_scanned ?? "?"} message(s).`;
+    if(op==="scan") return `Saved ${b.saved_files} document(s) from ${b.processed_messages} message(s) — scanned ${b.scanned_messages}, skipped ${b.skipped_messages}, deduped ${b.deduped_documents}.`;
     return `${b.month}: matched ${b.matched}, partial ${b.partial}, suggested ${b.suggested}, unmatched ${b.unmatched}.\nbuckets: ${JSON.stringify(b.buckets)}`;
   }
 
