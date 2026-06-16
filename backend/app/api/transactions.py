@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -804,6 +804,50 @@ async def import_transactions(
 
     await db.commit()
     return response
+
+
+@router.post("/import-bank-csv")
+async def import_bank_csv(
+    files: list[UploadFile] = File(...),
+    careys_only: bool = True,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload one or more Bank of Ireland CSV exports. They are cumulative and
+    overlapping, so transactions are deduped on content — re-uploading the same
+    or overlapping files never double-counts. Defaults to Careys-only."""
+    from app.services.boi_csv_import import ACCOUNT_PUB, import_boi_csv_files
+
+    payloads: list[tuple[str, str]] = []
+    for upload in files:
+        raw = await upload.read()
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1")
+        payloads.append((upload.filename or "upload.csv", text))
+
+    only_accounts = (
+        {acct for acct, pub in ACCOUNT_PUB.items() if pub == "Careys"}
+        if careys_only
+        else None
+    )
+    result = await import_boi_csv_files(
+        db=db, user_id=user.id, files=payloads, only_accounts=only_accounts
+    )
+    await db.commit()
+    return {
+        "files": result.files,
+        "imported": result.imported_transactions,
+        "duplicates_skipped": result.duplicate_transactions,
+        "by_pub": result.accounts,
+        "first_transaction_date": (
+            result.first_transaction_date.isoformat() if result.first_transaction_date else None
+        ),
+        "last_transaction_date": (
+            result.last_transaction_date.isoformat() if result.last_transaction_date else None
+        ),
+    }
 
 
 async def _build_period_vat_book(

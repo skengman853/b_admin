@@ -42,7 +42,17 @@
   </div>
 
   <div class="card">
-    <h2>2. Run the invoice extractor</h2>
+    <h2>2. Import bank transactions (BOI CSV)</h2>
+    <p>Upload the Bank of Ireland CSV export(s). They're cumulative and overlap — duplicates are skipped automatically, so it's safe to upload all of them or re-upload. Careys only for now.</p>
+    <div class="controls">
+      <input type="file" id="csvFiles" accept=".csv" multiple>
+      <button class="run" data-op="importcsv">Import CSV</button>
+    </div>
+    <div class="result" id="r-importcsv"></div>
+  </div>
+
+  <div class="card">
+    <h2>3. Run the invoice extractor</h2>
     <p>Read amounts, references, VAT and statement rows out of imported documents.</p>
     <div class="controls">
       <label><input type="checkbox" id="extractForce"> Re-extract already-done</label>
@@ -53,7 +63,7 @@
   </div>
 
   <div class="card">
-    <h2>3. Run the matcher</h2>
+    <h2>4. Run the matcher</h2>
     <p>Match a month's bank transactions to their documents and save the suggestions. Safe to re-run.</p>
     <div class="controls">
       <input type="month" id="matchMonth">
@@ -114,8 +124,25 @@
     show("r-extract", true, `Done. Extracted ${extracted}, skipped ${skipped}.`);
   }
 
+  async function doImportCsv(button){
+    const input = document.getElementById("csvFiles");
+    if(!input.files.length){ show("r-importcsv", false, "Choose at least one CSV file first."); return; }
+    const fd = new FormData();
+    for(const f of input.files) fd.append("files", f);
+    show("r-importcsv", true, `Uploading ${input.files.length} file(s)…`);
+    const h = new Headers(); if(token) h.set("Authorization", `Bearer ${token}`);
+    try{
+      const res = await fetch("/api/transactions/import-bank-csv", { method:"POST", headers:h, body:fd });
+      const { ok, body } = await parseResponse(res);
+      if(!ok) throw new Error(body.detail || `failed (${res.status})`);
+      const pubs = Object.entries(body.by_pub||{}).map(([k,v])=>`${k}: ${v}`).join(", ") || "none";
+      show("r-importcsv", true, `Imported ${body.imported} transaction(s) — ${pubs}. Skipped ${body.duplicates_skipped} duplicate(s). Range ${body.first_transaction_date||"?"} → ${body.last_transaction_date||"?"}.`);
+    }catch(e){ show("r-importcsv", false, String(e.message||e)); }
+  }
+
   async function run(op, button){
     if(op==="connect") return doConnect(button);
+    if(op==="importcsv"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportCsv(button); button.disabled=false; button.textContent=o; return; }
     if(op==="extract") { button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doExtractChunked(button); button.disabled=false; button.textContent=o; return; }
     button.disabled = true;
     const orig = button.textContent; button.textContent = "Running…";
