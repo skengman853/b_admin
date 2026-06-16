@@ -33,20 +33,11 @@ def should_process_email(
     attachment_names: list[str],
     known_supplier: bool = False,
 ) -> tuple[bool, str]:
+    # Capture stage (doc 29): if the email has a PDF attachment, capture it.
+    # The old behaviour required an 'invoice/statement' keyword (or known
+    # sender) and silently dropped real invoices from new suppliers with vague
+    # subjects. Capture is now dumb on purpose — every PDF is kept and sorting
+    # happens later. INCLUDE/EXCLUDE patterns are retained only for reference.
     if not attachment_names:
         return False, "no_pdf_attachments"
-
-    combined = " ".join(
-        part for part in [subject, snippet, " ".join(attachment_names)] if part
-    )
-
-    if _matches_any(combined, EXCLUDE_PATTERNS):
-        return False, "matched_exclude_rule"
-
-    if known_supplier:
-        return True, "known_supplier"
-
-    if _matches_any(combined, INCLUDE_PATTERNS):
-        return True, "matched_include_rule"
-
-    return False, "no_include_rule_match"
+    return True, "has_pdf_attachment"
