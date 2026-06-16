@@ -14,6 +14,7 @@ TRANSACTIONS_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "transac
 VAT_BOOK_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "vat-book.html"
 TOOLS_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "tools.html"
 DOCUMENT_STORE_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "document-store.html"
+INBOX_UI_PATH = Path(__file__).resolve().parents[1] / "static" / "inbox.html"
 
 
 @router.get("/review")
@@ -54,3 +55,8 @@ async def get_tools_page():
 @router.get("/document-store")
 async def get_document_store_page():
     return FileResponse(DOCUMENT_STORE_UI_PATH)
+
+
+@router.get("/inbox")
+async def get_inbox_page():
+    return FileResponse(INBOX_UI_PATH)

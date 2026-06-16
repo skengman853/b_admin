@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Inbox — how documents arrived</title>
+<style>
+  :root{--bg:#fafafa;--card:#fff;--ink:#1a1d21;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;--good:#15803d;--warn:#b45309;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  header{display:flex;align-items:center;gap:14px;padding:16px 26px;background:var(--card);border-bottom:1px solid var(--line);}
+  header h1{font-size:17px;margin:0;font-weight:650;}
+  header button#refresh{margin-left:auto;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer;}
+  main{max-width:1040px;margin:22px auto 80px;padding:0 20px;}
+  #banner{background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:none;}
+  .tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .tabs button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 16px;font:inherit;font-size:13px;cursor:pointer;}
+  .tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .tabs button .n{opacity:.7;margin-left:6px;font-variant-numeric:tabular-nums;}
+  .filterbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;}
+  .filterbar input{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;background:var(--card);width:280px;}
+  .filterbar .count{color:var(--muted);font-size:13px;margin-left:auto;}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid #f0f1f3;font-size:13.5px;vertical-align:top;}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:#fcfcfd;position:sticky;top:0;}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
+  tr:hover td{background:#f7f9fe;}
+  .when{font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .when small{display:block;color:var(--muted);font-size:11.5px;}
+  .sender{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .subj{color:var(--muted);font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sup b{font-weight:600;}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line);color:var(--muted);}
+  .pill.email{color:var(--accent);border-color:#c7d7fb;background:#f3f6fd;}
+  .pill.archive{color:var(--warn);border-color:#f3d9ab;background:#fdf7ec;}
+  td button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 10px;font:inherit;font-size:12px;color:var(--accent);cursor:pointer;}
+  td button:hover{border-color:var(--accent);}
+  #loading{text-align:center;color:var(--muted);padding:40px;}
+  .empty{color:var(--muted);padding:20px;text-align:center;}
+</style>
+</head>
+<body>
+<header>
+  <h1>Inbox <span style="font-weight:400;color:var(--muted)">— how each document arrived</span></h1>
+  <button id="refresh">Refresh</button>
+</header>
+<main>
+  <div id="banner"></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="filterbar">
+    <input type="search" id="filter" placeholder="Filter sender / supplier / subject…" />
+    <span class="count" id="count"></span>
+  </div>
+  <div id="loading">Loading…</div>
+  <div id="content"></div>
+</main>
+<script>
+  const token = localStorage.getItem("b_admin_token") || "";
+  const banner=document.getElementById("banner"), loading=document.getElementById("loading"),
+        content=document.getElementById("content"), tabsEl=document.getElementById("tabs"),
+        filterEl=document.getElementById("filter"), countEl=document.getElementById("count");
+  let source="email", payload=null;
+
+  function fmt(iso){
+    if(!iso) return "—";
+    const d=new Date(iso); if(isNaN(d)) return iso.slice(0,10);
+    return d.toLocaleDateString("en-IE",{day:"2-digit",month:"short",year:"numeric"});
+  }
+  function fmtTime(iso){ if(!iso) return ""; const d=new Date(iso); return isNaN(d)?"":d.toLocaleTimeString("en-IE",{hour:"2-digit",minute:"2-digit"}); }
+  function money(v){ return v==null?"—":Number(v).toLocaleString("en-IE",{minimumFractionDigits:2}); }
+  function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+
+  async function load(){
+    if(!token){ banner.style.display="block"; banner.textContent="No saved session — sign in on /review first."; loading.style.display="none"; return; }
+    loading.style.display="block"; content.innerHTML="";
+    try{
+      const r=await fetch(`/api/documents/inbox?source=${encodeURIComponent(source)}`,{headers:{Authorization:`Bearer ${token}`}});
+      if(!r.ok){ throw new Error((await r.text()).slice(0,160)); }
+      payload=await r.json();
+      loading.style.display="none";
+      renderTabs(); render();
+    }catch(e){ loading.style.display="none"; banner.style.display="block"; banner.textContent=String(e.message||e); }
+  }
+
+  function renderTabs(){
+    const s=payload.sources||{};
+    const total=Object.values(s).reduce((a,b)=>a+b,0);
+    const labels={email:"📧 Email",archive:"🗄 Archive / Drive"};
+    const order=["email","archive"];
+    const keys=Object.keys(s).sort((a,b)=>order.indexOf(a)-order.indexOf(b));
+    const tab=(val,label,n)=>`<button data-src="${val}" class="${source===val?'on':''}">${label}<span class="n">${n}</span></button>`;
+    tabsEl.innerHTML=keys.map(k=>tab(k,labels[k]||k,s[k])).join("")+tab("all","All",total);
+    tabsEl.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ source=b.dataset.src; load(); }));
+  }
+
+  function render(){
+    const q=filterEl.value.trim().toLowerCase();
+    const docs=(payload.documents||[]).filter(d=>{
+      if(!q) return true;
+      return `${d.sender||""} ${d.supplier||""} ${d.subject||""} ${d.attachment_name||""}`.toLowerCase().includes(q);
+    });
+    countEl.textContent=`${docs.length} document${docs.length===1?"":"s"}${payload.count>=500?" (showing first 500)":""}`;
+    if(!docs.length){ content.innerHTML='<div class="empty">No documents.</div>'; return; }
+    const showSender = source!=="archive";
+    const rows=docs.map(d=>`
+      <tr>
+        <td class="when">${fmt(d.received_at)}<small>${fmtTime(d.received_at)||("imported "+fmt(d.imported_at))}</small></td>
+        ${showSender?`<td><div class="sender" title="${esc(d.sender)}">${esc(d.sender)||'<span class="pill archive">archive</span>'}</div><div class="subj" title="${esc(d.subject)}">${esc(d.subject)||""}</div></td>`:""}
+        <td class="sup"><b>${esc(d.supplier)||"—"}</b><div class="subj">${esc(d.attachment_name)}</div></td>
+        <td>${(d.document_type||"").replace("_"," ")||"—"}</td>
+        <td>${d.pub&&d.pub!=='Unknown'?d.pub:"—"}</td>
+        <td class="num">${money(d.amount)}</td>
+        <td><span class="pill ${d.source}">${d.source}</span></td>
+        <td><button data-id="${d.id}">Open</button></td>
+      </tr>`).join("");
+    content.innerHTML=`<table><thead><tr>
+        <th>Arrived</th>${showSender?"<th>From / subject</th>":""}<th>Supplier / file</th><th>Type</th><th>Pub</th><th class="num">Amount</th><th>Via</th><th></th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+    content.querySelectorAll("button[data-id]").forEach(b=>b.addEventListener("click",()=>openDoc(b.dataset.id,b)));
+  }
+
+  async function openDoc(id, btn){
+    btn.disabled=true;
+    try{
+      const r=await fetch(`/api/documents/${id}/file`,{headers:{Authorization:`Bearer ${token}`}});
+      if(!r.ok) throw new Error("open failed ("+r.status+")");
+      window.open(URL.createObjectURL(await r.blob()),"_blank");
+    }catch(e){ alert(e.message); } finally{ btn.disabled=false; }
+  }
+
+  document.getElementById("refresh").addEventListener("click", load);
+  filterEl.addEventListener("input", render);
+  load();
+</script>
+</body>
+</html>

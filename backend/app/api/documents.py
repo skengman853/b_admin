@@ -297,6 +297,77 @@ async def get_document_store_list(
     }
 
 
+def _document_source(d: Document) -> str:
+    """How the document entered the system. We only have two real intake paths:
+      email   -> pulled from the Gmail inbox (real sender + received time)
+      archive -> bulk-imported from the local/Drive archive folders
+    Local-archive imports are stamped with a synthetic message id and the
+    sentinel sender 'local-archive'."""
+    gid = d.gmail_message_id or ""
+    if gid.startswith("local-archive") or (d.source_email_sender or "") == "local-archive":
+        return "archive"
+    return "email"
+
+
+@router.get("/inbox")
+async def get_document_inbox(
+    source: str = "email",
+    pub: str | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Provenance view: which documents arrived how, and when. Defaults to the
+    email-sourced pile (sender + received date), newest first. source=archive
+    for the bulk import, source=all for everything. Per-source counts are
+    always returned for the tab strip."""
+    result = await db.execute(
+        select(Document).where(Document.user_id == user.id, Document.derivation_index == 0)
+    )
+    all_docs = list(result.scalars().all())
+
+    sources: dict[str, int] = {}
+    for d in all_docs:
+        s = _document_source(d)
+        sources[s] = sources.get(s, 0) + 1
+
+    docs = all_docs
+    if source and source != "all":
+        docs = [d for d in docs if _document_source(d) == source]
+    if pub:
+        docs = [d for d in docs if _document_pub_label(d) == pub]
+
+    # Newest arrival first: email = received time, archive = file/import time.
+    def arrived_at(d: Document):
+        return d.source_received_at or d.created_at
+
+    docs.sort(key=lambda d: (arrived_at(d) is not None, arrived_at(d)), reverse=True)
+    docs = docs[:500]
+
+    return {
+        "sources": sources,
+        "source": source,
+        "count": len(docs),
+        "documents": [
+            {
+                "id": str(d.id),
+                "attachment_name": d.attachment_name,
+                "supplier": d.supplier,
+                "pub": _document_pub_label(d),
+                "document_type": d.document_type,
+                "document_date": d.document_date.isoformat() if d.document_date else None,
+                "amount": str(d.amount) if d.amount is not None else None,
+                "source": _document_source(d),
+                "sender": d.source_email_sender if _document_source(d) == "email" else None,
+                "subject": d.source_email_subject if _document_source(d) == "email" else None,
+                "received_at": d.source_received_at.isoformat() if d.source_received_at else None,
+                "imported_at": d.created_at.isoformat() if d.created_at else None,
+                "in_r2": bool(d.storage_provider == "s3" and d.storage_key),
+            }
+            for d in docs
+        ],
+    }
+
+
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
     needs_review: bool | None = None,
