@@ -85,6 +85,16 @@
     </div>
     <div class="result" id="r-match"></div>
   </div>
+
+  <div class="card" style="border-color:#f3c0c0;background:#fffafa">
+    <h2 style="color:#b91c1c">⚠️ Danger zone — wipe all documents</h2>
+    <p>Deletes <b>every document</b> (email, Drive and archive) for a clean re-import. Cascades to extractions, invoices and document↔transaction links. <b>Bank transactions are kept.</b> Cannot be undone.</p>
+    <div class="controls">
+      <label><input type="checkbox" id="wipeConfirm"> Yes, delete ALL documents</label>
+      <button class="run" data-op="wipe" style="background:#b91c1c">Wipe documents</button>
+    </div>
+    <div class="result" id="r-wipe"></div>
+  </div>
 </main>
 <script>
   const token = localStorage.getItem("b_admin_token") || "";
@@ -262,8 +272,22 @@
     }catch(e){ show("r-match", false, String(e.message||e)); }
   }
 
+  async function doWipe(){
+    if(!document.getElementById("wipeConfirm").checked){ show("r-wipe", false, "Tick the confirm box first."); return; }
+    if(!window.confirm("Delete ALL documents? Bank transactions are kept. This cannot be undone.")) return;
+    show("r-wipe", true, "Wiping…");
+    try{
+      const r = await fetch(`/api/documents/wipe?confirm=true`, {method:"POST", headers:hdrs()});
+      const { ok, body } = await parseResponse(r);
+      if(!ok) throw new Error(body.detail || `failed (${r.status})`);
+      document.getElementById("wipeConfirm").checked=false;
+      show("r-wipe", true, `Done. Deleted ${body.deleted_documents} document(s). Now re-import from Drive, then extract, then match.`);
+    }catch(e){ show("r-wipe", false, String(e.message||e)); }
+  }
+
   async function run(op, button){
     if(op==="connect") return doConnect(button);
+    if(op==="wipe"){ button.disabled=true; const o=button.textContent; button.textContent="Wiping…"; await doWipe(); button.disabled=false; button.textContent=o; return; }
     if(op==="extractjob"){ button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doExtractJob(); button.disabled=false; button.textContent=o; return; }
     if(op==="importcsv"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportCsv(button); button.disabled=false; button.textContent=o; return; }
     if(op==="importdrive"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportDrive(button); button.disabled=false; button.textContent=o; return; }

@@ -4,13 +4,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import Document, GmailConnection, User
+from app.models import Document, GmailConnection, ReconciliationSuggestion, User
 from app.schemas import (
     DocumentDetailResponse,
     DocumentDriveSyncRequest,
@@ -375,6 +375,32 @@ async def get_document_inbox(
             for d in docs
         ],
     }
+
+
+@router.post("/wipe")
+async def wipe_documents(
+    confirm: bool = False,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete ALL of this user's documents for a clean re-import. Cascades to
+    extraction runs, financial facts/rows, invoices and transaction links.
+    Bank transactions are NOT touched. Match suggestions are cleared too (you'll
+    re-match). Requires confirm=true. The PDF bytes in R2 are left as orphans
+    (harmless; re-import writes fresh copies)."""
+    if not confirm:
+        raise HTTPException(status_code=400, detail="Pass confirm=true to wipe all documents.")
+
+    doc_count = (
+        await db.execute(select(func.count(Document.id)).where(Document.user_id == user.id))
+    ).scalar() or 0
+    # Suggestions reference transactions (not cascaded by document delete); clear
+    # them so no stale matches remain. Items cascade from the suggestion.
+    await db.execute(delete(ReconciliationSuggestion).where(ReconciliationSuggestion.user_id == user.id))
+    # Documents cascade-delete their runs/facts/rows/invoices/links at the DB level.
+    await db.execute(delete(Document).where(Document.user_id == user.id))
+    await db.commit()
+    return {"deleted_documents": doc_count}
 
 
 @router.get("", response_model=DocumentListResponse)
