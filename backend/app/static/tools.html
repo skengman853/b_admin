@@ -67,6 +67,8 @@
     <p>Read amounts, references, VAT and statement rows out of imported documents. <b>Run in background</b> processes everything server-side to completion — you can close the tab and it keeps going. The foreground "Run extractor" does up to Max and needs the tab open.</p>
     <div class="controls">
       <label><input type="checkbox" id="extractForce"> Re-extract already-done</label>
+      <label>Year <input type="number" id="extractYear" value="2026" min="2000" max="2099" placeholder="all" style="width:90px"></label>
+      <label>Month <input type="number" id="extractMonth" min="1" max="12" placeholder="all" style="width:80px"></label>
       <button class="run" data-op="extractjob" style="background:#7c3aed">Run in background</button>
       <label>Max <input type="number" id="extractLimit" value="200" min="1" max="500" style="width:80px"></label>
       <button class="run" data-op="extract">Run extractor (foreground)</button>
@@ -223,9 +225,14 @@
 
   async function doExtractJob(){
     const force = document.getElementById("extractForce").checked;
+    const yr = document.getElementById("extractYear").value.trim();
+    const mo = document.getElementById("extractMonth").value.trim();
+    let q = `force=${force}`;
+    if(yr) q += `&year=${encodeURIComponent(yr)}`;
+    if(mo) q += `&month=${encodeURIComponent(mo)}`;
     show("r-extract", true, "Starting background job…");
     try{
-      const r = await fetch(`/api/documents/extract-job?force=${force}`, {method:"POST", headers:hdrs()});
+      const r = await fetch(`/api/documents/extract-job?${q}`, {method:"POST", headers:hdrs()});
       const { ok, body } = await parseResponse(r);
       if(!ok || !body.task_id) throw new Error(body.detail || "could not start job");
       localStorage.setItem("b_admin_extract_task", body.task_id);

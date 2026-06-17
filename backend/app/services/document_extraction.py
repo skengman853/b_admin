@@ -29,6 +29,20 @@ from app.services.supplier_profiles import detect_statement_parser_family
 EXTRACTION_VERSION = "document_extraction_v1"
 
 
+def document_period_range(year: int | None, month: int | None) -> tuple[date | None, date | None]:
+    """Half-open [start, end) date range for a year (and optional month).
+    Returns (None, None) when no year is given (month alone is ignored)."""
+    if not year:
+        return None, None
+    if month:
+        start = date(year, month, 1)
+        end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    else:
+        start = date(year, 1, 1)
+        end = date(year + 1, 1, 1)
+    return start, end
+
+
 async def extract_documents(
     *,
     user: User,
@@ -36,6 +50,8 @@ async def extract_documents(
     limit: int,
     document_ids: list | None = None,
     force: bool = False,
+    year: int | None = None,
+    month: int | None = None,
 ) -> dict:
     query = select(Document).where(Document.user_id == user.id)
     if document_ids:
@@ -48,6 +64,14 @@ async def extract_documents(
     else:
         query = query.where(Document.derivation_index == 0)
         query = query.where(Document.extraction_status != "split")
+
+    # Optional period filter (skips docs dated outside it; docs with no date are
+    # excluded). Lets the operator extract just the month/year they're working on
+    # instead of the whole history. Ignored when explicit document_ids are given.
+    if not document_ids:
+        start, end = document_period_range(year, month)
+        if start is not None:
+            query = query.where(Document.document_date >= start, Document.document_date < end)
 
     query = query.order_by(Document.created_at.asc()).limit(limit)
     result = await db.execute(query)

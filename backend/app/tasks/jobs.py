@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings
 from app.models import Document, User
-from app.services.document_extraction import extract_documents
+from app.services.document_extraction import document_period_range, extract_documents
 from app.tasks.celery_app import celery_app
 
 _CHUNK = 10  # commit/progress checkpoint size
@@ -31,11 +31,11 @@ def _run(coro):
 
 
 @celery_app.task(bind=True, name="extract_documents_job")
-def extract_documents_job(self, user_id: str, force: bool = False):
-    return _run(_extract_all(self, user_id, force))
+def extract_documents_job(self, user_id: str, force: bool = False, year: int | None = None, month: int | None = None):
+    return _run(_extract_all(self, user_id, force, year, month))
 
 
-async def _extract_all(task, user_id: str, force: bool) -> dict:
+async def _extract_all(task, user_id: str, force: bool, year: int | None = None, month: int | None = None) -> dict:
     engine = create_async_engine(settings.database_url)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     extracted = 0
@@ -57,6 +57,11 @@ async def _extract_all(task, user_id: str, force: bool) -> dict:
             if not force:
                 candidates = candidates.where(
                     Document.extraction_status.not_in(["extracted", "reviewed", "split", "failed"])
+                )
+            start, end = document_period_range(year, month)
+            if start is not None:
+                candidates = candidates.where(
+                    Document.document_date >= start, Document.document_date < end
                 )
             ids = list(
                 (await db.execute(candidates.order_by(Document.created_at.asc()))).scalars().all()

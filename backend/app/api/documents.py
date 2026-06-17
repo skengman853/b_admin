@@ -749,14 +749,17 @@ async def extract_document_data(
 @router.post("/extract-job")
 async def start_extract_job(
     force: bool = False,
+    year: int | None = None,
+    month: int | None = None,
     user: User = Depends(get_current_user),
 ):
-    """Kick off extraction on the background worker — processes every pending
-    document server-side to completion (no request timeout, no babysitting).
+    """Kick off extraction on the background worker — processes pending
+    documents server-side to completion (no request timeout, no babysitting).
+    Optional year/month limits it to documents dated in that period.
     Returns a task id to poll via /api/documents/job/{task_id}."""
     from app.tasks.jobs import extract_documents_job
 
-    task = extract_documents_job.delay(str(user.id), force)
+    task = extract_documents_job.delay(str(user.id), force, year, month)
     return {"task_id": task.id, "state": "queued"}
 
 
