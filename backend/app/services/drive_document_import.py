@@ -14,6 +14,7 @@ predates it.
 
 from __future__ import annotations
 
+import re
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -47,15 +48,30 @@ from app.services.object_storage import sync_document_to_object_storage
 # Only ingest document-like files; skip images/spreadsheets/native Google docs.
 _ALLOWED_SUFFIXES = {".pdf"}
 
+_YEAR_RE = re.compile(r"(20\d{2})")
+
+
+def _file_year_matches(relative_path: Path, date_hint: str | None, year: int) -> bool:
+    """True if the file looks like it belongs to `year`. Years are read from the
+    inferred document date and any 20xx tokens in the folder path / filename.
+    Files with no year signal at all are kept (don't silently drop them)."""
+    found = set(_YEAR_RE.findall(relative_path.as_posix()))
+    if date_hint:
+        found.add(str(date_hint)[:4])
+    if not found:
+        return True
+    return str(year) in found
+
 
 @dataclass(slots=True)
 class DriveImportResult:
     folder: str
-    eligible_files: int = 0       # PDFs seen during this call's walk
+    eligible_files: int = 0       # PDFs in the target year seen during this walk
     already_imported: int = 0     # of those, already in the system
     imported_documents: int = 0
     extracted_documents: int = 0
     skipped_files: int = 0        # non-PDFs seen this call
+    filtered_year: int = 0        # PDFs skipped because they're another year
     more_remaining: bool = False  # hit the batch limit; call again to continue
     errors: list[str] = field(default_factory=list)
 
@@ -71,6 +87,7 @@ async def import_documents_from_drive(
     folder_name: str | None = None,
     folder_id: str | None = None,
     limit: int = 50,
+    year: int | None = None,
     extract_after_import: bool = False,
 ) -> DriveImportResult:
     connection = (
@@ -121,6 +138,13 @@ async def import_documents_from_drive(
         if Path(name).suffix.lower() not in _ALLOWED_SUFFIXES:
             result.skipped_files += 1
             continue
+        relative_path = Path(*path_parts, name) if path_parts else Path(name)
+        date_hint = _infer_date_hint(relative_path)
+        # Year filter: skip files whose path/name clearly belongs to another
+        # year (cheap — no download). Files with no detectable year are kept.
+        if year is not None and not _file_year_matches(relative_path, date_hint, year):
+            result.filtered_year += 1
+            continue
         result.eligible_files += 1
         message_id = _drive_message_id(file_meta["id"])
         if message_id in existing_ids:
@@ -130,11 +154,9 @@ async def import_documents_from_drive(
             result.more_remaining = True
             break
 
-        relative_path = Path(*path_parts, file_meta["name"]) if path_parts else Path(file_meta["name"])
         supplier = _infer_supplier(relative_path)
         document_type = _infer_document_type(relative_path)
         pub_hint = _infer_pub_hint(relative_path)
-        date_hint = _infer_date_hint(relative_path)
         review_reasons = _review_reasons(supplier=supplier, document_type=document_type)
 
         try:

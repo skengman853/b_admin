@@ -797,13 +797,15 @@ async def import_drive_documents(
     folder_name: str | None = None,
     folder_id: str | None = None,
     limit: int = Query(50, ge=1, le=200),
+    year: int | None = None,
     extract_after_import: bool = False,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Import documents from the client's Google Drive folders. Chunked (limit)
     and deduped on Drive file id, so call it repeatedly until nothing new is
-    imported. Needs the drive.readonly scope (reconnect Google if older)."""
+    imported. Optional `year` skips files dated to other years. Needs the
+    drive.readonly scope (reconnect Google if older)."""
     from app.services.drive_document_import import import_documents_from_drive
 
     try:
@@ -813,6 +815,7 @@ async def import_drive_documents(
             folder_name=folder_name,
             folder_id=folder_id,
             limit=limit,
+            year=year,
             extract_after_import=extract_after_import,
         )
     except ValueError as exc:
@@ -832,6 +835,7 @@ async def import_drive_documents(
         "imported": result.imported_documents,
         "extracted": result.extracted_documents,
         "skipped_non_pdf": result.skipped_files,
+        "skipped_other_year": result.filtered_year,
         "more_remaining": result.more_remaining,
         "errors": result.errors[:20],
     }
