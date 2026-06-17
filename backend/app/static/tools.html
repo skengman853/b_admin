@@ -64,11 +64,12 @@
 
   <div class="card">
     <h2>4. Run the invoice extractor</h2>
-    <p>Read amounts, references, VAT and statement rows out of imported documents.</p>
+    <p>Read amounts, references, VAT and statement rows out of imported documents. <b>Run in background</b> processes everything server-side to completion — you can close the tab and it keeps going. The foreground "Run extractor" does up to Max and needs the tab open.</p>
     <div class="controls">
       <label><input type="checkbox" id="extractForce"> Re-extract already-done</label>
+      <button class="run" data-op="extractjob" style="background:#7c3aed">Run in background</button>
       <label>Max <input type="number" id="extractLimit" value="200" min="1" max="500" style="width:80px"></label>
-      <button class="run" data-op="extract">Run extractor</button>
+      <button class="run" data-op="extract">Run extractor (foreground)</button>
     </div>
     <div class="result" id="r-extract"></div>
   </div>
@@ -202,8 +203,39 @@
     show("r-importdrive", true, `Done. Imported ${imported} new document(s) from "${folder}". Now run the extractor, then the matcher.`);
   }
 
+  const sleep = ms => new Promise(r=>setTimeout(r, ms));
+
+  // Poll a background job until it finishes. Transient poll errors are ignored
+  // (the job keeps running server-side regardless of this tab).
+  async function pollJob(taskId){
+    while(true){
+      let body=null;
+      try{ const r=await fetch(`/api/documents/job/${taskId}`,{headers:hdrs()}); ({body}=await parseResponse(r)); }
+      catch(e){ await sleep(3000); continue; }
+      const st = body && body.state;
+      if(st==="SUCCESS"){ const x=body.result||{}; show("r-extract", true, `Done. Extracted ${x.extracted??0}, skipped ${x.skipped??0}.`); localStorage.removeItem("b_admin_extract_task"); return; }
+      if(st==="FAILURE"){ show("r-extract", false, `Job failed: ${body.error||"unknown"}. Re-run to resume.`); localStorage.removeItem("b_admin_extract_task"); return; }
+      if(st==="PENDING"){ show("r-extract", true, "Queued — waiting for the worker to pick it up…"); }
+      else { const p=(body&&body.progress)||{}; show("r-extract", true, `Working in background… extracted ${p.extracted??0}, skipped ${p.skipped??0}${p.total?` of ${p.total}`:""}. (Safe to close this tab — it keeps running.)`); }
+      await sleep(3000);
+    }
+  }
+
+  async function doExtractJob(){
+    const force = document.getElementById("extractForce").checked;
+    show("r-extract", true, "Starting background job…");
+    try{
+      const r = await fetch(`/api/documents/extract-job?force=${force}`, {method:"POST", headers:hdrs()});
+      const { ok, body } = await parseResponse(r);
+      if(!ok || !body.task_id) throw new Error(body.detail || "could not start job");
+      localStorage.setItem("b_admin_extract_task", body.task_id);
+      await pollJob(body.task_id);
+    }catch(e){ show("r-extract", false, String(e.message||e)); }
+  }
+
   async function run(op, button){
     if(op==="connect") return doConnect(button);
+    if(op==="extractjob"){ button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doExtractJob(); button.disabled=false; button.textContent=o; return; }
     if(op==="importcsv"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportCsv(button); button.disabled=false; button.textContent=o; return; }
     if(op==="importdrive"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportDrive(button); button.disabled=false; button.textContent=o; return; }
     if(op==="extract") { button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doExtractChunked(button); button.disabled=false; button.textContent=o; return; }
@@ -232,6 +264,10 @@
   }
 
   document.querySelectorAll("button.run").forEach(btn=>btn.addEventListener("click",()=>run(btn.dataset.op, btn)));
+
+  // Re-attach to an extraction job still running from a previous visit.
+  const resumeTask = localStorage.getItem("b_admin_extract_task");
+  if(token && resumeTask){ pollJob(resumeTask); }
 </script>
 </body>
 </html>

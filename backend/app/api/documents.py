@@ -746,6 +746,41 @@ async def extract_document_data(
     return DocumentExtractionResponse.model_validate(summary)
 
 
+@router.post("/extract-job")
+async def start_extract_job(
+    force: bool = False,
+    user: User = Depends(get_current_user),
+):
+    """Kick off extraction on the background worker — processes every pending
+    document server-side to completion (no request timeout, no babysitting).
+    Returns a task id to poll via /api/documents/job/{task_id}."""
+    from app.tasks.jobs import extract_documents_job
+
+    task = extract_documents_job.delay(str(user.id), force)
+    return {"task_id": task.id, "state": "queued"}
+
+
+@router.get("/job/{task_id}")
+async def get_job_status(
+    task_id: str,
+    user: User = Depends(get_current_user),
+):
+    """Poll a background job. Returns its state plus progress
+    (extracted/skipped/done/total) while running, and the summary when done."""
+    from app.tasks.celery_app import celery_app
+
+    res = celery_app.AsyncResult(task_id)
+    payload: dict = {"task_id": task_id, "state": res.state}
+    info = res.info
+    if res.state == "PROGRESS" and isinstance(info, dict):
+        payload["progress"] = info
+    elif res.state == "SUCCESS":
+        payload["result"] = res.result
+    elif res.state == "FAILURE":
+        payload["error"] = str(info)[:300]
+    return payload
+
+
 @router.post("/backfill-financial-state", response_model=DocumentFinancialBackfillResponse)
 async def backfill_document_financial_data(
     body: DocumentFinancialBackfillRequest,
