@@ -43,9 +43,9 @@
 
   <div class="card">
     <h2>2. Import invoices from Google Drive</h2>
-    <p>Pull the client's existing invoice folders out of Google Drive. Name the top folder (e.g. the year or "Invoices"). Deduped on Drive file id, so it's safe to run repeatedly — it picks up where it left off. Reconnect Google first if you haven't since Drive read access was added.</p>
+    <p>Pull the client's existing invoice folders out of Google Drive. Paste the Drive folder <b>link</b> (best — open the folder in Drive and copy the URL), or type its name/path. Deduped on Drive file id, so it's safe to run repeatedly — it picks up where it left off. Reconnect Google first if you haven't since Drive read access was added.</p>
     <div class="controls">
-      <label>Folder name <input type="text" id="driveFolder" placeholder="e.g. Careys Invoices" style="width:220px"></label>
+      <label>Drive folder link or name <input type="text" id="driveFolder" placeholder="https://drive.google.com/drive/folders/…" style="width:320px"></label>
       <button class="run" data-op="importdrive">Import from Drive</button>
     </div>
     <div class="result" id="r-importdrive"></div>
@@ -153,15 +153,18 @@
   // Drive import is chunked & deduped: loop small batches until nothing new
   // comes in, so each request finishes well under the proxy timeout.
   async function doImportDrive(button){
-    const folder = document.getElementById("driveFolder").value.trim();
-    if(!folder){ show("r-importdrive", false, "Enter the Drive folder name first."); return; }
+    const raw = document.getElementById("driveFolder").value.trim();
+    if(!raw){ show("r-importdrive", false, "Paste the Drive folder link (or its name) first."); return; }
+    // A pasted Drive link contains the folder id (…/folders/<id>); prefer that.
+    const m = raw.match(/\/folders\/([A-Za-z0-9_-]+)/);
+    const qs = m ? `folder_id=${encodeURIComponent(m[1])}` : `folder_name=${encodeURIComponent(raw)}`;
     let imported=0, calls=0;
     show("r-importdrive", true, "Starting… (this runs in small batches; leave the page open)");
     while(true){
       calls++;
       let res;
       try{
-        res = await fetch(`/api/documents/import-drive?folder_name=${encodeURIComponent(folder)}&limit=8`, {method:"POST", headers:hdrs()});
+        res = await fetch(`/api/documents/import-drive?${qs}&limit=8`, {method:"POST", headers:hdrs()});
       }catch(e){ show("r-importdrive", false, `Network error after ${imported} imported: ${e.message}`); return; }
       const { ok, body } = await parseResponse(res);
       if(!ok){ show("r-importdrive", false, `Stopped after ${imported} imported: ${body.detail}`); return; }
