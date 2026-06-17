@@ -37,6 +37,9 @@ def _find_named_child(service, *, name: str, parent_id: str | None, mime_type: s
             spaces="drive",
             fields="files(id, name, mimeType, webViewLink)",
             pageSize=1,
+            corpora="allDrives",
+            includeItemsFromAllDrives=True,
+            supportsAllDrives=True,
         )
         .execute()
     )
@@ -77,6 +80,9 @@ def _list_children(service, parent_id: str) -> list[dict]:
                 fields="nextPageToken, files(id, name, mimeType, size, modifiedTime)",
                 pageSize=1000,
                 pageToken=page_token,
+                corpora="allDrives",
+                includeItemsFromAllDrives=True,
+                supportsAllDrives=True,
             )
             .execute()
         )
@@ -99,7 +105,7 @@ def walk_drive_folder(service, root_id: str, *, _prefix: tuple[str, ...] = ()):
 
 
 def download_drive_file(service, file_id: str) -> bytes:
-    request = service.files().get_media(fileId=file_id)
+    request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
     buffer = io.BytesIO()
     downloader = MediaIoBaseDownload(buffer, request)
     done = False
