@@ -89,3 +89,42 @@ async def _extract_all(task, user_id: str, force: bool, year: int | None = None,
         await engine.dispose()
 
     return {"extracted": extracted, "skipped": skipped, "total": extracted + skipped}
+
+
+@celery_app.task(bind=True, name="rebuild_matching_job")
+def rebuild_matching_job(self, user_id: str, month: str, pub: str | None = None):
+    return _run(_rebuild_matching(self, user_id, month, pub))
+
+
+async def _rebuild_matching(task, user_id: str, month: str, pub: str | None) -> dict:
+    from app.services.transaction_reconciliation import build_reconciliation_report
+
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with session_factory() as db:
+            user = (
+                await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+            ).scalar_one()
+            task.update_state(state="PROGRESS", meta={"month": month, "status": "matching"})
+            report = await build_reconciliation_report(
+                db=db,
+                user_id=user.id,
+                month=month,
+                pub=pub,
+                limit=5000,
+                annotated_only=False,
+                persist_exact_matches=True,
+                persist_suggestions=True,
+            )
+            await db.commit()
+            return {
+                "month": month,
+                "expense_transactions": report.expense_transactions,
+                "matched": report.matched_transactions,
+                "partial": report.partial_transactions,
+                "suggested": report.suggested_transactions,
+                "unmatched": report.unmatched_transactions,
+            }
+    finally:
+        await engine.dispose()

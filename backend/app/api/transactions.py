@@ -1014,6 +1014,21 @@ async def rebuild_matching(
     }
 
 
+@router.post("/rebuild-matching-job")
+async def start_rebuild_matching_job(
+    month: str,
+    pub: str | None = None,
+    user: User = Depends(get_current_user),
+):
+    """Run the matcher for a month on the background worker (no request timeout).
+    Poll via GET /api/documents/job/{task_id}."""
+    _parse_month(month)
+    from app.tasks.jobs import rebuild_matching_job
+
+    task = rebuild_matching_job.delay(str(user.id), month, pub)
+    return {"task_id": task.id, "state": "queued"}
+
+
 @router.get("/vat-book/export")
 async def export_vat_book(
     month: str,

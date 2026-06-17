@@ -208,20 +208,29 @@
   const sleep = ms => new Promise(r=>setTimeout(r, ms));
 
   // Poll a background job until it finishes. Transient poll errors are ignored
-  // (the job keeps running server-side regardless of this tab).
-  async function pollJob(taskId){
+  // (the job keeps running server-side regardless of this tab). elId = where to
+  // render; fmtSuccess(result) builds the done message.
+  async function pollJob(taskId, elId, fmtSuccess){
     while(true){
       let body=null;
       try{ const r=await fetch(`/api/documents/job/${taskId}`,{headers:hdrs()}); ({body}=await parseResponse(r)); }
       catch(e){ await sleep(3000); continue; }
       const st = body && body.state;
-      if(st==="SUCCESS"){ const x=body.result||{}; show("r-extract", true, `Done. Extracted ${x.extracted??0}, skipped ${x.skipped??0}.`); localStorage.removeItem("b_admin_extract_task"); return; }
-      if(st==="FAILURE"){ show("r-extract", false, `Job failed: ${body.error||"unknown"}. Re-run to resume.`); localStorage.removeItem("b_admin_extract_task"); return; }
-      if(st==="PENDING"){ show("r-extract", true, "Queued — waiting for the worker to pick it up…"); }
-      else { const p=(body&&body.progress)||{}; show("r-extract", true, `Working in background… extracted ${p.extracted??0}, skipped ${p.skipped??0}${p.total?` of ${p.total}`:""}. (Safe to close this tab — it keeps running.)`); }
+      if(st==="SUCCESS"){ show(elId, true, fmtSuccess(body.result||{})); return true; }
+      if(st==="FAILURE"){ show(elId, false, `Job failed: ${body.error||"unknown"}. Re-run to resume.`); return false; }
+      if(st==="PENDING"){ show(elId, true, "Queued — waiting for the worker to pick it up…"); }
+      else {
+        const p=(body&&body.progress)||{};
+        const msg = (p.extracted!==undefined)
+          ? `Working in background… extracted ${p.extracted??0}, skipped ${p.skipped??0}${p.total?` of ${p.total}`:""}.`
+          : `Working in background on the worker…`;
+        show(elId, true, msg + " (Safe to close this tab — it keeps running.)");
+      }
       await sleep(3000);
     }
   }
+
+  const fmtExtract = x => `Done. Extracted ${x.extracted??0}, skipped ${x.skipped??0}.`;
 
   async function doExtractJob(){
     const force = document.getElementById("extractForce").checked;
@@ -236,8 +245,21 @@
       const { ok, body } = await parseResponse(r);
       if(!ok || !body.task_id) throw new Error(body.detail || "could not start job");
       localStorage.setItem("b_admin_extract_task", body.task_id);
-      await pollJob(body.task_id);
+      await pollJob(body.task_id, "r-extract", fmtExtract);
+      localStorage.removeItem("b_admin_extract_task");
     }catch(e){ show("r-extract", false, String(e.message||e)); }
+  }
+
+  async function doMatchJob(){
+    const m = document.getElementById("matchMonth").value;
+    show("r-match", true, "Starting matcher on the worker…");
+    try{
+      const r = await fetch(`/api/transactions/rebuild-matching-job?month=${m}`, {method:"POST", headers:hdrs()});
+      const { ok, body } = await parseResponse(r);
+      if(!ok || !body.task_id) throw new Error(body.detail || "could not start matcher");
+      await pollJob(body.task_id, "r-match", x =>
+        `${x.month}: matched ${x.matched}, partial ${x.partial}, suggested ${x.suggested}, unmatched ${x.unmatched} (of ${x.expense_transactions} expense rows).`);
+    }catch(e){ show("r-match", false, String(e.message||e)); }
   }
 
   async function run(op, button){
@@ -246,17 +268,12 @@
     if(op==="importcsv"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportCsv(button); button.disabled=false; button.textContent=o; return; }
     if(op==="importdrive"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportDrive(button); button.disabled=false; button.textContent=o; return; }
     if(op==="extract") { button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doExtractChunked(button); button.disabled=false; button.textContent=o; return; }
+    if(op==="match") { button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doMatchJob(); button.disabled=false; button.textContent=o; return; }
     button.disabled = true;
     const orig = button.textContent; button.textContent = "Running…";
-    const id = op==="scan" ? "r-scan" : "r-match";
+    const id = "r-scan";
     try{
-      let res;
-      if(op==="scan"){
-        res = await fetch("/api/pipeline/scan-recent", {method:"POST", headers:hdrs(), body:JSON.stringify({days:+document.getElementById("scanDays").value, max_messages:100})});
-      } else {
-        const m=document.getElementById("matchMonth").value;
-        res = await fetch(`/api/transactions/rebuild-matching?month=${m}`, {method:"POST", headers:hdrs()});
-      }
+      const res = await fetch("/api/pipeline/scan-recent", {method:"POST", headers:hdrs(), body:JSON.stringify({days:+document.getElementById("scanDays").value, max_messages:100})});
       const { ok, body } = await parseResponse(res);
       if(!ok) throw new Error(body.detail || `failed (${res.status})`);
       show(id, true, summarise(op, body));
@@ -266,15 +283,14 @@
   }
 
   function summarise(op, b){
-    if(op==="scan") return `Saved ${b.saved_files} document(s) from ${b.processed_messages} message(s) — scanned ${b.scanned_messages}, skipped ${b.skipped_messages}, deduped ${b.deduped_documents}.`;
-    return `${b.month}: matched ${b.matched}, partial ${b.partial}, suggested ${b.suggested}, unmatched ${b.unmatched}.\nbuckets: ${JSON.stringify(b.buckets)}`;
+    return `Saved ${b.saved_files} document(s) from ${b.processed_messages} message(s) — scanned ${b.scanned_messages}, skipped ${b.skipped_messages}, deduped ${b.deduped_documents}.`;
   }
 
   document.querySelectorAll("button.run").forEach(btn=>btn.addEventListener("click",()=>run(btn.dataset.op, btn)));
 
   // Re-attach to an extraction job still running from a previous visit.
   const resumeTask = localStorage.getItem("b_admin_extract_task");
-  if(token && resumeTask){ pollJob(resumeTask); }
+  if(token && resumeTask){ pollJob(resumeTask, "r-extract", fmtExtract).then(()=>localStorage.removeItem("b_admin_extract_task")); }
 </script>
 </body>
 </html>
