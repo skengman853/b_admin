@@ -42,7 +42,9 @@ async def extract_documents(
         query = query.where(Document.id.in_(document_ids))
     elif not force:
         query = query.where(Document.derivation_index == 0)
-        query = query.where(Document.extraction_status.not_in(["extracted", "reviewed", "split"]))
+        # 'failed' is excluded so a poison doc isn't re-attempted every run; use
+        # force (or the Re-extract checkbox) to retry failures deliberately.
+        query = query.where(Document.extraction_status.not_in(["extracted", "reviewed", "split", "failed"]))
     else:
         query = query.where(Document.derivation_index == 0)
         query = query.where(Document.extraction_status != "split")
@@ -155,30 +157,68 @@ async def extract_documents(
             )
             continue
 
-        extraction_fields = await _build_document_extraction_fields(
-            document=document,
-            extracted_text=extracted_text,
-            pdf_bytes=pdf_bytes,
-            force=force,
-        )
-        for field, value in extraction_fields.items():
-            setattr(document, field, value)
-        extraction_run = _build_extraction_run(
-            document=document,
-            extracted_text=extracted_text,
-            source_kind=_extraction_source_kind(document),
-            status=document.extraction_status,
-            confidence_score=document.confidence_score,
-            review_reasons=document.review_reasons or [],
-            raw_payload_json=_build_run_payload(document=document, extraction_fields=extraction_fields),
-        )
-        db.add(extraction_run)
-        await db.flush()
-        await sync_document_financial_state(
-            db=db,
-            document=document,
-            extraction_run=extraction_run,
-        )
+        # The AI step below can hang or raise (network/timeout/bad response).
+        # Isolate each document so one failure marks just that doc and the rest
+        # of the chunk still completes, instead of 500-ing the whole request.
+        try:
+            extraction_fields = await _build_document_extraction_fields(
+                document=document,
+                extracted_text=extracted_text,
+                pdf_bytes=pdf_bytes,
+                force=force,
+            )
+            for field, value in extraction_fields.items():
+                setattr(document, field, value)
+            extraction_run = _build_extraction_run(
+                document=document,
+                extracted_text=extracted_text,
+                source_kind=_extraction_source_kind(document),
+                status=document.extraction_status,
+                confidence_score=document.confidence_score,
+                review_reasons=document.review_reasons or [],
+                raw_payload_json=_build_run_payload(document=document, extraction_fields=extraction_fields),
+            )
+            db.add(extraction_run)
+            await db.flush()
+            await sync_document_financial_state(
+                db=db,
+                document=document,
+                extraction_run=extraction_run,
+            )
+        except Exception as exc:  # noqa: BLE001 - one bad doc must not kill the batch
+            await db.rollback()
+            document = await db.get(Document, document.id)
+            if document is not None:
+                document.extraction_status = "failed"
+                document.extracted_at = datetime.utcnow()
+                document.review_reasons = _unique_reasons([*(document.review_reasons or []), "extraction_error"])
+                document.needs_review = True
+                db.add(
+                    _build_extraction_run(
+                        document=document,
+                        extracted_text="",
+                        source_kind="rules",
+                        status="failed",
+                        confidence_score=document.confidence_score,
+                        review_reasons=document.review_reasons,
+                        raw_payload_json={"failure_reason": "extraction_error", "error": str(exc)[:300]},
+                    )
+                )
+                await db.commit()
+            skipped += 1
+            response_results.append(
+                {
+                    "document_id": document.id if document else None,
+                    "status": "failed",
+                    "reason": "extraction_error",
+                    "document_type": document.document_type if document else None,
+                    "supplier": document.supplier if document else None,
+                    "amount": None,
+                    "vat_amount": None,
+                    "confidence_score": None,
+                }
+            )
+            continue
 
         extracted += 1
         touched_document_ids.append(document.id)

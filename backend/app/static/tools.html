@@ -117,22 +117,34 @@
   async function doExtractChunked(button){
     const force = document.getElementById("extractForce").checked;
     const target = +document.getElementById("extractLimit").value;
-    const CHUNK = 5;  // small chunks so each request finishes well under the proxy timeout
-    let extracted=0, skipped=0, done=0;
+    const CHUNK = 4;  // small chunks so each request finishes well under the proxy timeout
+    let extracted=0, skipped=0, done=0, transientFails=0;
     show("r-extract", true, "Starting…");
     while(done < target){
       const limit = Math.min(CHUNK, target - done);
-      let res;
-      try{ res = await fetch("/api/documents/extract", {method:"POST", headers:hdrs(), body:JSON.stringify({limit, force})}); }
-      catch(e){ show("r-extract", false, `Network error after ${done} processed: ${e.message}`); return; }
-      const { ok, body } = await parseResponse(res);
-      if(!ok){ show("r-extract", false, `Stopped after ${done}: ${body.detail}`); return; }
+      // Retry a stalled/timed-out chunk a few times before giving up. The server
+      // marks failed docs per-document, so retries make progress, not loops.
+      let body=null, ok=false, attempt=0;
+      while(attempt < 3 && !ok){
+        attempt++;
+        try{
+          const res = await fetch("/api/documents/extract", {method:"POST", headers:hdrs(), body:JSON.stringify({limit, force})});
+          ({ ok, body } = await parseResponse(res));
+        }catch(e){ ok=false; body={detail:String(e.message||e)}; }
+        if(!ok && attempt < 3){ show("r-extract", true, `Retrying… (extracted ${extracted}, hiccup: ${body.detail})`); await new Promise(r=>setTimeout(r, 1500*attempt)); }
+      }
+      if(!ok){
+        transientFails++;
+        if(transientFails >= 3){ show("r-extract", false, `Stopped after ${extracted} extracted: ${body.detail}. Re-run to resume where it left off.`); return; }
+        continue;  // skip this attempt, try the next chunk
+      }
+      transientFails = 0;
       const req = body.requested ?? 0;
       extracted += body.extracted ?? 0; skipped += body.skipped ?? 0; done += req;
       show("r-extract", true, `Working… extracted ${extracted}, skipped ${skipped} so far.`);
       if(req === 0) break;  // nothing left to do
     }
-    show("r-extract", true, `Done. Extracted ${extracted}, skipped ${skipped}.`);
+    show("r-extract", true, `Done. Extracted ${extracted}, skipped ${skipped}. (Re-run anytime — it resumes.)`);
   }
 
   async function doImportCsv(button){
@@ -161,20 +173,31 @@
     let qs = m ? `folder_id=${encodeURIComponent(m[1])}` : `folder_name=${encodeURIComponent(raw)}`;
     const yr = document.getElementById("driveYear").value.trim();
     if(yr) qs += `&year=${encodeURIComponent(yr)}`;
-    let imported=0, calls=0;
+    let imported=0, calls=0, transientFails=0;
     show("r-importdrive", true, "Starting… (this runs in small batches; leave the page open)");
     while(true){
       calls++;
-      let res;
-      try{
-        res = await fetch(`/api/documents/import-drive?${qs}&limit=25`, {method:"POST", headers:hdrs()});
-      }catch(e){ show("r-importdrive", false, `Network error after ${imported} imported: ${e.message}`); return; }
-      const { ok, body } = await parseResponse(res);
-      if(!ok){ show("r-importdrive", false, `Stopped after ${imported} imported: ${body.detail}`); return; }
+      // Retry a blipped batch a few times before giving up; resumable, so retries
+      // pick up where it left off rather than re-importing.
+      let body=null, ok=false, attempt=0;
+      while(attempt < 3 && !ok){
+        attempt++;
+        try{
+          const res = await fetch(`/api/documents/import-drive?${qs}&limit=25`, {method:"POST", headers:hdrs()});
+          ({ ok, body } = await parseResponse(res));
+        }catch(e){ ok=false; body={detail:String(e.message||e)}; }
+        if(!ok && attempt < 3){ show("r-importdrive", true, `Retrying… (${imported} imported, hiccup: ${body.detail})`); await new Promise(r=>setTimeout(r, 1500*attempt)); }
+      }
+      if(!ok){
+        transientFails++;
+        if(transientFails >= 3){ show("r-importdrive", false, `Stopped after ${imported} imported: ${body.detail}. Just hit Import again — it resumes.`); return; }
+        continue;
+      }
+      transientFails = 0;
       imported += body.imported || 0;
       show("r-importdrive", true, `Working… ${imported} imported so far.`);
       if(!body.more_remaining) break;   // walked the whole tree, nothing new left
-      if(calls > 2000) break;           // safety stop
+      if(calls > 4000) break;           // safety stop
     }
     show("r-importdrive", true, `Done. Imported ${imported} new document(s) from "${folder}". Now run the extractor, then the matcher.`);
   }
