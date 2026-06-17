@@ -400,7 +400,12 @@ async def wipe_documents(
     # Documents cascade-delete their runs/facts/rows/invoices/links at the DB level.
     await db.execute(delete(Document).where(Document.user_id == user.id))
     await db.commit()
-    return {"deleted_documents": doc_count}
+    # Forget scanned-email memory so a fresh Gmail scan re-imports (otherwise it
+    # skips emails whose documents were just deleted).
+    from app.services.tracking import clear_processed_messages
+
+    cleared = clear_processed_messages(str(user.id))
+    return {"deleted_documents": doc_count, "cleared_email_memory": cleared}
 
 
 @router.get("", response_model=DocumentListResponse)

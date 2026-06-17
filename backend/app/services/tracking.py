@@ -40,6 +40,19 @@ def record_processed_message(user_id: str, message_id: str, entry: dict[str, Any
     _save_tracking(payload)
 
 
+def clear_processed_messages(user_id: str) -> int:
+    """Forget which Gmail messages were already scanned for a user, so a fresh
+    scan re-imports them. Used when documents are wiped — otherwise the scan
+    skips emails whose documents no longer exist. Returns how many were cleared."""
+    payload = _load_tracking()
+    users = payload.get("users", {})
+    count = len(users.get(user_id, {}))
+    if user_id in users:
+        users[user_id] = {}
+        _save_tracking(payload)
+    return count
+
+
 def _user_entries(user_id: str) -> dict[str, Any]:
     payload = _load_tracking()
     return payload.get("users", {}).get(user_id, {})

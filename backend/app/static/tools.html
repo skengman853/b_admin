@@ -41,6 +41,7 @@
     <div class="controls">
       <button class="run" data-op="connect" style="background:#0a7">Connect Gmail</button>
       <label>Days back <input type="number" id="scanDays" value="30" min="1" max="365" style="width:80px"></label>
+      <label><input type="checkbox" id="scanForce"> Re-scan all (ignore already-seen)</label>
       <button class="run" data-op="scan">Scan Gmail</button>
     </div>
     <div class="result" id="r-scan"></div>
@@ -348,7 +349,7 @@
     const orig = button.textContent; button.textContent = "Running…";
     const id = "r-scan";
     try{
-      const res = await fetch("/api/pipeline/scan-recent", {method:"POST", headers:hdrs(), body:JSON.stringify({days:+document.getElementById("scanDays").value, max_messages:100})});
+      const res = await fetch("/api/pipeline/scan-recent", {method:"POST", headers:hdrs(), body:JSON.stringify({days:+document.getElementById("scanDays").value, max_messages:100, force:document.getElementById("scanForce").checked})});
       const { ok, body } = await parseResponse(res);
       if(!ok) throw new Error(body.detail || `failed (${res.status})`);
       show(id, true, summarise(op, body));
