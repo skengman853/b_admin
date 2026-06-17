@@ -862,6 +862,51 @@ async def import_local_documents(
     return LocalDocumentImportResponse.model_validate(summary, from_attributes=True)
 
 
+@router.get("/drive-folders")
+async def list_drive_folders(
+    folder_id: str | None = None,
+    folder_name: str | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Browse a Drive folder: list its subfolders and how many PDFs sit directly
+    in it, so the operator can drill to the exact folder to import."""
+    from sqlalchemy import select as _select
+
+    from app.models import GmailConnection
+    from app.services.drive_client import (
+        find_folder_by_name,
+        find_folder_by_path,
+        get_drive_service,
+        list_immediate_folders,
+    )
+
+    connection = (
+        await db.execute(_select(GmailConnection).where(GmailConnection.user_id == user.id))
+    ).scalar_one_or_none()
+    if connection is None:
+        raise HTTPException(status_code=400, detail="Connect Google on the Tools page first.")
+    service = await get_drive_service(connection, db)
+
+    if not folder_id:
+        if not folder_name:
+            raise HTTPException(status_code=400, detail="Provide a Drive folder id, name or link.")
+        folder = (
+            find_folder_by_path(service, folder_name)
+            if "/" in folder_name
+            else find_folder_by_name(service, name=folder_name)
+        )
+        if folder is None:
+            raise HTTPException(status_code=400, detail=f"No Drive folder found for {folder_name!r}.")
+        folder_id = folder["id"]
+
+    try:
+        subfolders, direct_pdfs = list_immediate_folders(service, folder_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"{type(exc).__name__}: {exc}"[:300]) from exc
+    return {"folder_id": folder_id, "subfolders": subfolders, "direct_pdfs": direct_pdfs}
+
+
 @router.post("/import-drive")
 async def import_drive_documents(
     folder_name: str | None = None,

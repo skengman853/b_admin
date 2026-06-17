@@ -93,6 +93,22 @@ def _list_children(service, parent_id: str) -> list[dict]:
     return children
 
 
+def list_immediate_folders(service, parent_id: str) -> tuple[list[dict], int]:
+    """Return (subfolders, direct_pdf_count) for one folder — used by the folder
+    browser so the operator can drill to the exact folder to import."""
+    children = _list_children(service, parent_id)
+    folders = sorted(
+        ({"id": c["id"], "name": c["name"]} for c in children if c.get("mimeType") == FOLDER_MIME_TYPE),
+        key=lambda x: x["name"].lower(),
+    )
+    pdfs = sum(
+        1
+        for c in children
+        if c.get("mimeType") != FOLDER_MIME_TYPE and (c.get("name") or "").lower().endswith(".pdf")
+    )
+    return folders, pdfs
+
+
 def walk_drive_folder(service, root_id: str, *, _prefix: tuple[str, ...] = ()):
     """Yield (file_dict, relative_path_parts) for every non-folder file under a
     Drive folder, recursing subfolders. relative_path_parts excludes the file

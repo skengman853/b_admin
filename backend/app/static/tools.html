@@ -23,6 +23,11 @@
   .result.ok{border-color:#bbe3c8;}
   .result.err{border-color:#f3c0c0;color:var(--bad);}
   .spin{color:var(--muted);font-size:13px;}
+  .folderbar{display:flex;flex-wrap:wrap;gap:8px;}
+  button.folder{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 11px;font:inherit;font-size:13px;cursor:pointer;}
+  button.folder:hover{border-color:var(--accent);color:var(--accent);}
+  #driveBrowse .mut{color:var(--muted);}
+  #driveBrowse a{color:var(--accent);text-decoration:none;}
 </style>
 </head>
 <body>
@@ -43,12 +48,14 @@
 
   <div class="card">
     <h2>2. Import invoices from Google Drive</h2>
-    <p>Pull the client's existing invoice folders out of Google Drive. Paste the Drive folder <b>link</b> (best — open the folder in Drive and copy the URL), or type its name/path. Deduped on Drive file id, so it's safe to run repeatedly — it picks up where it left off. Reconnect Google first if you haven't since Drive read access was added.</p>
+    <p>Paste the Drive folder <b>link</b>, then <b>Browse</b> to drill into the exact folder you want (e.g. a year or month) and import just that — the most reliable way to get only the invoices you need. Or use the Year box + Import for a quick filter (only works if filenames contain the year). Deduped on Drive file id; safe to re-run. Reconnect Google if you haven't since Drive read access was added.</p>
     <div class="controls">
       <label>Drive folder link or name <input type="text" id="driveFolder" placeholder="https://drive.google.com/drive/folders/…" style="width:320px"></label>
-      <label>Year <input type="number" id="driveYear" value="2026" min="2000" max="2099" placeholder="all" style="width:90px"></label>
-      <button class="run" data-op="importdrive">Import from Drive</button>
+      <button class="run" data-op="drivebrowse" style="background:#475569">Browse folders</button>
+      <label>Year <input type="number" id="driveYear" placeholder="all" min="2000" max="2099" style="width:90px"></label>
+      <button class="run" data-op="importdrive">Import (with year filter)</button>
     </div>
+    <div id="driveBrowse" style="margin-top:10px"></div>
     <div class="result" id="r-importdrive"></div>
   </div>
 
@@ -176,43 +183,86 @@
     }catch(e){ show("r-importcsv", false, String(e.message||e)); }
   }
 
+  function driveIdFromLink(raw){ const m = (raw||"").match(/\/folders\/([A-Za-z0-9_-]+)/); return m ? m[1] : null; }
+
   // Drive import is chunked & deduped: loop small batches until nothing new
-  // comes in, so each request finishes well under the proxy timeout.
-  async function doImportDrive(button){
-    const raw = document.getElementById("driveFolder").value.trim();
-    if(!raw){ show("r-importdrive", false, "Paste the Drive folder link (or its name) first."); return; }
-    // A pasted Drive link contains the folder id (…/folders/<id>); prefer that.
-    const m = raw.match(/\/folders\/([A-Za-z0-9_-]+)/);
-    let qs = m ? `folder_id=${encodeURIComponent(m[1])}` : `folder_name=${encodeURIComponent(raw)}`;
-    const yr = document.getElementById("driveYear").value.trim();
-    if(yr) qs += `&year=${encodeURIComponent(yr)}`;
+  // comes in, so each request finishes well under the proxy timeout. qsBase is
+  // the folder selector (folder_id=… or folder_name=…) plus any year filter.
+  async function driveImportLoop(qsBase, label){
     let imported=0, calls=0, transientFails=0;
-    show("r-importdrive", true, "Starting… (this runs in small batches; leave the page open)");
+    show("r-importdrive", true, `Starting import of ${label}… (small batches; leave the page open)`);
     while(true){
       calls++;
-      // Retry a blipped batch a few times before giving up; resumable, so retries
-      // pick up where it left off rather than re-importing.
       let body=null, ok=false, attempt=0;
       while(attempt < 3 && !ok){
         attempt++;
         try{
-          const res = await fetch(`/api/documents/import-drive?${qs}&limit=25`, {method:"POST", headers:hdrs()});
+          const res = await fetch(`/api/documents/import-drive?${qsBase}&limit=25`, {method:"POST", headers:hdrs()});
           ({ ok, body } = await parseResponse(res));
         }catch(e){ ok=false; body={detail:String(e.message||e)}; }
         if(!ok && attempt < 3){ show("r-importdrive", true, `Retrying… (${imported} imported, hiccup: ${body.detail})`); await new Promise(r=>setTimeout(r, 1500*attempt)); }
       }
       if(!ok){
         transientFails++;
-        if(transientFails >= 3){ show("r-importdrive", false, `Stopped after ${imported} imported: ${body.detail}. Just hit Import again — it resumes.`); return; }
+        if(transientFails >= 3){ show("r-importdrive", false, `Stopped after ${imported} imported: ${body.detail}. Just hit import again — it resumes.`); return; }
         continue;
       }
       transientFails = 0;
       imported += body.imported || 0;
-      show("r-importdrive", true, `Working… ${imported} imported so far.`);
-      if(!body.more_remaining) break;   // walked the whole tree, nothing new left
-      if(calls > 4000) break;           // safety stop
+      show("r-importdrive", true, `Working… ${imported} imported from ${label} so far.`);
+      if(!body.more_remaining) break;
+      if(calls > 4000) break;
     }
-    show("r-importdrive", true, `Done. Imported ${imported} new document(s) from "${folder}". Now run the extractor, then the matcher.`);
+    show("r-importdrive", true, `Done. Imported ${imported} new document(s) from ${label}. Now run the extractor, then the matcher.`);
+  }
+
+  async function doImportDrive(button){
+    const raw = document.getElementById("driveFolder").value.trim();
+    if(!raw){ show("r-importdrive", false, "Paste the Drive folder link (or its name) first."); return; }
+    const id = driveIdFromLink(raw);
+    let qs = id ? `folder_id=${encodeURIComponent(id)}` : `folder_name=${encodeURIComponent(raw)}`;
+    const yr = document.getElementById("driveYear").value.trim();
+    if(yr) qs += `&year=${encodeURIComponent(yr)}`;
+    await driveImportLoop(qs, raw);
+  }
+
+  // --- Folder browser: drill to the exact folder, then import just that one ---
+  let driveStack = [];   // breadcrumb: [{id, name}]
+  async function driveBrowse(folderId, name, push){
+    const panel = document.getElementById("driveBrowse");
+    panel.innerHTML = "Loading folders…";
+    try{
+      const r = await fetch(`/api/documents/drive-folders?folder_id=${encodeURIComponent(folderId)}`, {headers:hdrs()});
+      const { ok, body } = await parseResponse(r);
+      if(!ok) throw new Error(body.detail || "could not list folders");
+      if(push) driveStack.push({id: folderId, name: name || "folder"});
+      renderBrowse(body);
+    }catch(e){ panel.innerHTML = `<span style="color:var(--bad)">${e.message}</span>`; }
+  }
+  function renderBrowse(body){
+    const panel = document.getElementById("driveBrowse");
+    const crumbs = driveStack.map((c,i)=>`<a href="#" data-crumb="${i}">${c.name}</a>`).join(" / ");
+    const subs = (body.subfolders||[]).map(f=>`<button class="folder" data-fid="${f.id}" data-fname="${(f.name||'').replace(/"/g,'&quot;')}">📁 ${f.name}</button>`).join(" ") || '<span class="mut">no subfolders</span>';
+    panel.innerHTML = `
+      <div style="font-size:13px;color:var(--muted);margin-bottom:6px">${crumbs||"root"}</div>
+      <div class="folderbar">${subs}</div>
+      <div style="margin-top:10px">
+        <b>${body.direct_pdfs}</b> PDF(s) directly in this folder.
+        <button class="run" id="importThis" style="background:#0a7;margin-left:8px">Import this folder (+ its subfolders)</button>
+      </div>`;
+    panel.querySelectorAll("button.folder").forEach(b=>b.addEventListener("click",()=>driveBrowse(b.dataset.fid, b.dataset.fname, true)));
+    panel.querySelectorAll("a[data-crumb]").forEach(a=>a.addEventListener("click",ev=>{ev.preventDefault(); const i=+a.dataset.crumb; const c=driveStack[i]; driveStack=driveStack.slice(0,i); driveBrowse(c.id, c.name, true);}));
+    document.getElementById("importThis").addEventListener("click",()=>{
+      const cur = driveStack[driveStack.length-1];
+      if(cur) driveImportLoop(`folder_id=${encodeURIComponent(cur.id)}`, cur.name);
+    });
+  }
+  async function startBrowse(){
+    const raw = document.getElementById("driveFolder").value.trim();
+    const id = driveIdFromLink(raw) || raw;
+    if(!id){ show("r-importdrive", false, "Paste the Drive folder link first, then Browse."); return; }
+    driveStack = [];
+    await driveBrowse(id, "top folder", true);
   }
 
   const sleep = ms => new Promise(r=>setTimeout(r, ms));
@@ -291,6 +341,7 @@
     if(op==="extractjob"){ button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doExtractJob(); button.disabled=false; button.textContent=o; return; }
     if(op==="importcsv"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportCsv(button); button.disabled=false; button.textContent=o; return; }
     if(op==="importdrive"){ button.disabled=true; const o=button.textContent; button.textContent="Importing…"; await doImportDrive(button); button.disabled=false; button.textContent=o; return; }
+    if(op==="drivebrowse"){ button.disabled=true; const o=button.textContent; button.textContent="…"; await startBrowse(); button.disabled=false; button.textContent=o; return; }
     if(op==="extract") { button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doExtractChunked(button); button.disabled=false; button.textContent=o; return; }
     if(op==="match") { button.disabled=true; const o=button.textContent; button.textContent="Running…"; await doMatchJob(); button.disabled=false; button.textContent=o; return; }
     button.disabled = true;
