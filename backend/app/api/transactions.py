@@ -1014,6 +1014,42 @@ async def rebuild_matching(
     }
 
 
+@router.get("/bank-imports")
+async def get_bank_imports(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """What bank data has been uploaded — one row per account, with the pub,
+    transaction count and date span, so the operator can see exactly what's in."""
+    result = await db.execute(
+        select(
+            Transaction.posted_account,
+            Transaction.source_sheet,
+            Transaction.pub,
+            func.count(Transaction.id),
+            func.min(Transaction.transaction_date),
+            func.max(Transaction.transaction_date),
+            func.max(Transaction.imported_at),
+        )
+        .where(Transaction.user_id == user.id, Transaction.source_type == "bank_statement")
+        .group_by(Transaction.posted_account, Transaction.source_sheet, Transaction.pub)
+        .order_by(Transaction.pub)
+    )
+    accounts = [
+        {
+            "posted_account": acct,
+            "account_number": sheet,
+            "pub": pub,
+            "transactions": count,
+            "first_date": first.isoformat() if first else None,
+            "last_date": last.isoformat() if last else None,
+            "last_imported_at": imported.isoformat() if imported else None,
+        }
+        for acct, sheet, pub, count, first, last, imported in result.all()
+    ]
+    return {"accounts": accounts, "total_transactions": sum(a["transactions"] for a in accounts)}
+
+
 @router.post("/rebuild-matching-job")
 async def start_rebuild_matching_job(
     month: str,

@@ -46,8 +46,16 @@
 </header>
 <main>
   <div id="banner"></div>
+  <div id="bank"></div>
+  <h2 style="font-size:15px;margin:18px 0 8px;">Documents</h2>
   <div class="tabs" id="tabs"></div>
   <div class="filterbar">
+    <select id="since">
+      <option value="0">Imported: any time</option>
+      <option value="1">Imported: today</option>
+      <option value="7">Imported: last 7 days</option>
+      <option value="30">Imported: last 30 days</option>
+    </select>
     <input type="search" id="filter" placeholder="Filter sender / supplier / subject…" />
     <span class="count" id="count"></span>
   </div>
@@ -58,8 +66,9 @@
   const token = localStorage.getItem("b_admin_token") || "";
   const banner=document.getElementById("banner"), loading=document.getElementById("loading"),
         content=document.getElementById("content"), tabsEl=document.getElementById("tabs"),
-        filterEl=document.getElementById("filter"), countEl=document.getElementById("count");
-  let source="email", payload=null;
+        filterEl=document.getElementById("filter"), countEl=document.getElementById("count"),
+        sinceEl=document.getElementById("since"), bankEl=document.getElementById("bank");
+  let source="all", payload=null;
 
   function fmt(iso){
     if(!iso) return "—";
@@ -74,12 +83,33 @@
     if(!token){ banner.style.display="block"; banner.textContent="No saved session — sign in on /review first."; loading.style.display="none"; return; }
     loading.style.display="block"; content.innerHTML="";
     try{
-      const r=await fetch(`/api/documents/inbox?source=${encodeURIComponent(source)}`,{headers:{Authorization:`Bearer ${token}`}});
+      const since=sinceEl.value||"0";
+      const r=await fetch(`/api/documents/inbox?source=${encodeURIComponent(source)}&since_days=${since}`,{headers:{Authorization:`Bearer ${token}`}});
       if(!r.ok){ throw new Error((await r.text()).slice(0,160)); }
       payload=await r.json();
       loading.style.display="none";
       renderTabs(); render();
+      loadBank();
     }catch(e){ loading.style.display="none"; banner.style.display="block"; banner.textContent=String(e.message||e); }
+  }
+
+  async function loadBank(){
+    try{
+      const r=await fetch(`/api/transactions/bank-imports`,{headers:{Authorization:`Bearer ${token}`}});
+      if(!r.ok) return;
+      const d=await r.json();
+      if(!d.accounts || !d.accounts.length){ bankEl.innerHTML=""; return; }
+      const rows=d.accounts.map(a=>`<tr>
+        <td><b>${esc(a.pub||"—")}</b></td>
+        <td>${esc(a.posted_account||a.account_number||"")}</td>
+        <td class="num">${a.transactions}</td>
+        <td>${fmt(a.first_date)} → ${fmt(a.last_date)}</td>
+        <td>${fmt(a.last_imported_at)}</td>
+      </tr>`).join("");
+      bankEl.innerHTML=`<h2 style="font-size:15px;margin:4px 0 8px;">Bank statements you've uploaded</h2>
+        <table><thead><tr><th>Pub</th><th>Account</th><th class="num">Transactions</th><th>Date span</th><th>Last upload</th></tr></thead>
+        <tbody>${rows}</tbody></table>`;
+    }catch(e){ /* non-fatal */ }
   }
 
   function renderTabs(){
@@ -129,6 +159,7 @@
   }
 
   document.getElementById("refresh").addEventListener("click", load);
+  sinceEl.addEventListener("change", load);
   filterEl.addEventListener("input", render);
   load();
 </script>

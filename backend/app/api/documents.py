@@ -314,19 +314,26 @@ def _document_source(d: Document) -> str:
 
 @router.get("/inbox")
 async def get_document_inbox(
-    source: str = "email",
+    source: str = "all",
     pub: str | None = None,
+    since_days: int = 0,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Provenance view: which documents arrived how, and when. Defaults to the
-    email-sourced pile (sender + received date), newest first. source=archive
-    for the bulk import, source=all for everything. Per-source counts are
-    always returned for the tab strip."""
+    """Provenance view: which documents arrived how, and when. source tabs
+    (email / drive / archive / all); since_days limits to what was imported in
+    the last N days (0 = all time). Per-source counts reflect the time window."""
+    from datetime import timedelta
+
     result = await db.execute(
         select(Document).where(Document.user_id == user.id, Document.derivation_index == 0)
     )
     all_docs = list(result.scalars().all())
+
+    # Time window on import time (created_at) — "what did I import today / this week".
+    if since_days and since_days > 0:
+        cutoff = datetime.utcnow() - timedelta(days=since_days)
+        all_docs = [d for d in all_docs if d.created_at and d.created_at >= cutoff]
 
     sources: dict[str, int] = {}
     for d in all_docs:
@@ -339,16 +346,15 @@ async def get_document_inbox(
     if pub:
         docs = [d for d in docs if _document_pub_label(d) == pub]
 
-    # Newest arrival first: email = received time, archive = file/import time.
-    def arrived_at(d: Document):
-        return d.source_received_at or d.created_at
-
-    docs.sort(key=lambda d: (arrived_at(d) is not None, arrived_at(d)), reverse=True)
+    # Most recently imported first (this view is about "what came in when").
+    docs.sort(key=lambda d: (d.created_at is not None, d.created_at), reverse=True)
     docs = docs[:500]
 
     return {
         "sources": sources,
         "source": source,
+        "since_days": since_days,
+        "window_total": len(all_docs),
         "count": len(docs),
         "documents": [
             {
