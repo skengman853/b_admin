@@ -48,6 +48,9 @@
   .folderbar{display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;}
   button.folder{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer;}
   button.folder:hover{border-color:var(--accent);color:var(--accent);}
+  .holdbox{background:#fdf9f0;border:1px solid #f3d9ab;border-radius:12px;padding:14px 16px;margin-bottom:14px;}
+  .holdbox h3{margin:0 0 8px;font-size:14px;}
+  .holdbox .hint{margin:8px 0 0;font-size:12.5px;}
   .pubtabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
   .pubtabs button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 16px;font:inherit;font-size:13px;cursor:pointer;}
   .pubtabs button.on{background:var(--accent);color:#fff;border-color:var(--accent);}
@@ -98,32 +101,42 @@
     return `<div class="pubtabs">${tab("","All",total)}${keys.map(k=>tab(k,k,pubs[k])).join("")}</div>`;
   }
 
+  const HOLD_LABELS={email:"📧 Scanned emails",drive:"📁 Drive imports",archive:"🗄 Local archive"};
+
   function render(d){
-    const s=d.stages;
     const tabs=pubTabs(d.pubs);
-    const stages=`<div class="stages">
-      <div class="stage captured" id="tile-unsorted" title="click to view"><b>${s.captured}</b><span>Captured / unsorted</span></div>
-      <div class="stage"><b>${s.supplier_sorted}</b><span>Supplier known, not typed</span></div>
-      <div class="stage"><b>${s.extracted}</b><span>Extracted</span></div>
-    </div>
-    <div class="storage">${d.total} documents · <span class="ok">${d.storage.r2} in cloud storage (R2)</span> · ${d.storage.local_only} local-only</div>
-    <div id="panel"></div>`;
+    const h=d.holding||{};
+    const horder=["email","drive","archive"];
+    const hkeys=Object.keys(h).sort((a,b)=>horder.indexOf(a)-horder.indexOf(b));
+    const holdBtns = hkeys.length
+      ? hkeys.map(k=>`<button class="folder" data-holding="${k}">${HOLD_LABELS[k]||k} (${h[k]})</button>`).join("")
+      : '<span class="mut">nothing waiting — all extracted ✅</span>';
+    const holding=`<div class="holdbox">
+      <h3>⏳ Not yet extracted — ${d.holding_total} document(s)</h3>
+      <div class="folderbar">${holdBtns}</div>
+      <p class="mut hint">Captured but not read yet. Run the extractor (Tools → Run in background) — they'll then sort into supplier folders below.</p>
+      <div class="panel" id="holdpanel"></div>
+    </div>`;
+    const storage=`<div class="storage">${d.extracted_total} extracted · ${d.holding_total} waiting · <span class="ok">${d.storage.r2} in cloud (R2)</span></div>`;
 
     const rows=d.suppliers.map((x,i)=>`
       <tr class="sup" data-i="${i}" data-supplier="${(x.supplier||'').replace(/"/g,'&quot;')}">
         <td class="supplier">▸ ${x.supplier}</td>
         <td class="num">${x.total}</td>
-        <td>${x.captured?`<span class="pill cap">unsorted ${x.captured}</span>`:""}${typesText(x.types)}</td>
+        <td>${typesText(x.types)}</td>
         <td class="num">${x.in_r2}/${x.total}</td>
       </tr>
       <tr class="folders" id="folders-${i}" style="display:none"><td colspan="4"></td></tr>`).join("");
-    content.innerHTML = tabs + stages + `<table>
-      <tr><th>Supplier</th><th class="num">Docs</th><th>Breakdown</th><th class="num">In R2</th></tr>${rows}</table>`;
+    const supplierTable = d.suppliers.length
+      ? `<table><tr><th>Supplier</th><th class="num">Docs</th><th>Breakdown</th><th class="num">In R2</th></tr>${rows}</table>`
+      : `<p class="mut">No extracted documents yet — run the extractor and they'll appear here, sorted by supplier.</p>`;
+
+    content.innerHTML = tabs + holding + storage
+      + `<h3 style="font-size:14px;margin:18px 0 8px;">✅ Extracted &amp; sorted by supplier</h3>` + supplierTable;
 
     content.querySelectorAll(".pubtabs button").forEach(b=>b.addEventListener("click",()=>{ currentPub=b.dataset.pub; load(); }));
+    content.querySelectorAll(".holdbox button.folder").forEach(b=>b.addEventListener("click",()=>showDocs({holding:b.dataset.holding, into:"holdpanel"})));
     content.querySelectorAll("tr.sup").forEach(tr=>tr.addEventListener("click",()=>toggleSupplier(tr, d.suppliers[+tr.dataset.i])));
-    const tile=document.getElementById("tile-unsorted");
-    if(tile) tile.addEventListener("click",()=>showDocs({unsorted:true}));
   }
 
   function toggleSupplier(tr, x){
@@ -134,7 +147,6 @@
     const labels={invoice:"Invoices",statement:"Statements",credit_note:"Credit Notes",receipt:"Receipts"};
     Object.entries(x.types||{}).sort((a,b)=>b[1]-a[1]).forEach(([t,n])=>
       folders.push(`<button class="folder" data-supplier="${(x.supplier||'').replace(/"/g,'&quot;')}" data-type="${t}">📁 ${labels[t]||t.replace("_"," ")} (${n})</button>`));
-    if(x.supplier_sorted) folders.push(`<button class="folder" data-supplier="${(x.supplier||'').replace(/"/g,'&quot;')}" data-type="unknown">📁 Untyped (${x.supplier_sorted})</button>`);
     if(!folders.length) folders.push('<span class="mut">no documents</span>');
     row.firstElementChild.innerHTML=`<div class="folderbar">${folders.join("")}</div><div class="panel" id="panel-${tr.dataset.i}"></div>`;
     row.style.display="";
@@ -153,14 +165,18 @@
   async function showDocs(opts){
     const panel = opts.into ? document.getElementById(opts.into) : document.getElementById("panel");
     panel.innerHTML='<div class="panel">loading…</div>';
-    let q = opts.unsorted ? "unsorted=true" : `supplier=${encodeURIComponent(opts.supplier)}`;
+    let q = opts.holding ? `holding=${encodeURIComponent(opts.holding)}`
+          : opts.unsorted ? "unsorted=true"
+          : `supplier=${encodeURIComponent(opts.supplier)}`;
     if(opts.document_type) q += `&document_type=${encodeURIComponent(opts.document_type)}`;
     if(currentPub) q += `&pub=${encodeURIComponent(currentPub)}`;
     try{
       const r=await fetch(`/api/documents/store-list?${q}`,{headers:{Authorization:`Bearer ${token}`}});
       if(!r.ok) throw new Error("load failed ("+r.status+")");
       const d=await r.json();
-      const title = opts.unsorted ? "Unsorted / captured" : opts.supplier + (opts.document_type? " · "+opts.document_type.replace("_"," "):"");
+      const title = opts.holding ? (HOLD_LABELS[opts.holding]||opts.holding)+" — waiting to extract"
+                  : opts.unsorted ? "Unsorted / captured"
+                  : opts.supplier + (opts.document_type? " · "+opts.document_type.replace("_"," "):"");
       const docs=d.documents.slice();
       const sortDocs=(mode)=>{
         const dt=x=>x.document_date||"";

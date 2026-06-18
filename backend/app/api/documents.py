@@ -181,15 +181,16 @@ async def get_document_store_summary(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """The document store as a tree, rendered from the DB (doc 29).
+    """The document store in two stages (doc 29):
 
-    Stage is derived, never stored, so it can't drift:
-      captured        -> supplier still unknown ('Other')
-      supplier_sorted -> supplier known, type still unknown
-      extracted       -> typed + data pulled
+      Not yet extracted  -> held by source (Scanned emails / Drive / Archive);
+                            sorting waits until the PDF is read.
+      Extracted          -> sorted into supplier -> type folders, by the real
+                            supplier read off the document.
 
-    Optionally narrowed to one pub (Careys / Canal / Unknown). Pub is derived
-    per document; per-pub counts are always returned for the tab strip.
+    Sorting only happens after extraction, so import-time guesses never pollute
+    the supplier folders. Optionally narrowed to one pub; per-pub counts are
+    always returned for the tab strip.
     """
     result = await db.execute(
         select(Document).where(Document.user_id == user.id, Document.derivation_index == 0)
@@ -206,40 +207,40 @@ async def get_document_store_summary(
     else:
         documents = all_documents
 
-    def stage_of(d: Document) -> str:
-        if not d.supplier or d.supplier == "Other":
-            return "captured"
-        if not d.document_type or d.document_type == "unknown":
-            return "supplier_sorted"
-        return "extracted"
+    def is_extracted(d: Document) -> bool:
+        return d.extraction_status in ("extracted", "reviewed")
 
     def in_r2(d: Document) -> bool:
         return d.storage_provider == "s3" and bool(d.storage_key)
 
-    stages = {"captured": 0, "supplier_sorted": 0, "extracted": 0}
     storage = {"r2": 0, "local_only": 0}
+    holding: dict[str, int] = {}   # un-extracted, by source
     suppliers: dict[str, dict] = {}
+    extracted_total = 0
     for d in documents:
-        st = stage_of(d)
-        stages[st] += 1
         storage["r2" if in_r2(d) else "local_only"] += 1
+        if not is_extracted(d):
+            src = _document_source(d)
+            holding[src] = holding.get(src, 0) + 1
+            continue
+        extracted_total += 1
         key = d.supplier or "Other"
         s = suppliers.setdefault(
             key,
-            {"supplier": key, "total": 0, "captured": 0, "supplier_sorted": 0, "extracted": 0, "types": {}, "in_r2": 0},
+            {"supplier": key, "total": 0, "types": {}, "in_r2": 0},
         )
         s["total"] += 1
-        s[st] += 1
         if in_r2(d):
             s["in_r2"] += 1
-        if st == "extracted":
-            t = d.document_type or "unknown"
-            s["types"][t] = s["types"].get(t, 0) + 1
+        t = d.document_type or "unknown"
+        s["types"][t] = s["types"].get(t, 0) + 1
 
     supplier_list = sorted(suppliers.values(), key=lambda x: (-x["total"], x["supplier"]))
     return {
         "total": len(documents),
-        "stages": stages,
+        "holding": holding,
+        "holding_total": sum(holding.values()),
+        "extracted_total": extracted_total,
         "storage": storage,
         "suppliers": supplier_list,
         "pubs": pubs,
@@ -251,30 +252,43 @@ async def get_document_store_summary(
 async def get_document_store_list(
     supplier: str | None = None,
     document_type: str | None = None,
+    holding: str | None = None,
     unsorted: bool = False,
     pub: str | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List the documents in one bucket of the store — the unsorted/captured
-    pile, or a supplier optionally narrowed to one document type. Optionally
-    restricted to one pub (Careys / Canal / Unknown)."""
+    """List documents in one bucket of the store:
+      holding=email|drive|archive -> un-extracted docs from that source
+      supplier=...                -> extracted docs for that supplier (+ type)
+    Optionally restricted to one pub."""
+    extracted_states = ["extracted", "reviewed"]
     query = select(Document).where(Document.user_id == user.id, Document.derivation_index == 0)
-    if unsorted:
-        query = query.where(or_(Document.supplier.is_(None), Document.supplier == "Other"))
+    if holding:
+        query = query.where(Document.extraction_status.not_in(extracted_states))
+    elif unsorted:
+        query = query.where(
+            Document.extraction_status.in_(extracted_states),
+            or_(Document.supplier.is_(None), Document.supplier == "Other"),
+        )
     elif supplier:
-        query = query.where(Document.supplier == supplier)
+        query = query.where(
+            Document.supplier == supplier,
+            Document.extraction_status.in_(extracted_states),
+        )
         if document_type == "unknown":
             query = query.where(or_(Document.document_type.is_(None), Document.document_type == "unknown"))
         elif document_type:
             query = query.where(Document.document_type == document_type)
     else:
-        raise HTTPException(status_code=422, detail="supplier or unsorted=true required")
+        raise HTTPException(status_code=422, detail="holding, supplier or unsorted required")
 
     result = await db.execute(
         query.order_by(Document.document_date.desc().nulls_last(), Document.created_at.desc())
     )
     docs = list(result.scalars().all())
+    if holding:
+        docs = [d for d in docs if _document_source(d) == holding]
     if pub:
         docs = [d for d in docs if _document_pub_label(d) == pub]
     docs = docs[:500]
@@ -289,6 +303,9 @@ async def get_document_store_list(
                 "document_type": d.document_type,
                 "document_date": d.document_date.isoformat() if d.document_date else None,
                 "amount": str(d.amount) if d.amount is not None else None,
+                "source": _document_source(d),
+                "sender": d.source_email_sender if _document_source(d) in ("email", "drive") else None,
+                "extraction_status": d.extraction_status,
                 "in_r2": bool(d.storage_provider == "s3" and d.storage_key),
                 "captured_at": d.created_at.isoformat() if d.created_at else None,
             }
