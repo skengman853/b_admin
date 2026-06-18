@@ -298,6 +298,7 @@ async def get_document_store_list(
             {
                 "id": str(d.id),
                 "attachment_name": d.attachment_name,
+                "display_name": _canonical_doc_name(d),
                 "supplier": d.supplier,
                 "pub": _document_pub_label(d),
                 "document_type": d.document_type,
@@ -318,6 +319,15 @@ async def get_document_store_list(
             for d in docs
         ],
     }
+
+
+def _canonical_doc_name(d: Document) -> str:
+    """Clean name from the extracted data: 'date · pub · supplier · type'."""
+    date_part = d.document_date.isoformat() if d.document_date else "undated"
+    pub = _document_pub_label(d)
+    pub_part = pub if pub and pub != "Unknown" else "?pub"
+    type_part = (d.document_type or "doc").replace("_", " ")
+    return f"{date_part} · {pub_part} · {d.supplier or 'Other'} · {type_part}"
 
 
 def _document_source(d: Document) -> str:

@@ -179,6 +179,13 @@ def _row_description(entry: ParsedLedgerEntry) -> str | None:
 
 
 def _document_pub_hint(document: Document) -> str | None:
+    # The extractor reads the pub off the PDF (delivery address / account code);
+    # trust that first. Falls back to filename/text signals for un-extracted docs.
+    payload = document.ai_extraction_payload or {}
+    ai_pub = payload.get("pub") if isinstance(payload, dict) else None
+    if ai_pub in ("Careys", "Canal", "Corrcross"):
+        return ai_pub
+
     haystacks = [
         document.local_path or "",
         document.drive_folder_path or "",

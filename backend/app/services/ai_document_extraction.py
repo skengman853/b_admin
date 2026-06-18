@@ -44,6 +44,7 @@ class AIDocumentStatementEntry(BaseModel):
 
 class AIDocumentExtractionResult(BaseModel):
     supplier: str | None = None
+    pub: str | None = None
     document_type: str | None = None
     document_date: date | None = None
     reference: str | None = None
@@ -197,8 +198,12 @@ def merge_ai_extraction(
     if ai_result.document_type and document.document_type == "unknown":
         document.document_type = ai_result.document_type
 
+    # Supplier comes from the PDF (the issuer the model read). Take it whenever
+    # the model is confident — it's authoritative over import-time guesses — and
+    # always when we have no real supplier yet.
     ai_supplier = ai_result.supplier if not is_operator_entity(ai_result.supplier) else None
-    if ai_supplier and (document.supplier == "Other" or is_operator_entity(document.supplier)):
+    ai_confident = (ai_result.confidence_score or 0.0) >= settings.ai_document_extraction_min_confidence
+    if ai_supplier and (ai_confident or document.supplier == "Other" or is_operator_entity(document.supplier)):
         document.supplier = canonicalize_supplier_name(ai_supplier) or ai_supplier
 
     if ai_result.document_date and merged.get("document_date") is None:
@@ -352,8 +357,15 @@ def _build_ai_extraction_messages(
     user_text = (
         f"Document type hint: {document.document_type}\n"
         f"Supplier hint: {supplier_hint}\n"
-        "The supplier is the business that issued the document, never the customer, "
-        "recipient, or account holder named on it.\n"
+        "The supplier is the business that ISSUED the document (the letterhead / 'from' / "
+        "remit-to company), never the customer or recipient, and never a product brand or "
+        "manufacturer printed in the line items. For example a Connacht Bottlers invoice that "
+        "lists Bulmers products has supplier 'Connacht Bottlers', not 'Bulmers'.\n"
+        "The customer is Careys Bar Limited, which operates two premises: 'Careys' (Careys Bar, "
+        "Athlone) and 'Canal' (Canal Turn, Ballymahon). Set `pub` to which premises this document "
+        "is for, read from the delivery / ship-to address or the account code (Canal Turn / "
+        "Ballymahon / CANA* -> \"Canal\"; Careys / Athlone / Mardyke / CAREY* -> \"Careys\"). If it "
+        "is not clearly stated, leave `pub` null.\n"
         f"Attachment name: {document.attachment_name}\n"
         f"Email subject: {document.source_email_subject or ''}\n\n"
         + (
@@ -381,6 +393,7 @@ def _build_ai_extraction_messages(
         "Return JSON with keys:\n"
         "{"
         '"supplier": string|null, '
+        '"pub": "Careys"|"Canal"|null, '
         '"document_type": string|null, '
         '"document_date": "YYYY-MM-DD"|null, '
         '"reference": string|null, '

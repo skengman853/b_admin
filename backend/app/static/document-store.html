@@ -236,7 +236,7 @@
         const rows=docs.map((x,i)=>`
           <div class="docwrap">
             <div class="doc">
-              <span class="nm" data-toggle="${i}" title="click to see extracted data">▸ ${x.attachment_name||"(no name)"}</span>
+              <span class="nm" data-toggle="${i}" title="${(x.attachment_name||'').replace(/"/g,'&quot;')}">▸ ${((["extracted","reviewed"].includes(x.extraction_status)&&x.display_name)?x.display_name:x.attachment_name)||"(no name)"}</span>
               <span class="mut">${(x.document_type||"").replace("_"," ")}${(!currentPub&&x.pub&&x.pub!=='Unknown')?` · <b>${x.pub}</b>`:""}</span>
               <span class="mut">${x.document_date||"—"}</span>
               <span class="amt">${x.amount?Number(x.amount).toLocaleString("en-IE",{minimumFractionDigits:2}):"—"}</span>
