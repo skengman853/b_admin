@@ -54,6 +54,11 @@
   .reassignbar{font-size:12.5px;color:var(--muted);margin:2px 0 8px;}
   .reassignbar input{border:1px solid var(--line);border-radius:6px;padding:4px 8px;font:inherit;font-size:12.5px;width:180px;}
   .reassignbar button{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;padding:4px 10px;font:inherit;font-size:12.5px;cursor:pointer;}
+  .nm[data-toggle]{cursor:pointer;}
+  .docdetail{background:#fbfcfe;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:2px 0 8px;}
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13px;}
+  .kv span{color:var(--muted);}
+  .kv b.flag{color:var(--bad);}
   .pubtabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
   .pubtabs button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 16px;font:inherit;font-size:13px;cursor:pointer;}
   .pubtabs button.on{background:var(--accent);color:#fff;border-color:var(--accent);}
@@ -179,6 +184,30 @@
     }catch(e){ alert(e.message); } finally{ btn.disabled=false; }
   }
 
+  const esc=s=>(s||"").toString().replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+  const money=v=>v==null||v===""?"—":Number(v).toLocaleString("en-IE",{minimumFractionDigits:2});
+
+  // The extracted data for one document — this is what the matcher & VAT book
+  // run on, so it's what you verify against the PDF.
+  function detailHtml(x){
+    const conf = x.confidence==null ? "—" : Math.round(x.confidence*100)+"%";
+    const lowConf = x.confidence!=null && x.confidence < 0.6;
+    const flags=[];
+    if(x.extraction_status && !["extracted","reviewed"].includes(x.extraction_status)) flags.push("status: "+x.extraction_status);
+    if(x.needs_review) flags.push("needs review"+((x.review_reasons||[]).length?": "+x.review_reasons.join(", "):""));
+    return `<div class="kv">
+      <span>Supplier</span><b>${esc(x.supplier)||"—"}</b>
+      <span>Type</span><b>${esc((x.document_type||"—").replace("_"," "))}</b>
+      <span>Date</span><b>${x.document_date||"—"}</b>
+      <span>Reference</span><b>${esc(x.reference)||"—"}</b>
+      <span>Net amount</span><b>${money(x.amount)}</b>
+      <span>VAT</span><b>${money(x.vat_amount)}</b>
+      <span>Currency</span><b>${esc(x.currency)||"—"}</b>
+      <span>Confidence</span><b class="${lowConf?'flag':''}">${conf}</b>
+      ${flags.length?`<span>Flags</span><b class="flag">${esc(flags.join(" · "))}</b>`:""}
+    </div>`;
+  }
+
   async function showDocs(opts){
     const panel = opts.into ? document.getElementById(opts.into) : document.getElementById("panel");
     panel.innerHTML='<div class="panel">loading…</div>';
@@ -203,13 +232,16 @@
       };
       const draw=(mode)=>{
         sortDocs(mode);
-        const rows=docs.map(x=>`
-          <div class="doc">
-            <span class="nm" title="${(x.attachment_name||'').replace(/"/g,'&quot;')}">${x.attachment_name||"(no name)"}</span>
-            <span class="mut">${(x.document_type||"").replace("_"," ")}${(!currentPub&&x.pub&&x.pub!=='Unknown')?` · <b>${x.pub}</b>`:""}</span>
-            <span class="mut">${x.document_date||"—"}</span>
-            <span class="amt">${x.amount?Number(x.amount).toLocaleString("en-IE",{minimumFractionDigits:2}):"—"}</span>
-            <button data-id="${x.id}">Open</button>
+        const rows=docs.map((x,i)=>`
+          <div class="docwrap">
+            <div class="doc">
+              <span class="nm" data-toggle="${i}" title="click to see extracted data">▸ ${x.attachment_name||"(no name)"}</span>
+              <span class="mut">${(x.document_type||"").replace("_"," ")}${(!currentPub&&x.pub&&x.pub!=='Unknown')?` · <b>${x.pub}</b>`:""}</span>
+              <span class="mut">${x.document_date||"—"}</span>
+              <span class="amt">${x.amount?Number(x.amount).toLocaleString("en-IE",{minimumFractionDigits:2}):"—"}</span>
+              <button data-id="${x.id}">Open</button>
+            </div>
+            <div class="docdetail" id="dd-${i}" style="display:none">${detailHtml(x)}</div>
           </div>`).join("") || '<div class="mut">No documents.</div>';
         panel.innerHTML=`<div class="panel">
           <h3>${title} — ${d.count} document(s)
@@ -224,6 +256,12 @@
           ${rows}</div>`;
         panel.querySelectorAll("button[data-id]").forEach(b=>b.addEventListener("click",()=>openDoc(b.dataset.id,b)));
         panel.querySelectorAll("button[data-sort]").forEach(b=>b.addEventListener("click",ev=>{ev.stopPropagation();draw(b.dataset.sort);}));
+        panel.querySelectorAll(".nm[data-toggle]").forEach(s=>s.addEventListener("click",()=>{
+          const dd=panel.querySelector(`#dd-${s.dataset.toggle}`);
+          const open=dd.style.display!=="none";
+          dd.style.display=open?"none":"block";
+          s.innerHTML=(open?"▸ ":"▾ ")+s.innerHTML.slice(2);
+        }));
         const reasGo=panel.querySelector("#reasGo");
         if(reasGo) reasGo.addEventListener("click",()=>reassignAll(docs.slice(), panel.querySelector("#reasInp").value.trim()));
       };
