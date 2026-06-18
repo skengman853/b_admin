@@ -51,6 +51,9 @@
   .holdbox{background:#fdf9f0;border:1px solid #f3d9ab;border-radius:12px;padding:14px 16px;margin-bottom:14px;}
   .holdbox h3{margin:0 0 8px;font-size:14px;}
   .holdbox .hint{margin:8px 0 0;font-size:12.5px;}
+  .reassignbar{font-size:12.5px;color:var(--muted);margin:2px 0 8px;}
+  .reassignbar input{border:1px solid var(--line);border-radius:6px;padding:4px 8px;font:inherit;font-size:12.5px;width:180px;}
+  .reassignbar button{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;padding:4px 10px;font:inherit;font-size:12.5px;cursor:pointer;}
   .pubtabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
   .pubtabs button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 16px;font:inherit;font-size:13px;cursor:pointer;}
   .pubtabs button.on{background:var(--accent);color:#fff;border-color:var(--accent);}
@@ -153,6 +156,20 @@
     row.querySelectorAll("button.folder").forEach(b=>b.addEventListener("click",ev=>{ev.stopPropagation(); showDocs({supplier:b.dataset.supplier, document_type:b.dataset.type, into:`panel-${tr.dataset.i}`});}));
   }
 
+  async function reassignAll(docs, supplier){
+    if(!supplier){ alert("Type the correct supplier first."); return; }
+    if(!confirm(`Move ${docs.length} document(s) to "${supplier}"?`)) return;
+    let ok=0;
+    for(const x of docs){
+      try{
+        const r=await fetch(`/api/documents/${x.id}`,{method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({supplier})});
+        if(r.ok) ok++;
+      }catch(e){}
+    }
+    alert(`Moved ${ok}/${docs.length} to "${supplier}".`);
+    load();
+  }
+
   async function openDoc(id, btn){
     btn.disabled=true;
     try{
@@ -200,9 +217,15 @@
               <button data-sort="date_desc" class="${mode==='date_desc'?'on':''}">Newest</button>
               <button data-sort="date_asc" class="${mode==='date_asc'?'on':''}">Oldest</button>
               <button data-sort="amount" class="${mode==='amount'?'on':''}">Amount</button>
-            </span></h3>${rows}</div>`;
+            </span></h3>
+          <div class="reassignbar">Wrong supplier? Move all ${d.count} shown to:
+            <input id="reasInp" placeholder="e.g. Connacht Bottlers">
+            <button id="reasGo">Move</button></div>
+          ${rows}</div>`;
         panel.querySelectorAll("button[data-id]").forEach(b=>b.addEventListener("click",()=>openDoc(b.dataset.id,b)));
         panel.querySelectorAll("button[data-sort]").forEach(b=>b.addEventListener("click",ev=>{ev.stopPropagation();draw(b.dataset.sort);}));
+        const reasGo=panel.querySelector("#reasGo");
+        if(reasGo) reasGo.addEventListener("click",()=>reassignAll(docs.slice(), panel.querySelector("#reasInp").value.trim()));
       };
       draw("date_desc");
       panel.scrollIntoView({behavior:"smooth",block:"nearest"});
