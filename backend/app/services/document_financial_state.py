@@ -187,10 +187,17 @@ def _document_pub_hint(document: Document) -> str | None:
         document.extracted_text or "",
     ]
     lowered = " ".join(haystacks).lower()
-    if any(token in lowered for token in ("careys", "careys pub", "careys tavern", "car18", "carey01", "mardyke")):
-        return "Careys"
-    if any(token in lowered for token in ("canal", "canal turn", "can02", "cana01", "ballymahon")):
+    # Reliable per-pub signals first: supplier account codes and unique place
+    # names. The company name "Careys Bar Limited" is on EVERY invoice (both pubs
+    # trade under it), so the bare "careys" token can't decide the pub.
+    if any(token in lowered for token in ("cana01", "can02", "canal turn", "ballymahon")):
         return "Canal"
+    if any(token in lowered for token in ("carey01", "car18", "mardyke")):
+        return "Careys"
     if "corrcross" in lowered:
         return "Corrcross"
+    # Weak fallback: "canal" as a standalone word still points to Canal Turn;
+    # there is no equivalent unambiguous Careys word, so undecided -> None.
+    if "canal" in lowered:
+        return "Canal"
     return None

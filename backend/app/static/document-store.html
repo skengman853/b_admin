@@ -197,6 +197,7 @@
     if(x.needs_review) flags.push("needs review"+((x.review_reasons||[]).length?": "+x.review_reasons.join(", "):""));
     return `<div class="kv">
       <span>Supplier</span><b>${esc(x.supplier)||"—"}</b>
+      <span>Pub</span><b class="${(!x.pub||x.pub==='Unknown')?'flag':''}">${esc(x.pub)||"—"}</b>
       <span>Type</span><b>${esc((x.document_type||"—").replace("_"," "))}</b>
       <span>Date</span><b>${x.document_date||"—"}</b>
       <span>Reference</span><b>${esc(x.reference)||"—"}</b>
